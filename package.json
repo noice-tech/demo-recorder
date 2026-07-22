@@ -1,0 +1,41 @@
+{
+  "name": "@noice-tech/demo-recorder-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck && tsc -p tsconfig.scripts.json --noEmit",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
+    "format": "oxfmt . --ignore-path=.oxfmtignore",
+    "format:check": "oxfmt . --check --ignore-path=.oxfmtignore",
+    "test": "vitest run --exclude '**/*.integration.test.ts'",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:package": "pnpm package:cli && tsx scripts/package-smoke.ts",
+    "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test",
+    "clean": "tsx scripts/clean.ts",
+    "studio": "pnpm --filter @noice-tech/demo-recorder-remotion studio",
+    "studio:recording": "tsx scripts/studio-recording.ts",
+    "package:cli": "turbo run package --filter=@noice-tech/demo-recorder",
+    "demo-recorder": "pnpm --filter @noice-tech/demo-recorder exec tsx src/index.ts",
+    "demo:explore": "pnpm demo-recorder explore",
+    "demo:record": "pnpm --filter @noice-tech/demo-recorder record",
+    "demo:render": "pnpm package:cli && pnpm --filter @noice-tech/demo-recorder render"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "oxfmt": "^0.58.0",
+    "oxlint": "^1.73.0",
+    "playwright": "^1.61.1",
+    "tsdown": "^0.22.13",
+    "tsx": "^4.20.0",
+    "turbo": "^2.10.6",
+    "typescript": "5.9.3",
+    "vitest": "^4.0.0",
+    "zod": "4.3.6"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "packageManager": "pnpm@10.2.1"
+}

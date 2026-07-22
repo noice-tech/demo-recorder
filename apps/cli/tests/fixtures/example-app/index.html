@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Northstar Projects</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand"><span class="brand-mark">N</span> Northstar</div>
+      <button id="create-project" class="primary">Create project</button>
+    </header>
+    <main>
+      <section class="intro">
+        <p class="eyebrow">WORKSPACE</p>
+        <h1>Turn ideas into launches.</h1>
+        <p>Plan, review, and ship your next product update from one focused workspace.</p>
+      </section>
+
+      <section id="project-panel" class="panel" aria-live="polite">
+        <div id="empty-state">
+          <div class="empty-icon">✦</div>
+          <h2>No active project</h2>
+          <p>Create a project to prepare your next launch.</p>
+        </div>
+        <div id="project-state" hidden>
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">NEW PROJECT</p>
+              <h2>Summer campaign</h2>
+            </div>
+            <span id="status" class="status">Draft</span>
+          </div>
+          <div class="steps">
+            <button id="brief-step" class="step" aria-pressed="false">
+              <span>1</span>
+              <strong>Approve brief</strong>
+              <small>Confirm the launch direction</small>
+            </button>
+            <div class="step passive">
+              <span>2</span><strong>Produce assets</strong><small>Ready next</small>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="launch-card">
+        <div>
+          <p class="eyebrow">FINAL STEP</p>
+          <h2>Ready when you are</h2>
+          <p id="launch-help">Complete the brief to enable launch.</p>
+        </div>
+        <button id="launch-project" class="launch" disabled>Launch project</button>
+      </section>
+
+      <div id="success" class="success" role="status" hidden>
+        <span>✓</span>
+        <div><strong>Project launched</strong><small>Summer campaign is now live.</small></div>
+      </div>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

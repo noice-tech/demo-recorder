@@ -1,0 +1,20 @@
+import { defineConfig } from "tsdown";
+
+export default defineConfig({
+  entry: {
+    cli: "src/index.ts",
+    "auth-daemon": "src/explorer/auth-daemon.ts",
+  },
+  outDir: "dist",
+  format: "esm",
+  platform: "node",
+  target: "node22",
+  fixedExtension: false,
+  sourcemap: true,
+  clean: true,
+  dts: false,
+  deps: {
+    alwaysBundle: ["@noice-tech/demo-recorder-core"],
+    onlyBundle: ["zod"],
+  },
+});

@@ -1,0 +1,15 @@
+node_modules/
+.turbo/
+.demo-recorder/
+tmp/
+dist/
+*.tsbuildinfo
+.DS_Store
+recordings/*
+!recordings/.gitkeep
+output/*
+!output/.gitkeep
+apps/remotion/public/generated/
+apps/remotion/public/sample-browser.webm
+apps/remotion/build/
+apps/cli/assets/

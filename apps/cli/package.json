@@ -1,0 +1,64 @@
+{
+  "name": "@noice-tech/demo-recorder",
+  "version": "0.0.1",
+  "description": "Agent-directed product demo recording for web applications",
+  "keywords": [
+    "agent-skill",
+    "automation",
+    "browser-recording",
+    "codex",
+    "cursor",
+    "demo-video",
+    "playwright",
+    "product-demo",
+    "remotion"
+  ],
+  "homepage": "https://github.com/noice-tech/demo-recorder#readme",
+  "bugs": {
+    "url": "https://github.com/noice-tech/demo-recorder/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/noice-tech/demo-recorder.git"
+  },
+  "bin": {
+    "demo-recorder": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "assets",
+    "LICENSE",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "package": "tsdown && tsx scripts/package-assets.ts",
+    "prepack": "pnpm -C ../.. package:cli",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "record": "tsx src/index.ts record",
+    "render": "tsx src/index.ts render"
+  },
+  "dependencies": {
+    "@remotion/media-parser": "4.0.493",
+    "@remotion/renderer": "4.0.493",
+    "playwright": "1.61.1",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@noice-tech/demo-recorder-core": "workspace:*",
+    "@noice-tech/demo-recorder-remotion": "workspace:*",
+    "@types/node": "^22.15.0",
+    "tsx": "^4.20.0",
+    "zod": "4.3.6"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
