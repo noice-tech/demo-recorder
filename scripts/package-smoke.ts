@@ -44,7 +44,12 @@ const packs = JSON.parse(packOutput) as Array<{
 const packed = packs[0];
 if (!packed) throw new Error("npm pack did not return a package");
 const included = new Set(packed.files.map((file) => file.path));
-for (const required of ["dist/cli.js", "dist/auth-daemon.js", "assets/remotion/index.html"]) {
+for (const required of [
+  "dist/cli.js",
+  "dist/auth-daemon.js",
+  "dist/exploration-daemon.js",
+  "assets/remotion/index.html",
+]) {
   if (!included.has(required)) throw new Error(`Packed package is missing ${required}`);
 }
 const forbiddenPackagePaths = [
@@ -89,6 +94,41 @@ try {
 
   const fixture = await startFixtureServer(fixtureDirectory);
   try {
+    const explorationStartText = await runNpm(
+      [
+        "exec",
+        "--",
+        "demo-recorder",
+        "explore",
+        "start",
+        "--url",
+        fixture.baseUrl,
+        "--session",
+        "package-smoke",
+        "--json",
+      ],
+      workspace,
+    );
+    const explorationStart = JSON.parse(explorationStartText) as {
+      ok?: boolean;
+      observation?: { id?: string };
+    };
+    if (!explorationStart.ok || explorationStart.observation?.id !== "obs-0001")
+      throw new Error("Packaged interactive exploration did not start correctly");
+    const explorationObserveText = await runNpm(
+      ["exec", "--", "demo-recorder", "explore", "observe", "package-smoke", "--json"],
+      workspace,
+    );
+    const explorationObserve = JSON.parse(explorationObserveText) as {
+      observation?: { id?: string };
+    };
+    if (explorationObserve.observation?.id !== "obs-0002")
+      throw new Error("Packaged interactive exploration did not preserve its browser session");
+    await runNpm(
+      ["exec", "--", "demo-recorder", "explore", "finish", "package-smoke", "--json"],
+      workspace,
+    );
+
     await writeFile(
       join(workspace, "demo-plan.json"),
       `${JSON.stringify(

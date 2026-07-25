@@ -26,12 +26,41 @@ export async function startManagedApp(options: {
     exited = { code, signal };
   });
 
+  const processGroupId = process.platform !== "win32" ? child.pid : undefined;
+  const signalProcess = (signal: NodeJS.Signals): void => {
+    if (processGroupId) {
+      try {
+        process.kill(-processGroupId, signal);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+      }
+    } else if (child.exitCode === null) child.kill(signal);
+  };
+  const processIsRunning = (): boolean => {
+    if (processGroupId) {
+      try {
+        process.kill(-processGroupId, 0);
+        return true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+        throw error;
+      }
+    }
+    return child.exitCode === null;
+  };
+  const terminate = async (): Promise<void> => {
+    if (!processIsRunning()) return;
+    signalProcess("SIGTERM");
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      if (!processIsRunning()) return;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    signalProcess("SIGKILL");
+  };
+
   const deadline = Date.now() + (options.timeoutMs ?? 60_000);
   while (Date.now() < deadline) {
-    if (exited)
-      throw new Error(
-        `Managed application exited before readiness (code ${exited.code ?? "none"}, signal ${exited.signal ?? "none"})`,
-      );
     try {
       const response = await fetch(options.readinessUrl);
       if (response.ok) {
@@ -39,30 +68,22 @@ export async function startManagedApp(options: {
         return {
           url: options.readinessUrl,
           async close() {
-            if (closed || child.exitCode !== null) return;
+            if (closed) return;
             closed = true;
-            if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGTERM");
-            else child.kill("SIGTERM");
-            await new Promise<void>((resolve) => {
-              const timer = setTimeout(() => {
-                child.kill("SIGKILL");
-                resolve();
-              }, 5_000);
-              child.once("exit", () => {
-                clearTimeout(timer);
-                resolve();
-              });
-            });
+            await terminate();
           },
         };
       }
     } catch {
       // Continue polling until the deadline.
     }
+    if (exited && !processIsRunning())
+      throw new Error(
+        `Managed application exited before readiness (code ${exited.code ?? "none"}, signal ${exited.signal ?? "none"})`,
+      );
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  if (process.platform !== "win32" && child.pid) process.kill(-child.pid, "SIGTERM");
-  else child.kill("SIGTERM");
+  await terminate();
   throw new Error(
     `Managed application was not ready after ${options.timeoutMs ?? 60_000}ms: ${options.readinessUrl}`,
   );

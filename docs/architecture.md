@@ -22,9 +22,11 @@ User brief → Coding agent + skill
 
 ## 2. Explorer
 
-`apps/cli/src/explorer` owns bounded Playwright exploration, screenshots, page/control summaries, authentication detection, generic repository facts, managed local app processes, and local auth profiles.
+`apps/cli/src/explorer` owns bounded Playwright exploration, persistent agent-directed browser sessions, ARIA snapshots, screenshots, observation-scoped control refs, conservative state/transition graphs, generic repository facts, managed local app processes, and local auth profiles.
 
-Exploration is same-origin and read-only by default. Ordinary links are followed directly; form submission and ambiguous/destructive controls are excluded. Repository reports include environment-variable names but never secret values.
+The one-shot mapper follows ordinary links. Persistent sessions expose an `observe → one bounded action → observe` protocol so an agent can inspect tabs, menus, dialogs, drawers, and other same-URL state. Every accepted action records policy and before/after evidence. Temporary refs are valid only for their observation; durable role/test-ID/text/CSS target recipes are stored with transitions.
+
+Exploration is same-origin and uses a conservative `read-only` policy by default. Destructive, external-side-effect, form, and unknown controls are blocked; an explicit `reversible` profile can permit mutation-like controls in disposable environments. These are runtime guardrails rather than a guarantee that arbitrary application code has no server-side effects. Repository reports include environment-variable names but never secret values.
 
 ## 3. Planner protocol
 

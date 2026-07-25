@@ -1,0 +1,221 @@
+import { z } from "zod";
+
+const nonempty = z.string().trim().min(1);
+
+export const explorationPolicySchema = z.enum(["read-only", "reversible"]);
+export type ExplorationPolicyName = z.infer<typeof explorationPolicySchema>;
+
+export const explorationLaunchConfigSchema = z.object({
+  version: z.literal(1),
+  id: nonempty,
+  baseUrl: z.url(),
+  outputDirectory: nonempty,
+  headless: z.boolean(),
+  policy: explorationPolicySchema,
+  maxActions: z.number().int().positive().max(500),
+  maxDurationMs: z
+    .number()
+    .int()
+    .positive()
+    .max(60 * 60_000),
+  repositoryPath: nonempty.optional(),
+  startCommand: nonempty.optional(),
+  readinessUrl: z.url().optional(),
+  storageStatePath: nonempty.optional(),
+  sessionStoragePath: nonempty.optional(),
+  authProfile: nonempty.optional(),
+  goal: nonempty.max(2_000).optional(),
+});
+export type ExplorationLaunchConfig = z.infer<typeof explorationLaunchConfigSchema>;
+
+const locatorMethodSchema = z.discriminatedUnion("by", [
+  z.object({
+    by: z.literal("role"),
+    role: nonempty,
+    name: nonempty.optional(),
+    exact: z.boolean().optional(),
+  }),
+  z.object({ by: z.literal("test-id"), testId: nonempty }),
+  z.object({ by: z.literal("text"), text: nonempty, exact: z.boolean().optional() }),
+  z.object({ by: z.literal("css"), selector: nonempty }),
+]);
+
+export const explorationTargetRecipeSchema = z.object({
+  description: nonempty,
+  candidates: z.array(locatorMethodSchema).min(1).max(5),
+  expected: z.object({
+    role: nonempty.optional(),
+    accessibleName: nonempty.optional(),
+    count: z.number().int().nonnegative().optional(),
+  }),
+});
+export type ExplorationTargetRecipe = z.infer<typeof explorationTargetRecipeSchema>;
+
+export const exploredInteractiveElementSchema = z.object({
+  ref: nonempty,
+  role: nonempty.optional(),
+  name: z.string(),
+  tagName: nonempty,
+  href: z.string().optional(),
+  inputType: z.string().optional(),
+  visible: z.boolean(),
+  enabled: z.boolean(),
+  selected: z.boolean().optional(),
+  checked: z.boolean().optional(),
+  pressed: z.boolean().optional(),
+  expanded: z.boolean().optional(),
+  bounds: z.object({
+    x: z.number().finite(),
+    y: z.number().finite(),
+    width: z.number().nonnegative(),
+    height: z.number().nonnegative(),
+  }),
+  risk: z.enum(["read-only", "reversible", "destructive", "external-side-effect", "unknown"]),
+  riskReasons: z.array(z.string()),
+  target: explorationTargetRecipeSchema,
+});
+export type ExploredInteractiveElementV2 = z.infer<typeof exploredInteractiveElementSchema>;
+
+export const explorationObservationSchema = z.object({
+  schemaVersion: z.literal(2),
+  id: nonempty,
+  sequence: z.number().int().positive(),
+  stateId: nonempty,
+  reason: nonempty,
+  createdAt: z.string(),
+  url: z.string(),
+  pathname: z.string(),
+  title: z.string(),
+  viewport: z.object({ width: z.number().int().positive(), height: z.number().int().positive() }),
+  scroll: z.object({ x: z.number().finite(), y: z.number().finite() }),
+  headings: z.array(z.string()),
+  layers: z.array(z.object({ role: z.string(), name: z.string() })),
+  interactiveElements: z.array(exploredInteractiveElementSchema),
+  errors: z.array(z.string()),
+  artifacts: z.object({ snapshot: nonempty, screenshot: nonempty, observation: nonempty }),
+  semanticFingerprint: nonempty,
+  settled: z.object({
+    reason: z.enum(["initial", "quiet", "timed-out", "explicit"]),
+    durationMs: z.number().nonnegative(),
+  }),
+});
+export type ExplorationObservation = z.infer<typeof explorationObservationSchema>;
+
+export const explorationActionSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("click"),
+    observationId: nonempty,
+    ref: nonempty,
+    reason: nonempty.max(500).optional(),
+  }),
+  z.object({
+    type: z.literal("hover"),
+    observationId: nonempty,
+    ref: nonempty,
+    reason: nonempty.max(500).optional(),
+  }),
+  z.object({ type: z.literal("goto"), url: nonempty, reason: nonempty.max(500).optional() }),
+  z.object({ type: z.literal("back"), reason: nonempty.max(500).optional() }),
+  z.object({
+    type: z.literal("scroll"),
+    deltaX: z.number().finite().default(0),
+    deltaY: z.number().finite(),
+    reason: nonempty.max(500).optional(),
+  }),
+  z.object({
+    type: z.literal("wait"),
+    durationMs: z.number().int().positive().max(10_000),
+    reason: nonempty.max(500).optional(),
+  }),
+]);
+export type ExplorationAction = z.infer<typeof explorationActionSchema>;
+
+export const explorationFindQuerySchema = z
+  .object({
+    text: z.string().trim().min(1).max(500).optional(),
+    regex: z.string().trim().min(1).max(200).optional(),
+  })
+  .refine((query) => Boolean(query.text) !== Boolean(query.regex), {
+    message: "Provide exactly one of text or regex",
+  });
+export type ExplorationFindQuery = z.infer<typeof explorationFindQuerySchema>;
+
+export const explorationFindResultSchema = z.object({
+  observationId: nonempty,
+  matches: z
+    .array(
+      z.object({
+        kind: z.enum(["element", "heading", "layer"]),
+        ref: z.string().optional(),
+        role: z.string().optional(),
+        text: z.string(),
+        risk: exploredInteractiveElementSchema.shape.risk.optional(),
+      }),
+    )
+    .max(50),
+});
+export type ExplorationFindResult = z.infer<typeof explorationFindResultSchema>;
+
+export const explorationTransitionSchema = z.object({
+  schemaVersion: z.literal(2),
+  id: nonempty,
+  sequence: z.number().int().positive(),
+  createdAt: z.string(),
+  action: explorationActionSchema,
+  status: z.enum(["succeeded", "blocked", "failed"]),
+  policy: z.object({
+    allowed: z.boolean(),
+    risk: exploredInteractiveElementSchema.shape.risk,
+    reasons: z.array(z.string()),
+  }),
+  fromObservationId: nonempty,
+  fromStateId: nonempty,
+  toObservationId: nonempty.optional(),
+  toStateId: nonempty.optional(),
+  target: explorationTargetRecipeSchema.optional(),
+  outcome: z.object({
+    urlChanged: z.boolean(),
+    semanticChanged: z.boolean(),
+    popupBlocked: z.boolean(),
+    downloadBlocked: z.boolean(),
+    dialogDismissed: z.boolean(),
+    settledReason: z.enum(["quiet", "timed-out", "explicit"]).optional(),
+  }),
+  durationMs: z.number().nonnegative(),
+  error: z.string().optional(),
+});
+export type ExplorationTransition = z.infer<typeof explorationTransitionSchema>;
+
+export const explorationSessionReportSchema = z.object({
+  schemaVersion: z.literal(2),
+  id: nonempty,
+  createdAt: z.string(),
+  finishedAt: z.string().optional(),
+  status: z.enum(["active", "finished", "aborted", "failed"]),
+  target: z.object({ baseUrl: z.string(), repositoryPath: z.string().optional() }),
+  goal: z.string().optional(),
+  policy: explorationPolicySchema,
+  limits: z.object({
+    maxActions: z.number().int().positive(),
+    maxDurationMs: z.number().int().positive(),
+  }),
+  metrics: z.object({
+    observations: z.number().int().nonnegative(),
+    states: z.number().int().nonnegative(),
+    transitions: z.number().int().nonnegative(),
+    actions: z.number().int().nonnegative(),
+  }),
+  latestObservationId: z.string().optional(),
+});
+export type ExplorationSessionReport = z.infer<typeof explorationSessionReportSchema>;
+
+export const explorationSessionDescriptorSchema = z.object({
+  version: z.literal(1),
+  id: nonempty,
+  pid: z.number().int().positive(),
+  port: z.number().int().positive(),
+  token: nonempty,
+  outputDirectory: nonempty,
+  launchConfigPath: nonempty,
+});
+export type ExplorationSessionDescriptor = z.infer<typeof explorationSessionDescriptorSchema>;

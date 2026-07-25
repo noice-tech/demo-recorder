@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     cli: "src/index.ts",
     "auth-daemon": "src/explorer/auth-daemon.ts",
+    "exploration-daemon": "src/explorer/session-daemon.ts",
   },
   outDir: "dist",
   format: "esm",
