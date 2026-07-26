@@ -66,6 +66,15 @@ Visit [remotion.pro](https://www.remotion.pro/license) for pricing and to buy a 
 
 Are you not sure whether you need a Company License because of an edge case? Here are some [frequently asked questions](https://www.remotion.pro/faq).
 
+## Inter font
+
+The FFmpeg renderer bundles the Inter variable font, copyright 2020 The Inter
+Project Authors, under the SIL Open Font License 1.1. The complete license is
+distributed at `assets/ffmpeg/fonts/OFL.txt` in the CLI package and at
+`packages/ffmpeg-renderer/assets/fonts/OFL.txt` in the source repository.
+
+Project: https://github.com/rsms/inter
+
 ## Playwright
 
 Noice Demo Recorder uses Playwright 1.61.1 and playwright-core under the

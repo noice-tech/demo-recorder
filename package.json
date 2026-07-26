@@ -11,6 +11,7 @@
     "format:check": "oxfmt . --check --ignore-path=.oxfmtignore",
     "test": "vitest run --exclude '**/*.integration.test.ts'",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:renderer": "vitest run --config vitest.integration.config.ts packages/ffmpeg-renderer/tests/render.integration.test.ts",
     "test:package": "pnpm package:cli && tsx scripts/package-smoke.ts",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test",
     "clean": "tsx scripts/clean.ts",

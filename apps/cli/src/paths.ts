@@ -12,6 +12,8 @@ const rendererAssetFiles = [
   "browser-underlay.png",
   "browser-overlay.png",
   "content-mask.png",
+  "fonts/Inter-Variable.ttf",
+  "fonts/OFL.txt",
 ] as const;
 
 function isRendererAssetsDirectory(path: string): boolean {

@@ -5,6 +5,7 @@ import {
   buildProductDemoFilterGraph,
   generateTimedOverlayScript,
   productDemoGeometry,
+  renderProductDemo,
 } from "../src/index.js";
 
 const input: ProductDemoRenderInput = {
@@ -43,7 +44,7 @@ describe("product demo graph generation", () => {
     expect(graph.frameCount).toBe(45);
     expect(graph.durationMs).toBe(1500);
     expect(graph.script).toContain("trim=start=0.25:end=1.75");
-    expect(graph.script).toContain("ass=filename=timed-overlays.subtitle:alpha=1");
+    expect(graph.script).toContain("ass=filename=timed-overlays.subtitle:fontsdir=fonts:alpha=1");
     expect(graph.script).toContain("eval=frame");
     expect(graph.script).toContain("format=yuv420p[output]");
   });
@@ -64,6 +65,15 @@ describe("product demo graph generation", () => {
     expect(camera.scaledWidth).toContain("trunc(1920");
   });
 
+  it("rejects output dimensions outside the version 1 contract", async () => {
+    await expect(
+      renderProductDemo(
+        { ...input, config: { ...input.config, width: 1280, height: 720 } },
+        { outputPath: "/unused.mp4", assetsDirectory: "/unused" },
+      ),
+    ).rejects.toThrow("only 1920x1080");
+  });
+
   it("emits frame-sampled cursor and click drawings with safe title text", () => {
     const geometry = productDemoGeometry(input.recording.viewport, input.config);
     const overlayScript = generateTimedOverlayScript({
@@ -75,6 +85,7 @@ describe("product demo graph generation", () => {
       geometry,
       frameCount: 45,
     });
+    expect(overlayScript).toContain("Style: Title,Inter,14");
     expect(overlayScript).toContain("https://example.com/a｛b｝");
     expect(overlayScript).toContain("\\p1\\bord1.8");
     expect(overlayScript).toContain("&H00CDF08C&");

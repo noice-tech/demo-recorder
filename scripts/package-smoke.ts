@@ -48,6 +48,8 @@ for (const required of [
   "assets/ffmpeg/browser-underlay.png",
   "assets/ffmpeg/browser-overlay.png",
   "assets/ffmpeg/content-mask.png",
+  "assets/ffmpeg/fonts/Inter-Variable.ttf",
+  "assets/ffmpeg/fonts/OFL.txt",
 ]) {
   if (!included.has(required)) throw new Error(`Packed package is missing ${required}`);
 }

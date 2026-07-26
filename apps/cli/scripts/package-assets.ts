@@ -12,6 +12,8 @@ const rendererAssets = [
   "browser-underlay.png",
   "browser-overlay.png",
   "content-mask.png",
+  "fonts/Inter-Variable.ttf",
+  "fonts/OFL.txt",
 ] as const;
 
 async function requireFile(path: string): Promise<void> {
@@ -21,7 +23,7 @@ async function requireFile(path: string): Promise<void> {
 
 await Promise.all(rendererAssets.map((name) => requireFile(join(rendererSource, name))));
 await rm(assetsRoot, { recursive: true, force: true });
-await mkdir(rendererTarget, { recursive: true });
+await mkdir(join(rendererTarget, "fonts"), { recursive: true });
 await Promise.all(
   rendererAssets.map((name) => cp(join(rendererSource, name), join(rendererTarget, name))),
 );

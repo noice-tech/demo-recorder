@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ const ASSET_FILES = [
   "browser-overlay.png",
   "background.png",
 ] as const;
+const FONT_FILE = "fonts/Inter-Variable.ttf";
 
 async function requireFile(path: string): Promise<void> {
   const value = await stat(path).catch(() => undefined);
@@ -63,7 +64,8 @@ export async function renderProductDemo(
 
   const assetsDirectory = resolve(options.assetsDirectory ?? DEFAULT_ASSETS);
   const assetPaths = ASSET_FILES.map((name) => join(assetsDirectory, name));
-  await Promise.all(assetPaths.map(requireFile));
+  const fontPath = join(assetsDirectory, FONT_FILE);
+  await Promise.all([...assetPaths.map(requireFile), requireFile(fontPath)]);
   const outputPath = resolve(options.outputPath);
   await mkdir(dirname(outputPath), { recursive: true });
   const temporaryDirectory = await mkdtemp(join(tmpdir(), "demo-recorder-ffmpeg-"));
@@ -80,9 +82,11 @@ export async function renderProductDemo(
       geometry,
       frameCount: graph.frameCount,
     });
+    await mkdir(join(temporaryDirectory, "fonts"));
     await Promise.all([
       writeFile(join(temporaryDirectory, "filter.txt"), graph.script),
       writeFile(join(temporaryDirectory, "timed-overlays.subtitle"), overlayScript),
+      cp(fontPath, join(temporaryDirectory, FONT_FILE)),
     ]);
 
     let lastProgress = -1;

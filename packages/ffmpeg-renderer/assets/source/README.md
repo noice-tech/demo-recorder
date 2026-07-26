@@ -7,3 +7,7 @@ scale factor 1.
 
 Runtime rendering does not launch Chromium; it only reads the generated PNGs and
 invokes FFmpeg.
+
+`../fonts/Inter-Variable.ttf` is the Inter variable font from the Google Fonts
+repository and is distributed under the SIL Open Font License in
+`../fonts/OFL.txt`.

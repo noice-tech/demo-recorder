@@ -62,13 +62,14 @@ Local ignored artifacts:
 - the required filters and both `libx264` and `h264_videotoolbox` are available
   in the tested Homebrew build.
 
-## Known constraints before CLI cutover
+## Version 1 constraints
 
 - Only 1920x1080 assets and `libx264` are supported by the initial package.
-- libass is required; portability still needs Linux and Windows validation.
-- Arial is currently resolved through the host font configuration. A bundled,
-  redistributable font is needed for deterministic output.
+- libass is required; Linux, macOS, and Windows renderer validation is configured
+  in CI.
+- Inter is bundled under the SIL Open Font License for deterministic title
+  rendering.
 - The CLI now uses this renderer and ffprobe integration; the separate Remotion
   application remains temporarily as a visual comparison oracle.
-- Hardware encoder presets, render cancellation integration, and packaged-CLI
-  asset copying remain future work.
+- Hardware encoders and arbitrary dimensions are intentionally outside the
+  version 1 contract; cancellation and packaged assets are integrated.

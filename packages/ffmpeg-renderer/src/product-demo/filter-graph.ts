@@ -36,7 +36,7 @@ export function buildProductDemoFilterGraph(input: ProductDemoRenderInput): Prod
     `[transparent][1:v]overlay=x=0:y=0:eof_action=repeat:repeatlast=1:format=auto[underlay]`,
     `[underlay][content]overlay=x=${content.x}:y=${content.y}:eof_action=repeat:repeatlast=1:format=auto[video]`,
     `[video][3:v]overlay=x=0:y=0:eof_action=repeat:repeatlast=1:format=auto[shell]`,
-    `[shell]ass=filename=timed-overlays.subtitle:alpha=1,format=rgba[decorated]`,
+    `[shell]ass=filename=timed-overlays.subtitle:fontsdir=fonts:alpha=1,format=rgba[decorated]`,
     `[decorated]scale=w='${camera.scaledWidth}':h='${camera.scaledHeight}':eval=frame:flags=bicubic,setsar=1[camera]`,
     `color=c=black:s=${output}:r=${config.fps},format=rgba[background_canvas]`,
     `[background_canvas][4:v]overlay=x=0:y=0:eof_action=repeat:repeatlast=1:format=auto[background]`,
