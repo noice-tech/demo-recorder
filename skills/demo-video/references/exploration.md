@@ -122,4 +122,4 @@ npx --yes @noice-tech/demo-recorder@0.0.1 explore start \
 
 Use `--auth <profile>` for saved authentication and `--headed` only for diagnosis.
 
-Never upload, purchase, publish, delete, send, invite, deploy, grant OAuth consent, or expose secrets during exploration. Read `exploration.json`, `summary.md`, observations, ARIA snapshots, and relevant screenshots before writing a plan. Repository reports include environment-variable names only; never expose values from `.env` or runtime output.
+Never upload, purchase, publish, delete, send, invite, deploy, grant OAuth consent, or expose secrets during exploration. Read `exploration.json`, `summary.md`, observations, ARIA snapshots, and relevant screenshots before writing a plan. When a local repository is available, inspect relevant source and startup scripts with the agent's repository tools; never expose values from `.env` or runtime output.

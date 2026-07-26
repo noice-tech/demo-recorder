@@ -125,4 +125,4 @@ Integration tests use `apps/cli/tests/fixtures/` and a test-only loopback server
 
 ## Cleanup
 
-`pnpm clean` removes generated explorations, repository reports, recordings, rendered outputs, every direct app/package `dist/` directory, the Remotion build, package assets, and generated Studio assets. It preserves `.demo-recorder/plans/` and `.demo-recorder/auth/`. Save any recording or MP4 you want to keep before cleaning; `pnpm build` or `pnpm package:cli` recreates build output.
+`pnpm clean` removes generated explorations, recordings, rendered outputs, every direct app/package `dist/` directory, the Remotion build, package assets, and generated Studio assets. It preserves `.demo-recorder/plans/` and `.demo-recorder/auth/`. Save any recording or MP4 you want to keep before cleaning; `pnpm build` or `pnpm package:cli` recreates build output.

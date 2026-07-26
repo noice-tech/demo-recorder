@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { authCommand } from "./auth.js";
 import { numberOption, parseArguments, stringOption, type OptionDefinitions } from "./arguments.js";
 import { doctorCommand, setupCommand } from "./environment.js";
-import { exploreCommand, inspectRepositoryCommand } from "./explore.js";
+import { exploreCommand } from "./explore.js";
 import { inspectVideoCommand } from "./inspect-video.js";
 import { showPlanCommand, validatePlanCommand } from "./plan.js";
 import { renderRecording } from "./render.js";
@@ -22,7 +22,6 @@ function usage(): string {
     "  demo-recorder explore --url URL [--repo PATH --start COMMAND] [--auth PROFILE]",
     "  demo-recorder explore start --url URL [--session ID] [--policy read-only|reversible]",
     "  demo-recorder explore <observe|find|act|verify|export-plan|finish|abort|status> [SESSION] [options]",
-    "  demo-recorder inspect-repo [--repo PATH]",
     "  demo-recorder inspect <video.mp4> [--contact-sheet[=PATH]]",
     "  demo-recorder plan validate <demo-plan.json>",
     "  demo-recorder plan show <demo-plan.json>",
@@ -40,7 +39,6 @@ export const commandOptions: Record<string, OptionDefinitions> = {
   explore: {
     url: { type: "string" },
     repo: { type: "string" },
-    hints: { type: "string" },
     start: { type: "string" },
     "readiness-url": { type: "string" },
     output: { type: "string" },
@@ -58,11 +56,6 @@ export const commandOptions: Record<string, OptionDefinitions> = {
     policy: { type: "string" },
     json: { type: "boolean" },
     headed: { type: "boolean" },
-  },
-  "inspect-repo": {
-    repo: { type: "string" },
-    hints: { type: "string" },
-    output: { type: "string" },
   },
   inspect: { "contact-sheet": { type: "string", optionalValue: true } },
   plan: {
@@ -140,7 +133,6 @@ export async function runCli(arguments_: string[]): Promise<void> {
   if (command === "doctor") return doctorCommand(parsed);
   if (command === "setup") return setupCommand(parsed);
   if (command === "explore") return void (await exploreCommand(parsed));
-  if (command === "inspect-repo") return void (await inspectRepositoryCommand(parsed));
   if (command === "inspect") {
     return inspectVideoCommand(requireArgument(parsed.positionals[0], command), parsed);
   }

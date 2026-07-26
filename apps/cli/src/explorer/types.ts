@@ -27,51 +27,6 @@ export type ExploredPage = {
   errors: string[];
 };
 
-export type RepositoryReport = {
-  path: string;
-  packageManager?: string;
-  framework?: string;
-  scripts: Record<string, string>;
-  routeFiles: string[];
-  testFiles: string[];
-  environmentVariableNames: string[];
-  authenticationHints: string[];
-  advisoryHints?: {
-    source: string;
-    routes: string[];
-    tests: string[];
-    authentication: string[];
-    notes: string[];
-  };
-  scan: {
-    limits: {
-      maxFiles: number;
-      maxEntries: number;
-      maxTotalBytes: number;
-      maxFileBytes: number;
-      readConcurrency: number;
-    };
-    entriesVisited: number;
-    candidateFiles: number;
-    filesSelected: number;
-    filesRead: number;
-    bytesRead: number;
-    skippedLargeFiles: number;
-    skippedSymlinks: number;
-    errors: number;
-    truncated: boolean;
-  };
-};
-
-export type RepositoryInspectionOptions = {
-  maxFiles?: number;
-  maxEntries?: number;
-  maxTotalBytes?: number;
-  maxFileBytes?: number;
-  readConcurrency?: number;
-  hintsPath?: string;
-};
-
 export type ExplorationReport = {
   version: 1;
   evidenceVersion?: 2;
@@ -94,7 +49,6 @@ export type ExplorationReport = {
     evidence: string[];
     profile?: string;
   };
-  repository?: RepositoryReport;
   pages: ExploredPage[];
   risks: string[];
 };
@@ -110,5 +64,4 @@ export type ExploreSiteOptions = {
   sessionStoragePath?: string;
   authProfile?: string;
   repositoryPath?: string;
-  repositoryHintsPath?: string;
 };

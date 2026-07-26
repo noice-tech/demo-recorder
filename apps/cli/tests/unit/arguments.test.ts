@@ -66,7 +66,6 @@ describe("CLI argument parsing", () => {
       "doctor",
       "setup",
       "explore",
-      "inspect-repo",
       "inspect",
       "plan",
       "auth",

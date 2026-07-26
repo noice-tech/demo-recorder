@@ -22,13 +22,13 @@ User brief → Coding agent + skill
 
 ## 2. Explorer
 
-`apps/cli/src/explorer` owns bounded Playwright exploration, persistent agent-directed browser sessions, ARIA snapshots, screenshots, observation-scoped control refs, conservative state/transition graphs, generic repository facts, managed local app processes, and local auth profiles.
+`apps/cli/src/explorer` owns bounded Playwright exploration, persistent agent-directed browser sessions, ARIA snapshots, screenshots, observation-scoped control refs, conservative state/transition graphs, managed local app processes, and local auth profiles.
 
 The one-shot mapper follows ordinary links. Persistent sessions expose an `observe → one bounded action → observe` protocol so an agent can inspect tabs, menus, dialogs, drawers, and other same-URL state. Every accepted action records policy, an explicit semantic diff, and before/after evidence in append-only journals and an atomically materialized graph. Temporary refs are valid only for their observation; durable role/test-ID/text/CSS target recipes are stored with transitions.
 
 An agent can select a connected sequence of successful transition IDs and invoke `explore verify`. Verification starts a fresh authenticated context, reproduces the initial state, resolves each durable candidate only when it uniquely identifies a visible element, replays the bounded action, and checks the expected semantic fingerprint and sanitized URL. Reports, step screenshots, and a separate Playwright trace remain exploration evidence; verification does not improvise or reuse temporary refs. Main-frame locators pierce open shadow roots through Playwright's public locator behavior. Cross-origin and child-frame controls are intentionally not assigned main-frame refs in this version; agents can observe the iframe boundary but must treat frame-specific interaction as unsupported rather than guessing.
 
-Exploration is same-origin and uses a conservative `read-only` policy by default. Destructive, external-side-effect, form, and unknown controls are blocked; an explicit `reversible` profile can permit mutation-like controls in disposable environments. These are runtime guardrails rather than a guarantee that arbitrary application code has no server-side effects. Repository reports use bounded file/byte/concurrency limits, skip symlinks, expose truncation metrics, and include environment-variable names but never secret values. Optional agent-authored hints remain explicitly labeled advisory.
+Exploration is same-origin and uses a conservative `read-only` policy by default. Destructive, external-side-effect, form, and unknown controls are blocked; an explicit `reversible` profile can permit mutation-like controls in disposable environments. These are runtime guardrails rather than a guarantee that arbitrary application code has no server-side effects.
 
 ## 3. Planner protocol
 

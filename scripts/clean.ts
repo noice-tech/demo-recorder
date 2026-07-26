@@ -36,7 +36,6 @@ await Promise.all([
   rm(join(repositoryRoot, "apps/cli/assets"), { recursive: true, force: true }),
   ...workspaces.map((workspace) => rm(join(workspace, "dist"), { recursive: true, force: true })),
   rm(join(repositoryRoot, ".demo-recorder/explorations"), { recursive: true, force: true }),
-  rm(join(repositoryRoot, ".demo-recorder/repository.json"), { force: true }),
 ]);
 
 console.log(

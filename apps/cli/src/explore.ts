@@ -1,13 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { numberOption, stringOption, type ParsedArguments } from "./arguments.js";
-import {
-  authProfilePaths,
-  exploreSite,
-  inspectRepository,
-  startManagedApp,
-} from "./explorer/index.js";
+import { authProfilePaths, exploreSite, startManagedApp } from "./explorer/index.js";
 import {
   interactiveExploreCommand,
   isInteractiveExploreOperation,
@@ -40,7 +34,6 @@ export async function exploreCommand(arguments_: ParsedArguments): Promise<strin
   const authPaths = authProfile
     ? authProfilePaths(join(workingDirectory, ".demo-recorder/auth"), authProfile)
     : undefined;
-  const repositoryHintsPath = stringOption(arguments_, "hints");
   let managed: Awaited<ReturnType<typeof startManagedApp>> | undefined;
   try {
     if (startCommand) {
@@ -70,7 +63,6 @@ export async function exploreCommand(arguments_: ParsedArguments): Promise<strin
         : {}),
       ...(authProfile ? { authProfile } : {}),
       ...(resolvedRepository ? { repositoryPath: resolvedRepository } : {}),
-      ...(repositoryHintsPath ? { repositoryHintsPath } : {}),
     });
     console.log(
       `[demo-recorder] Explored ${report.pages.length} page${report.pages.length === 1 ? "" : "s"}`,
@@ -80,17 +72,4 @@ export async function exploreCommand(arguments_: ParsedArguments): Promise<strin
   } finally {
     await managed?.close();
   }
-}
-
-export async function inspectRepositoryCommand(arguments_: ParsedArguments): Promise<string> {
-  const repositoryPath = resolve(workingDirectory, stringOption(arguments_, "repo") ?? ".");
-  const outputPath = resolveWorkingPath(
-    stringOption(arguments_, "output") ?? join(workingDirectory, ".demo-recorder/repository.json"),
-  );
-  const hintsPath = stringOption(arguments_, "hints");
-  const report = await inspectRepository(repositoryPath, hintsPath ? { hintsPath } : {});
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`);
-  console.log(`[demo-recorder] Repository report saved: ${outputPath}`);
-  return outputPath;
 }

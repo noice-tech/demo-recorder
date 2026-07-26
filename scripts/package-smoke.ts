@@ -88,10 +88,6 @@ try {
   const setupText = await runNpm(["exec", "--", "demo-recorder", "setup", "--json"], workspace);
   const setup = JSON.parse(setupText) as { status?: string };
   if (setup.status !== "ready") throw new Error(`Packaged setup status: ${setup.status}`);
-  await runNpm(["exec", "--", "demo-recorder", "inspect-repo", "--repo", "."], workspace);
-  const repositoryReport = await stat(join(workspace, ".demo-recorder/repository.json"));
-  if (repositoryReport.size === 0) throw new Error("Packaged repository report is empty");
-
   const fixture = await startFixtureServer(fixtureDirectory);
   try {
     const explorationStartText = await runNpm(

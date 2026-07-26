@@ -5,7 +5,6 @@ import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts
 import { collectInteractiveTargets } from "./interactive-targets.js";
 import { capturePageSemanticEvidence } from "./page-observation.js";
 import { sanitizeExplorationError, sanitizeExplorationUrl } from "./privacy.js";
-import { inspectRepository } from "./repository.js";
 import { installSessionStorage, loadSessionStorage } from "./session-storage.js";
 import type {
   ExploredControl,
@@ -213,12 +212,6 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
       new URL(entryPage.url).origin === target.origin &&
       /auth|login|sign-in|signin/i.test(new URL(entryPage.url).pathname)),
   );
-  const repository = options.repositoryPath
-    ? await inspectRepository(
-        options.repositoryPath,
-        options.repositoryHintsPath ? { hintsPath: options.repositoryHintsPath } : {},
-      )
-    : undefined;
   const report: ExplorationReport = {
     version: 1,
     evidenceVersion: 2,
@@ -237,7 +230,6 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
       evidence: [...new Set(authEvidence)],
       ...(options.authProfile ? { profile: options.authProfile } : {}),
     },
-    ...(repository ? { repository } : {}),
     pages,
     risks: [
       ...new Set(

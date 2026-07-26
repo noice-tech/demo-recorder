@@ -21,7 +21,6 @@ The CLI's `explorer` module provides:
 - runtime action policy, semantic diffs, and before/after state-transition evidence;
 - append-only observation/transition journals and recoverable state graphs;
 - agent-selected transition paths replayed and verified in a fresh browser context;
-- bounded repository facts with file/byte/truncation metrics, skipped-symlink reporting, and optional explicitly advisory hints without secret values;
 - agent-selected local process startup, readiness, logs, and cleanup;
 - detached headed authentication sessions;
 - cookies/local-storage and same-origin session-storage profiles.
