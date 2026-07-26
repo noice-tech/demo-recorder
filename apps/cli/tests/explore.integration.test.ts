@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -45,6 +45,12 @@ describe("browser exploration", () => {
     const savedText = await readFile(join(outputDirectory, "exploration.json"), "utf8");
     const saved = JSON.parse(savedText) as ExplorationReport;
     expect(saved.pages).toHaveLength(2);
+    await expect(
+      access(join(outputDirectory, saved.pages[0]?.ariaSnapshotPath ?? "missing")),
+    ).resolves.toBeUndefined();
+    await expect(
+      access(join(outputDirectory, saved.pages[0]?.viewportScreenshotPath ?? "missing")),
+    ).resolves.toBeUndefined();
     expect(savedText).not.toMatch(/super-secret|access-key/);
     expect(saved.pages[0]?.links[0]?.href).toMatch(/\/second$/);
   });

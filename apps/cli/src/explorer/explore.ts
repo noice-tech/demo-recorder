@@ -1,6 +1,8 @@
-import { join, relative } from "node:path";
+import { relative } from "node:path";
 import { chromium } from "playwright";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
+import { collectInteractiveTargets } from "./interactive-targets.js";
+import { capturePageSemanticEvidence } from "./page-observation.js";
 import { sanitizeExplorationError, sanitizeExplorationUrl } from "./privacy.js";
 import { inspectRepository } from "./repository.js";
 import { installSessionStorage, loadSessionStorage } from "./session-storage.js";
@@ -43,7 +45,7 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
   const target = new URL(options.baseUrl);
   if (!/^https?:$/.test(target.protocol)) throw new Error("Exploration URL must use HTTP or HTTPS");
   const artifacts = new ExplorationArtifactStore(options.outputDirectory);
-  await artifacts.initialize(["screenshots", "diagnostics"]);
+  await artifacts.initialize(["snapshots", "screenshots", "viewport-screenshots", "diagnostics"]);
 
   const browser = await chromium.launch({ headless: options.headless ?? true });
   const context = await browser.newContext({
@@ -75,21 +77,9 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
         });
         await page.waitForTimeout(500);
         if (response && response.status() >= 400) errors.push(`HTTP ${response.status()}`);
-        const finalUrl = page.url();
-        const headings: string[] = [];
-        const headingLocator = page.locator("h1, h2, h3, [role=heading]");
-        for (let index = 0; index < Math.min(await headingLocator.count(), 50); index += 1) {
-          const text = (
-            await headingLocator
-              .nth(index)
-              .innerText()
-              .catch(() => "")
-          )
-            .trim()
-            .replace(/\s+/g, " ")
-            .slice(0, 300);
-          if (text) headings.push(text);
-        }
+        const semantics = await capturePageSemanticEvidence(page);
+        const finalUrl = semantics.url;
+        const headings = semantics.headings;
         const rawLinks: Array<{ name: string; href: string }> = [];
         const linkLocator = page.locator("a[href]");
         for (let index = 0; index < Math.min(await linkLocator.count(), 200); index += 1) {
@@ -107,59 +97,53 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
           const absolute = new URL(href, finalUrl).href;
           if (/^https?:/.test(absolute)) rawLinks.push({ name, href: absolute });
         }
-        const rawControls: Array<{ role: string; name: string; tag: string; type: string }> = [];
-        const controlLocator = page.locator(
-          "button, input, textarea, select, [role=button], [role=tab], [role=menuitem]",
-        );
-        for (let index = 0; index < Math.min(await controlLocator.count(), 200); index += 1) {
-          const control = controlLocator.nth(index);
-          const tag = await control.evaluate((element) => element.tagName);
-          const type = (await control.getAttribute("type")) ?? "";
-          const name = (
-            (await control.getAttribute("aria-label")) ??
-            (await control.getAttribute("title")) ??
-            (await control.getAttribute("placeholder")) ??
-            (await control.innerText().catch(() => ""))
-          )
-            .trim()
-            .replace(/\s+/g, " ")
-            .slice(0, 300);
-          if (!name) continue;
-          const implicitRole =
-            tag === "BUTTON"
-              ? "button"
-              : tag === "INPUT" || tag === "TEXTAREA"
-                ? "textbox"
-                : tag === "SELECT"
-                  ? "combobox"
-                  : "control";
-          rawControls.push({
-            role: (await control.getAttribute("role")) ?? implicitRole,
-            name,
-            tag,
-            type,
-          });
-        }
+        const { elements: observedTargets } = await collectInteractiveTargets(page, target.href);
         const html = (await page.content()).slice(0, 2_000_000);
         const hasPasswordField = (await page.locator('input[type="password"]').count()) > 0;
         const hasForm = (await page.locator("form").count()) > 0;
-        const screenshotFilename = `${String(pages.length + 1).padStart(2, "0")}-${safeName(new URL(finalUrl).pathname)}.png`;
-        const screenshotAbsolute = join(options.outputDirectory, "screenshots", screenshotFilename);
-        await page.screenshot({ path: screenshotAbsolute, fullPage: true });
-        await artifacts.assertFileLimit(
-          `screenshots/${screenshotFilename}`,
-          explorationArtifactLimits.screenshotBytes,
-        );
+        const artifactStem = `${String(pages.length + 1).padStart(2, "0")}-${safeName(new URL(finalUrl).pathname)}`;
+        const screenshotFilename = `${artifactStem}.png`;
+        const screenshotArtifact = `screenshots/${screenshotFilename}`;
+        const viewportScreenshotArtifact = `viewport-screenshots/${screenshotFilename}`;
+        const snapshotArtifact = `snapshots/${artifactStem}.yml`;
+        const screenshotAbsolute = artifacts.path(screenshotArtifact);
+        await Promise.all([
+          page.screenshot({ path: screenshotAbsolute, fullPage: true }),
+          page.screenshot({
+            path: artifacts.path(viewportScreenshotArtifact),
+            fullPage: false,
+            scale: "css",
+          }),
+          artifacts.writeText(
+            snapshotArtifact,
+            `${semantics.snapshot.trimEnd()}\n`,
+            explorationArtifactLimits.snapshotBytes,
+          ),
+        ]);
+        await Promise.all([
+          artifacts.assertFileLimit(screenshotArtifact, explorationArtifactLimits.screenshotBytes),
+          artifacts.assertFileLimit(
+            viewportScreenshotArtifact,
+            explorationArtifactLimits.screenshotBytes,
+          ),
+        ]);
         const links = rawLinks.map((link) => ({
           name: link.name,
           href: sanitizeExplorationUrl(link.href),
           sameOrigin: new URL(link.href).origin === target.origin,
         }));
-        const controls = rawControls.map((control) => ({
-          role: control.role,
-          name: control.name,
-          classification: classifyControl(control.role, control.name, control.tag, control.type),
-        }));
+        const controls = observedTargets
+          .filter((element) => !element.href)
+          .map((element) => ({
+            role: element.role ?? element.tagName.toLowerCase(),
+            name: element.name,
+            classification: classifyControl(
+              element.role ?? "control",
+              element.name,
+              element.tagName,
+              element.inputType ?? "",
+            ),
+          }));
         const captchaIndicators = [
           ...new Set(
             (html.match(new RegExp(captchaPattern.source, "gi")) ?? []).map((value) =>
@@ -172,12 +156,15 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
           title: await page.title(),
           depth: item.depth,
           headings,
+          layers: semantics.layers,
           links,
           controls,
           hasPasswordField,
           hasForm,
           captchaIndicators,
           screenshotPath: relative(options.outputDirectory, screenshotAbsolute),
+          viewportScreenshotPath: viewportScreenshotArtifact,
+          ariaSnapshotPath: snapshotArtifact,
           errors: errors.slice(0, 50).map(sanitizeExplorationError),
         });
         if (item.depth < maxDepth) {
@@ -233,10 +220,14 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
       /auth|login|sign-in|signin/i.test(new URL(entryPage.url).pathname)),
   );
   const repository = options.repositoryPath
-    ? await inspectRepository(options.repositoryPath)
+    ? await inspectRepository(
+        options.repositoryPath,
+        options.repositoryHintsPath ? { hintsPath: options.repositoryHintsPath } : {},
+      )
     : undefined;
   const report: ExplorationReport = {
     version: 1,
+    evidenceVersion: 2,
     id: options.outputDirectory.split(/[\\/]/).pop() ?? "exploration",
     createdAt: new Date().toISOString(),
     target: {
@@ -290,6 +281,8 @@ export function explorationSummary(report: ExplorationReport): string {
       `- Safe navigation links: ${page.links.filter((link) => link.sameOrigin).length}`,
       `- Forms present: ${page.hasForm ? "yes" : "no"}`,
       `- Screenshot: ${page.screenshotPath || "unavailable"}`,
+      `- Viewport screenshot: ${page.viewportScreenshotPath || "unavailable"}`,
+      `- ARIA snapshot: ${page.ariaSnapshotPath || "unavailable"}`,
       "",
     );
   }

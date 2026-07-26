@@ -1,88 +1,39 @@
-import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import type { DemoPlan } from "../demo-plan/index.js";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
 import {
   diffExplorationObservations,
   explorationSemanticFingerprint,
   materializeExplorationGraph,
 } from "./graph.js";
+import { decideExplorationActionPolicy } from "./interactive-policy.js";
 import {
-  classifyExplorationElementRisk,
-  decideExplorationActionPolicy,
-} from "./interactive-policy.js";
+  collectInteractiveTargets,
+  refreshInteractiveTarget,
+  type ExplorationRefEntry,
+} from "./interactive-targets.js";
+import { capturePageSemanticEvidence } from "./page-observation.js";
+import { exportVerifiedPathToDemoPlan } from "./plan-export.js";
 import { sanitizeExplorationError, sanitizeExplorationUrl } from "./privacy.js";
 import { installSessionStorage, loadSessionStorage } from "./session-storage.js";
 import {
   explorationActionSchema,
+  explorationDraftPlanRequestSchema,
   explorationFindQuerySchema,
   explorationFindResultSchema,
   explorationObservationSchema,
   explorationSessionReportSchema,
   explorationTransitionSchema,
-  type ExploredInteractiveElementV2,
   type ExplorationFindResult,
   type ExplorationLaunchConfig,
   type ExplorationObservation,
   type ExplorationSessionReport,
-  type ExplorationTargetRecipe,
   type ExplorationTransition,
   type ExplorationVerificationReport,
 } from "./interactive-schema.js";
 import { verifyExplorationPath } from "./verification.js";
 
 const viewport = { width: 1440, height: 900 };
-const interactiveSelector = [
-  "a[href]",
-  "button",
-  'input:not([type="hidden"])',
-  "textarea",
-  "select",
-  '[role="button"]',
-  '[role="tab"]',
-  '[role="menuitem"]',
-  '[role="checkbox"]',
-  '[role="radio"]',
-  '[role="switch"]',
-  '[role="link"]',
-  '[tabindex]:not([tabindex="-1"])',
-].join(", ");
-
-function parseAriaRoot(snapshot: string): { role?: string; name?: string } {
-  const firstLine = snapshot
-    .split("\n")
-    .find((line) => line.trim().startsWith("- "))
-    ?.trim();
-  if (!firstLine) return {};
-  const match = /^- ([^\s:"]+)(?: "((?:[^"\\]|\\.)*)")?/.exec(firstLine);
-  if (!match) return {};
-  const role = match[1];
-  const rawName = match[2];
-  let name: string | undefined;
-  if (rawName !== undefined) {
-    try {
-      name = JSON.parse(`"${rawName}"`) as string;
-    } catch {
-      name = rawName;
-    }
-  }
-  return { ...(role ? { role } : {}), ...(name ? { name } : {}) };
-}
-
-function cssId(id: string): string {
-  return `#${id.replaceAll(/([^A-Za-z0-9_-])/g, "\\$1")}`;
-}
-
-function implicitRole(tagName: string, inputType?: string): string | undefined {
-  if (tagName === "BUTTON") return "button";
-  if (tagName === "A") return "link";
-  if (tagName === "SELECT") return "combobox";
-  if (tagName === "TEXTAREA") return "textbox";
-  if (tagName !== "INPUT") return undefined;
-  if (["checkbox", "radio", "button", "submit", "reset"].includes(inputType ?? ""))
-    return inputType === "submit" || inputType === "reset" ? "button" : inputType;
-  return "textbox";
-}
-
-type RefEntry = { locator: Locator; element: ExploredInteractiveElementV2 };
 type Settled = ExplorationObservation["settled"];
 
 export class InteractiveExplorationSession {
@@ -97,7 +48,7 @@ export class InteractiveExplorationSession {
   private stateSequence = 0;
   private verificationSequence = 0;
   private currentObservation: ExplorationObservation | undefined;
-  private refs = new Map<string, RefEntry>();
+  private refs = new Map<string, ExplorationRefEntry>();
   private states = new Map<string, string>();
   private observations: ExplorationObservation[] = [];
   private transitions: ExplorationTransition[] = [];
@@ -208,141 +159,6 @@ export class InteractiveExplorationSession {
     return { reason: "timed-out", durationMs: Date.now() - startedAt };
   }
 
-  private async collectInteractiveElements(): Promise<{
-    elements: ExploredInteractiveElementV2[];
-    refs: Map<string, RefEntry>;
-  }> {
-    const all = this.page.locator(interactiveSelector);
-    const count = Math.min(await all.count(), 200);
-    const elements: ExploredInteractiveElementV2[] = [];
-    const refs = new Map<string, RefEntry>();
-    const baseOrigin = new URL(this.config.baseUrl).origin;
-
-    for (let index = 0; index < count; index += 1) {
-      const locator = all.nth(index);
-      if (!(await locator.isVisible().catch(() => false))) continue;
-      const bounds = await locator.boundingBox().catch(() => null);
-      if (!bounds || bounds.width <= 0 || bounds.height <= 0) continue;
-      const facts = await locator
-        .evaluate((node) => {
-          const element = node as HTMLElement;
-          return {
-            tagName: element.tagName,
-            id: element.id,
-            role: element.getAttribute("role") ?? undefined,
-            ariaLabel: element.getAttribute("aria-label") ?? undefined,
-            title: element.getAttribute("title") ?? undefined,
-            placeholder: element.getAttribute("placeholder") ?? undefined,
-            text: element.textContent?.trim().replace(/\s+/g, " ").slice(0, 300) ?? "",
-            testId: element.getAttribute("data-testid") ?? undefined,
-            href: element instanceof HTMLAnchorElement ? element.href : undefined,
-            inputType: element instanceof HTMLInputElement ? element.type : undefined,
-            selected: element.getAttribute("aria-selected"),
-            checked: element.getAttribute("aria-checked"),
-            pressed: element.getAttribute("aria-pressed"),
-            expanded: element.getAttribute("aria-expanded"),
-          };
-        })
-        .catch(() => undefined);
-      if (!facts) continue;
-      const aria = await locator
-        .ariaSnapshot({ mode: "default", depth: 1, timeout: 2_000 })
-        .then(parseAriaRoot)
-        .catch((): { role?: string; name?: string } => ({}));
-      const role = aria.role ?? facts.role ?? implicitRole(facts.tagName, facts.inputType);
-      const name = (
-        aria.name ??
-        facts.ariaLabel ??
-        facts.title ??
-        facts.placeholder ??
-        facts.text
-      ).slice(0, 300);
-      const candidates: ExplorationTargetRecipe["candidates"] = [];
-      if (role && name) candidates.push({ by: "role", role, name, exact: true });
-      else if (role) candidates.push({ by: "role", role });
-      if (facts.testId) candidates.push({ by: "test-id", testId: facts.testId });
-      if (facts.id) candidates.push({ by: "css", selector: cssId(facts.id) });
-      if (name) candidates.push({ by: "text", text: name, exact: true });
-      if (candidates.length === 0) continue;
-      let expectedCount: number | undefined;
-      const primary = candidates[0];
-      if (primary?.by === "role") {
-        expectedCount = await this.page
-          .getByRole(
-            primary.role as Parameters<Page["getByRole"]>[0],
-            primary.name ? { name: primary.name, exact: primary.exact ?? true } : {},
-          )
-          .count()
-          .catch(() => undefined);
-      } else if (primary?.by === "test-id") {
-        expectedCount = await this.page
-          .getByTestId(primary.testId)
-          .count()
-          .catch(() => undefined);
-      } else if (primary?.by === "css") {
-        expectedCount = await this.page
-          .locator(primary.selector)
-          .count()
-          .catch(() => undefined);
-      } else if (primary?.by === "text") {
-        expectedCount = await this.page
-          .getByText(primary.text, { exact: primary.exact ?? true })
-          .count()
-          .catch(() => undefined);
-      }
-      const expanded =
-        facts.expanded === null || facts.expanded === undefined
-          ? undefined
-          : facts.expanded === "true";
-      const risk = classifyExplorationElementRisk({
-        ...(role ? { role } : {}),
-        name,
-        tagName: facts.tagName,
-        ...(facts.inputType ? { inputType: facts.inputType } : {}),
-        ...(facts.href ? { href: facts.href } : {}),
-        ...(expanded === undefined ? {} : { expanded }),
-        baseOrigin,
-      });
-      const ref = `e${elements.length + 1}`;
-      const target: ExplorationTargetRecipe = {
-        description: `${role ?? facts.tagName.toLowerCase()}${name ? ` "${name}"` : ""}`,
-        candidates: candidates.slice(0, 5),
-        expected: {
-          ...(role ? { role } : {}),
-          ...(name ? { accessibleName: name } : {}),
-          ...(expectedCount === undefined ? {} : { count: expectedCount }),
-        },
-      };
-      const element: ExploredInteractiveElementV2 = {
-        ref,
-        ...(role ? { role } : {}),
-        name,
-        tagName: facts.tagName,
-        ...(facts.href ? { href: sanitizeExplorationUrl(facts.href) } : {}),
-        ...(facts.inputType ? { inputType: facts.inputType } : {}),
-        visible: true,
-        enabled: await locator.isEnabled().catch(() => false),
-        ...(facts.selected === null || facts.selected === undefined
-          ? {}
-          : { selected: facts.selected === "true" }),
-        ...(facts.checked === null || facts.checked === undefined
-          ? {}
-          : { checked: facts.checked === "true" }),
-        ...(facts.pressed === null || facts.pressed === undefined
-          ? {}
-          : { pressed: facts.pressed === "true" }),
-        ...(expanded === undefined ? {} : { expanded }),
-        bounds,
-        risk: risk.risk,
-        riskReasons: risk.reasons,
-        target,
-      };
-      elements.push(element);
-      refs.set(ref, { locator, element });
-    }
-    return { elements, refs };
-  }
-
   async observe(reason = "agent-request", settled?: Settled): Promise<ExplorationObservation> {
     const sequence = ++this.observationSequence;
     const id = `obs-${String(sequence).padStart(4, "0")}`;
@@ -350,7 +166,8 @@ export class InteractiveExplorationSession {
     const screenshotArtifact = `screenshots/${id}.png`;
     const observationArtifact = `observations/${id}.json`;
     const screenshotPath = this.artifacts.path(screenshotArtifact);
-    const snapshot = await this.page.ariaSnapshot({ mode: "ai", depth: 12, timeout: 5_000 });
+    const semantics = await capturePageSemanticEvidence(this.page);
+    const { snapshot } = semantics;
     await Promise.all([
       this.artifacts.writeText(
         snapshotArtifact,
@@ -363,41 +180,8 @@ export class InteractiveExplorationSession {
       screenshotArtifact,
       explorationArtifactLimits.screenshotBytes,
     );
-    const { elements, refs } = await this.collectInteractiveElements();
-    const headings = await this.page
-      .locator("h1, h2, h3, [role=heading]")
-      .evaluateAll((nodes) =>
-        nodes
-          .filter((node) => {
-            const style = getComputedStyle(node);
-            const bounds = node.getBoundingClientRect();
-            return style.visibility !== "hidden" && style.display !== "none" && bounds.width > 0;
-          })
-          .map((node) => node.textContent?.trim().replace(/\s+/g, " ").slice(0, 300) ?? "")
-          .filter(Boolean)
-          .slice(0, 50),
-      )
-      .catch(() => []);
-    const layers = await this.page
-      .locator('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]')
-      .evaluateAll((nodes) =>
-        nodes
-          .filter((node) => {
-            const style = getComputedStyle(node);
-            const bounds = node.getBoundingClientRect();
-            return style.visibility !== "hidden" && style.display !== "none" && bounds.width > 0;
-          })
-          .map((node) => ({
-            role: node.getAttribute("role") ?? "layer",
-            name:
-              node.getAttribute("aria-label") ??
-              node.textContent?.trim().replace(/\s+/g, " ").slice(0, 200) ??
-              "",
-          })),
-      )
-      .catch(() => []);
-    const scroll = await this.page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
-    const currentUrl = this.page.url();
+    const { elements, refs } = await collectInteractiveTargets(this.page, this.config.baseUrl);
+    const currentUrl = semantics.url;
     const semanticFingerprint = explorationSemanticFingerprint(
       new URL(currentUrl).pathname,
       snapshot,
@@ -415,12 +199,12 @@ export class InteractiveExplorationSession {
       reason,
       createdAt: new Date().toISOString(),
       url: sanitizeExplorationUrl(currentUrl),
-      pathname: new URL(currentUrl).pathname,
-      title: await this.page.title(),
+      pathname: semantics.pathname,
+      title: semantics.title,
       viewport,
-      scroll,
-      headings,
-      layers,
+      scroll: semantics.scroll,
+      headings: semantics.headings,
+      layers: semantics.layers,
       interactiveElements: elements,
       errors: this.errors.splice(0, 50),
       artifacts: {
@@ -503,72 +287,19 @@ export class InteractiveExplorationSession {
     return verification;
   }
 
-  private async refreshRefEntry(entry: RefEntry): Promise<RefEntry> {
-    if (!(await entry.locator.isVisible().catch(() => false)))
-      throw new Error(
-        `Element ${entry.element.ref} is no longer visible; request a new observation`,
-      );
-    const current = await entry.locator
-      .evaluate((node) => {
-        const element = node as HTMLElement;
-        return {
-          tagName: element.tagName,
-          role: element.getAttribute("role") ?? undefined,
-          ariaLabel: element.getAttribute("aria-label") ?? undefined,
-          title: element.getAttribute("title") ?? undefined,
-          placeholder: element.getAttribute("placeholder") ?? undefined,
-          text: element.textContent?.trim().replace(/\s+/g, " ").slice(0, 300) ?? "",
-          href: element instanceof HTMLAnchorElement ? element.href : undefined,
-          inputType: element instanceof HTMLInputElement ? element.type : undefined,
-          expanded: element.getAttribute("aria-expanded"),
-        };
-      })
-      .catch(() => undefined);
-    if (!current)
-      throw new Error(`Element ${entry.element.ref} is detached; request a new observation`);
-    const aria = await entry.locator
-      .ariaSnapshot({ mode: "default", depth: 1, timeout: 2_000 })
-      .then(parseAriaRoot)
-      .catch((): { role?: string; name?: string } => ({}));
-    const role = aria.role ?? current.role ?? implicitRole(current.tagName, current.inputType);
-    const name = (
-      aria.name ??
-      current.ariaLabel ??
-      current.title ??
-      current.placeholder ??
-      current.text
-    ).slice(0, 300);
-    if (
-      role !== entry.element.role ||
-      name !== entry.element.name ||
-      current.tagName !== entry.element.tagName
-    ) {
-      throw new Error(
-        `Element ${entry.element.ref} changed since ${this.currentObservation?.id ?? "the last observation"}; request a new observation`,
-      );
-    }
-    const expanded =
-      current.expanded === null || current.expanded === undefined
-        ? undefined
-        : current.expanded === "true";
-    const risk = classifyExplorationElementRisk({
-      ...(role ? { role } : {}),
-      name,
-      tagName: current.tagName,
-      ...(current.inputType ? { inputType: current.inputType } : {}),
-      ...(current.href ? { href: current.href } : {}),
-      ...(expanded === undefined ? {} : { expanded }),
-      baseOrigin: new URL(this.config.baseUrl).origin,
+  exportPlan(input: unknown): DemoPlan {
+    const request = explorationDraftPlanRequestSchema.parse(input);
+    const verification = this.verifications.find(
+      (candidate) => candidate.id === request.verificationId,
+    );
+    if (!verification) throw new Error(`Unknown verification: ${request.verificationId}`);
+    return exportVerifiedPathToDemoPlan({
+      input: request,
+      config: this.config,
+      verification,
+      transitions: this.transitions,
+      observations: this.observations,
     });
-    return {
-      locator: entry.locator,
-      element: {
-        ...entry.element,
-        enabled: await entry.locator.isEnabled().catch(() => false),
-        risk: risk.risk,
-        riskReasons: risk.reasons,
-      },
-    };
   }
 
   async act(input: unknown): Promise<ExplorationTransition> {
@@ -582,7 +313,12 @@ export class InteractiveExplorationSession {
       throw new Error(
         `Stale observation reference: expected ${before.id}, received ${action.observationId}`,
       );
-    if (entry) entry = await this.refreshRefEntry(entry);
+    if (entry)
+      entry = await refreshInteractiveTarget(
+        entry,
+        this.config.baseUrl,
+        this.currentObservation?.id ?? "the last observation",
+      );
     const policy = decideExplorationActionPolicy(
       action,
       this.config.policy,

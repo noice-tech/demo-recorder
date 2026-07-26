@@ -17,6 +17,17 @@ const config = explorationLaunchConfigSchema.parse(
 let managedApp: ManagedApp | undefined;
 let session: InteractiveExplorationSession | undefined;
 let stopping = false;
+let watchdog: NodeJS.Timeout | undefined;
+let requestQueue: Promise<void> = Promise.resolve();
+
+async function serialize<T>(operation: () => Promise<T> | T): Promise<T> {
+  const result = requestQueue.then(operation, operation);
+  requestQueue = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
 
 async function readJson(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
@@ -34,6 +45,7 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
 async function cleanup(status: "finished" | "aborted" | "failed"): Promise<void> {
   if (stopping) return;
   stopping = true;
+  if (watchdog) clearTimeout(watchdog);
   await session?.close(status).catch(() => undefined);
   await managedApp?.close().catch(() => undefined);
   await Promise.all([rm(sessionDescriptorPath, { force: true }), rm(configPath, { force: true })]);
@@ -64,29 +76,38 @@ try {
         return;
       }
       if (request.method === "POST" && request.url === "/observe") {
-        const observation = await session?.observe("agent-request");
+        const observation = await serialize(() => session?.observe("agent-request"));
         response.end(JSON.stringify({ ok: true, observation }));
         return;
       }
       if (request.method === "POST" && request.url === "/act") {
-        const transition = await session?.act(await readJson(request));
+        const input = await readJson(request);
+        const transition = await serialize(() => session?.act(input));
         response.end(JSON.stringify({ ok: true, transition }));
         return;
       }
       if (request.method === "POST" && request.url === "/find") {
-        const result = session?.find(await readJson(request));
+        const input = await readJson(request);
+        const result = await serialize(() => session?.find(input));
         response.end(JSON.stringify({ ok: true, result }));
         return;
       }
       if (request.method === "POST" && request.url === "/verify") {
-        const verification = await session?.verify(await readJson(request));
+        const input = await readJson(request);
+        const verification = await serialize(() => session?.verify(input));
         response.end(JSON.stringify({ ok: true, verification }));
+        return;
+      }
+      if (request.method === "POST" && request.url === "/export-plan") {
+        const input = await readJson(request);
+        const plan = await serialize(() => session?.exportPlan(input));
+        response.end(JSON.stringify({ ok: true, plan }));
         return;
       }
       if (request.method === "POST" && ["/finish", "/abort"].includes(request.url ?? "")) {
         const status = request.url === "/finish" ? "finished" : "aborted";
         const report = session?.report(status);
-        await cleanup(status);
+        await serialize(() => cleanup(status));
         response.end(JSON.stringify({ ok: true, report }));
         setImmediate(() => server.close());
         return;
@@ -109,6 +130,10 @@ try {
   const address = server.address();
   if (!address || typeof address === "string")
     throw new Error("Exploration daemon has no TCP address");
+  watchdog = setTimeout(() => {
+    void serialize(() => cleanup("aborted")).finally(() => server.close());
+  }, config.maxDurationMs + 30_000);
+  watchdog.unref();
   await writeFile(
     sessionDescriptorPath,
     `${JSON.stringify(

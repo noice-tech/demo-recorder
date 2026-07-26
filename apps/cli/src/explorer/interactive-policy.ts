@@ -42,6 +42,8 @@ export function classifyExplorationElementRisk(element: ExplorationElementRiskIn
       return { risk: "external-side-effect", reasons: ["Link leaves the allowed origin"] };
     return { risk: "read-only", reasons: ["Same-origin link"] };
   }
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName) || element.inputType === "submit")
+    return { risk: "unknown", reasons: ["Form controls are not safe by default"] };
   if (
     element.role === "tab" ||
     element.expanded !== undefined ||
@@ -53,8 +55,6 @@ export function classifyExplorationElementRisk(element: ExplorationElementRiskIn
       risk: "reversible",
       reasons: ["Target text suggests application data may change"],
     };
-  if (["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName) || element.inputType === "submit")
-    return { risk: "unknown", reasons: ["Form controls are not safe by default"] };
   return {
     risk: "unknown",
     reasons: ["Runtime could not establish that this control is read-only"],

@@ -1,0 +1,328 @@
+import { randomUUID } from "node:crypto";
+import { join, resolve } from "node:path";
+import { chromium, type BrowserContext, type Page } from "playwright";
+import { resolvePlanLocator } from "./capture/plan.js";
+import { loadDemoPlan, type DemoAction, type DemoPlan } from "./demo-plan/index.js";
+import { ExplorationArtifactStore, explorationArtifactLimits } from "./explorer/artifacts.js";
+import { authProfilePaths } from "./explorer/auth.js";
+import { startManagedApp } from "./explorer/managed-app.js";
+import { sanitizeExplorationError, sanitizeExplorationUrl } from "./explorer/privacy.js";
+import { installSessionStorage, loadSessionStorage } from "./explorer/session-storage.js";
+import { workingDirectory } from "./paths.js";
+
+export type RehearsalStepResult = {
+  index: number;
+  type: DemoAction["type"];
+  purpose?: string;
+  status: "passed" | "failed";
+  durationMs: number;
+  error?: string;
+};
+
+export type RehearsalReport = {
+  version: 1;
+  id: string;
+  planName: string;
+  planPath: string;
+  attempt: number;
+  maxAttempts: 3;
+  status: "passed" | "failed";
+  createdAt: string;
+  finishedAt: string;
+  steps: RehearsalStepResult[];
+  failure?: {
+    stepIndex: number;
+    url: string;
+    title: string;
+    error: string;
+    repairHints: string[];
+  };
+  artifacts: {
+    report: string;
+    trace?: string;
+    failureSnapshot?: string;
+    failureScreenshot?: string;
+    finalScreenshot?: string;
+  };
+};
+
+async function executeRehearsalAction(plan: DemoPlan, page: Page, step: DemoAction): Promise<void> {
+  if (step.type === "navigate") {
+    await page.goto(new URL(step.url, plan.target.baseUrl).href, {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
+    return;
+  }
+  if (step.type === "scroll") {
+    await page.mouse.wheel(step.deltaX ?? 0, step.deltaY);
+    return;
+  }
+  if (step.type === "hold") {
+    await page.waitForTimeout(step.durationMs);
+    return;
+  }
+  if (step.type === "wait-for-url") {
+    await page.waitForURL(step.urlPattern, step.timeoutMs ? { timeout: step.timeoutMs } : {});
+    return;
+  }
+  const locator = await resolvePlanLocator(page, step.locator);
+  if (step.type === "move") {
+    const bounds = await locator.boundingBox();
+    if (!bounds) throw new Error("Move target has no visible bounding box");
+    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  } else if (step.type === "click") {
+    await locator.click({ button: step.button ?? "left" });
+  } else if (step.type === "fill") {
+    await locator.fill(step.value);
+  } else if (step.type === "press") {
+    await locator.press(step.key);
+  } else if (step.type === "select") {
+    await locator.selectOption(step.value);
+  } else {
+    await locator.waitFor({
+      state: "visible",
+      ...(step.timeoutMs ? { timeout: step.timeoutMs } : {}),
+    });
+  }
+}
+
+function errorWithCauses(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const messages: string[] = [];
+  let current: unknown = error;
+  while (current instanceof Error) {
+    messages.push(current.message);
+    current = current.cause;
+  }
+  return messages.join("; caused by: ");
+}
+
+function repairHints(error: string): string[] {
+  if (/matched \d+ elements|expected exactly one|unique plan locator/i.test(error))
+    return [
+      "Refine the primary locator or add a unique test-ID/CSS fallback from verified evidence.",
+      "Do not use positional selection to hide the ambiguity.",
+    ];
+  if (/No unique plan locator matched|Timed out|waiting for/i.test(error))
+    return [
+      "Inspect the failure ARIA snapshot and screenshot, then re-explore only this state.",
+      "Update the locator or preceding postcondition before the next rehearsal attempt.",
+    ];
+  if (/URL|navigation/i.test(error))
+    return [
+      "Compare the current sanitized URL with the expected wait-for-url pattern.",
+      "Confirm the preceding navigation remains same-origin and deterministic.",
+    ];
+  return [
+    "Inspect the failure snapshot and trace and revise only the failing step.",
+    "Re-run rehearsal with the next attempt number; final capture does not repair plans.",
+  ];
+}
+
+async function closeContext(context: BrowserContext | undefined): Promise<void> {
+  await context?.close().catch(() => undefined);
+}
+
+export async function rehearseDemoPlan(options: {
+  plan: DemoPlan;
+  planPath: string;
+  outputDirectory: string;
+  attempt: number;
+  headless: boolean;
+  storageStatePath?: string;
+  sessionStoragePath?: string;
+}): Promise<RehearsalReport> {
+  if (!Number.isInteger(options.attempt) || options.attempt < 1 || options.attempt > 3)
+    throw new Error("Rehearsal attempt must be between 1 and 3");
+  const artifacts = new ExplorationArtifactStore(options.outputDirectory);
+  await artifacts.initialize(["diagnostics"]);
+  const reportArtifact = "rehearsal.json";
+  const traceArtifact = "diagnostics/trace.zip";
+  const failureSnapshot = "diagnostics/failure.yml";
+  const failureScreenshot = "diagnostics/failure.png";
+  const finalScreenshot = "final.png";
+  const browser = await chromium.launch({ headless: options.headless });
+  let context: BrowserContext | undefined;
+  const steps: RehearsalStepResult[] = [];
+  const createdAt = new Date().toISOString();
+  let failure: RehearsalReport["failure"];
+  let traceAvailable = false;
+  let failureEvidence = false;
+  let finalEvidence = false;
+
+  try {
+    context = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+      acceptDownloads: false,
+      ...(options.storageStatePath ? { storageState: options.storageStatePath } : {}),
+    });
+    if (options.sessionStoragePath)
+      await installSessionStorage(context, await loadSessionStorage(options.sessionStoragePath));
+    const allowedOrigin = new URL(options.plan.target.baseUrl).origin;
+    await context.route("**/*", async (route) => {
+      const request = route.request();
+      if (
+        request.isNavigationRequest() &&
+        request.frame().parentFrame() === null &&
+        /^https?:/.test(request.url()) &&
+        new URL(request.url()).origin !== allowedOrigin
+      ) {
+        await route.abort("blockedbyclient");
+        return;
+      }
+      await route.continue();
+    });
+    await context.tracing.start({ screenshots: true, snapshots: true, sources: false });
+    const page = await context.newPage();
+    page.on("dialog", (dialog) => void dialog.dismiss().catch(() => undefined));
+    page.on("popup", (popup) => void popup.close().catch(() => undefined));
+    page.on("download", (download) => void download.cancel().catch(() => undefined));
+
+    for (const [index, step] of options.plan.capture.steps.entries()) {
+      const startedAt = Date.now();
+      try {
+        await executeRehearsalAction(options.plan, page, step);
+        steps.push({
+          index: index + 1,
+          type: step.type,
+          ...(step.purpose ? { purpose: step.purpose } : {}),
+          status: "passed",
+          durationMs: Date.now() - startedAt,
+        });
+      } catch (error) {
+        const message = sanitizeExplorationError(errorWithCauses(error));
+        steps.push({
+          index: index + 1,
+          type: step.type,
+          ...(step.purpose ? { purpose: step.purpose } : {}),
+          status: "failed",
+          durationMs: Date.now() - startedAt,
+          error: message,
+        });
+        failure = {
+          stepIndex: index + 1,
+          url: sanitizeExplorationUrl(page.url()),
+          title: await page.title().catch(() => ""),
+          error: message,
+          repairHints: repairHints(message),
+        };
+        const snapshot = await page
+          .ariaSnapshot({ mode: "ai", depth: 12, timeout: 5_000 })
+          .catch(() => "");
+        failureEvidence = await Promise.all([
+          artifacts.writeText(
+            failureSnapshot,
+            `${snapshot.trimEnd()}\n`,
+            explorationArtifactLimits.snapshotBytes,
+          ),
+          page.screenshot({
+            path: artifacts.path(failureScreenshot),
+            fullPage: false,
+            scale: "css",
+          }),
+        ])
+          .then(async () => {
+            await artifacts.assertFileLimit(
+              failureScreenshot,
+              explorationArtifactLimits.screenshotBytes,
+            );
+            return true;
+          })
+          .catch(() => false);
+        break;
+      }
+    }
+    if (!failure) {
+      await page.screenshot({
+        path: artifacts.path(finalScreenshot),
+        fullPage: false,
+        scale: "css",
+      });
+      await artifacts.assertFileLimit(finalScreenshot, explorationArtifactLimits.screenshotBytes);
+      finalEvidence = true;
+    }
+  } finally {
+    if (context) {
+      traceAvailable = await context.tracing
+        .stop({ path: artifacts.path(traceArtifact) })
+        .then(async () => {
+          await artifacts.assertFileLimit(traceArtifact, explorationArtifactLimits.traceBytes);
+          return true;
+        })
+        .catch(() => false);
+      await closeContext(context);
+    }
+    await browser.close().catch(() => undefined);
+  }
+
+  const id = options.outputDirectory.split(/[\\/]/).pop() ?? "rehearsal";
+  const report: RehearsalReport = {
+    version: 1,
+    id,
+    planName: options.plan.name,
+    planPath: options.planPath,
+    attempt: options.attempt,
+    maxAttempts: 3,
+    status: failure ? "failed" : "passed",
+    createdAt,
+    finishedAt: new Date().toISOString(),
+    steps,
+    ...(failure ? { failure } : {}),
+    artifacts: {
+      report: reportArtifact,
+      ...(traceAvailable ? { trace: traceArtifact } : {}),
+      ...(failureEvidence ? { failureSnapshot, failureScreenshot } : {}),
+      ...(finalEvidence ? { finalScreenshot } : {}),
+    },
+  };
+  await artifacts.writeJson(reportArtifact, report);
+  return report;
+}
+
+export async function rehearsePlanFile(options: {
+  planArgument: string;
+  outputDirectory?: string;
+  attempt?: number;
+  headless?: boolean;
+}): Promise<{ outputDirectory: string; report: RehearsalReport }> {
+  const planPath = resolve(workingDirectory, options.planArgument);
+  const plan = await loadDemoPlan(planPath);
+  const attempt = options.attempt ?? 1;
+  if (!Number.isInteger(attempt) || attempt < 1 || attempt > 3)
+    throw new Error("Rehearsal attempt must be between 1 and 3");
+  const id = `${new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-")}-${plan.name}-attempt-${attempt}-${randomUUID().slice(0, 8)}`;
+  const outputDirectory = resolve(
+    workingDirectory,
+    options.outputDirectory ?? join(".demo-recorder", "rehearsals", id),
+  );
+  const repositoryPath = resolve(workingDirectory, plan.target.repositoryPath ?? ".");
+  let managed: Awaited<ReturnType<typeof startManagedApp>> | undefined;
+  try {
+    if (plan.target.startCommand)
+      managed = await startManagedApp({
+        command: plan.target.startCommand,
+        cwd: repositoryPath,
+        readinessUrl: plan.target.readinessUrl ?? plan.target.baseUrl,
+      });
+    const authPaths = plan.target.authProfile
+      ? authProfilePaths(join(workingDirectory, ".demo-recorder/auth"), plan.target.authProfile)
+      : undefined;
+    const report = await rehearseDemoPlan({
+      plan,
+      planPath,
+      outputDirectory,
+      attempt,
+      headless: options.headless ?? true,
+      ...(authPaths
+        ? {
+            storageStatePath: authPaths.storageStatePath,
+            sessionStoragePath: authPaths.sessionStoragePath,
+          }
+        : {}),
+    });
+    return { outputDirectory, report };
+  } finally {
+    await managed?.close().catch(() => undefined);
+  }
+}

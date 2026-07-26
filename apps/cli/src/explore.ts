@@ -4,10 +4,12 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import {
   actInInteractiveSession,
   authProfilePaths,
+  explorationDraftPlanRequestSchema,
   explorationActionSchema,
   explorationPolicySchema,
   explorationVerificationRequestSchema,
   exploreSite,
+  exportInteractiveSessionPlan,
   findInInteractiveSession,
   finishInteractiveSession,
   inspectRepository,
@@ -188,6 +190,25 @@ async function interactiveExploreCommand(
     );
     return id;
   }
+  if (operation === "export-plan") {
+    const inputPath = stringOption(arguments_, "input");
+    if (!inputPath) throw new Error("explore export-plan requires --input <draft-request.json>");
+    const request = explorationDraftPlanRequestSchema.parse(
+      JSON.parse(await readFile(resolveWorkingPath(inputPath), "utf8")) as unknown,
+    );
+    const plan = await exportInteractiveSessionPlan(interactiveSessionRoot, id, request);
+    const planPath = resolveWorkingPath(
+      stringOption(arguments_, "output") ??
+        join(outputDirectory, "draft-plans", `${request.name}.demo-plan.json`),
+    );
+    await mkdir(dirname(planPath), { recursive: true });
+    await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+    printJsonOrHuman(arguments_, { ok: true, sessionId: id, outputDirectory, planPath, plan }, [
+      `[demo-recorder] Verified draft plan saved: ${planPath}`,
+      `[demo-recorder] Steps: ${plan.capture.steps.length}`,
+    ]);
+    return planPath;
+  }
   if (operation === "verify") {
     const inputPath = stringOption(arguments_, "input");
     if (!inputPath) throw new Error("explore verify requires --input <path.json>");
@@ -246,9 +267,17 @@ async function interactiveExploreCommand(
 export async function exploreCommand(arguments_: ParsedArguments): Promise<string> {
   const operation = arguments_.positionals[0];
   if (
-    ["start", "observe", "find", "act", "verify", "finish", "abort", "status"].includes(
-      operation ?? "",
-    )
+    [
+      "start",
+      "observe",
+      "find",
+      "act",
+      "verify",
+      "export-plan",
+      "finish",
+      "abort",
+      "status",
+    ].includes(operation ?? "")
   )
     return interactiveExploreCommand(operation!, arguments_);
   const url = stringOption(arguments_, "url");
@@ -265,6 +294,7 @@ export async function exploreCommand(arguments_: ParsedArguments): Promise<strin
   const authPaths = authProfile
     ? authProfilePaths(join(workingDirectory, ".demo-recorder/auth"), authProfile)
     : undefined;
+  const repositoryHintsPath = stringOption(arguments_, "hints");
   let managed: Awaited<ReturnType<typeof startManagedApp>> | undefined;
   try {
     if (startCommand) {
@@ -294,6 +324,7 @@ export async function exploreCommand(arguments_: ParsedArguments): Promise<strin
         : {}),
       ...(authProfile ? { authProfile } : {}),
       ...(resolvedRepository ? { repositoryPath: resolvedRepository } : {}),
+      ...(repositoryHintsPath ? { repositoryHintsPath } : {}),
     });
     console.log(
       `[demo-recorder] Explored ${report.pages.length} page${report.pages.length === 1 ? "" : "s"}`,
@@ -310,7 +341,8 @@ export async function inspectRepositoryCommand(arguments_: ParsedArguments): Pro
   const outputPath = resolveWorkingPath(
     stringOption(arguments_, "output") ?? join(workingDirectory, ".demo-recorder/repository.json"),
   );
-  const report = await inspectRepository(repositoryPath);
+  const hintsPath = stringOption(arguments_, "hints");
+  const report = await inspectRepository(repositoryPath, hintsPath ? { hintsPath } : {});
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(`[demo-recorder] Repository report saved: ${outputPath}`);

@@ -33,7 +33,7 @@ npx --yes @noice-tech/demo-recorder@0.0.1 explore act product-demo \
   --json
 ```
 
-Supported session actions are `click`, `hover`, `goto`, `back`, `scroll`, and bounded `wait`. The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked.
+Supported session actions are `click`, `hover`, `goto`, `back`, `scroll`, and bounded `wait`. The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked. Open shadow-root controls are discoverable through Playwright locators. Child-frame controls do not receive main-frame refs in this version; treat them as unsupported and report the limitation rather than guessing a selector.
 
 Use `--policy reversible` only when the user explicitly requested it and the target is a disposable local or staging environment. It still does not permit destructive or external-side-effect controls. These policies are conservative guardrails, not proof that an application cannot produce a server-side side effect.
 
@@ -61,6 +61,28 @@ npx --yes @noice-tech/demo-recorder@0.0.1 explore verify product-demo \
 ```
 
 Verification never reuses temporary element refs. It resolves the recorded durable locator candidates, requires a unique visible match, checks each expected semantic state and URL, and writes a report, screenshots, and Playwright trace under `verification/`.
+
+A passing verification can be exported to a validating draft plan while the session is active:
+
+```json
+{
+  "version": 1,
+  "verificationId": "verification-0001",
+  "name": "product-demo",
+  "goal": "Show the verified product workflow",
+  "audience": "Prospective users",
+  "targetDurationMs": 20000
+}
+```
+
+```bash
+npx --yes @noice-tech/demo-recorder@0.0.1 explore export-plan product-demo \
+  --input draft-request.json \
+  --output .demo-recorder/plans/product-demo/demo-plan.json \
+  --json
+```
+
+The exporter uses the locator candidate actually proven during replay, retains bounded fallbacks, and compiles observed URL/heading changes into ordinary plan assertions. Review and edit the draft as a director; it is not semantic story generation.
 
 Always close the session:
 

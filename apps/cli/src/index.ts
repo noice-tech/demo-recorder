@@ -4,12 +4,13 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { authCommand } from "./auth.js";
-import { parseArguments, stringOption, type OptionDefinitions } from "./arguments.js";
+import { numberOption, parseArguments, stringOption, type OptionDefinitions } from "./arguments.js";
 import { doctorCommand, setupCommand } from "./environment.js";
 import { exploreCommand, inspectRepositoryCommand } from "./explore.js";
 import { inspectVideoCommand } from "./inspect-video.js";
 import { showPlanCommand, validatePlanCommand } from "./plan.js";
 import { renderRecording } from "./render.js";
+import { rehearsePlanFile } from "./rehearsal.js";
 import { recordPlan, runPlan } from "./run-plan.js";
 import { cliVersion } from "./version.js";
 
@@ -20,11 +21,12 @@ function usage(): string {
     "  demo-recorder setup [--json]",
     "  demo-recorder explore --url URL [--repo PATH --start COMMAND] [--auth PROFILE]",
     "  demo-recorder explore start --url URL [--session ID] [--policy read-only|reversible]",
-    "  demo-recorder explore <observe|find|act|verify|finish|abort|status> [SESSION] [options]",
+    "  demo-recorder explore <observe|find|act|verify|export-plan|finish|abort|status> [SESSION] [options]",
     "  demo-recorder inspect-repo [--repo PATH]",
     "  demo-recorder inspect <video.mp4> [--contact-sheet[=PATH]]",
     "  demo-recorder plan validate <demo-plan.json>",
     "  demo-recorder plan show <demo-plan.json>",
+    "  demo-recorder plan rehearse <demo-plan.json> [--attempt 1] [--output PATH]",
     "  demo-recorder record --plan <demo-plan.json> [--headed]",
     "  demo-recorder run <demo-plan.json> [--headed]",
     "  demo-recorder auth <start|save|stop|verify|remove|list> [options]",
@@ -38,6 +40,7 @@ export const commandOptions: Record<string, OptionDefinitions> = {
   explore: {
     url: { type: "string" },
     repo: { type: "string" },
+    hints: { type: "string" },
     start: { type: "string" },
     "readiness-url": { type: "string" },
     output: { type: "string" },
@@ -56,9 +59,18 @@ export const commandOptions: Record<string, OptionDefinitions> = {
     json: { type: "boolean" },
     headed: { type: "boolean" },
   },
-  "inspect-repo": { repo: { type: "string" }, output: { type: "string" } },
+  "inspect-repo": {
+    repo: { type: "string" },
+    hints: { type: "string" },
+    output: { type: "string" },
+  },
   inspect: { "contact-sheet": { type: "string", optionalValue: true } },
-  plan: {},
+  plan: {
+    output: { type: "string" },
+    attempt: { type: "string" },
+    headed: { type: "boolean" },
+    json: { type: "boolean" },
+  },
   auth: { profile: { type: "string" }, url: { type: "string" } },
   record: { plan: { type: "string" }, headed: { type: "boolean" } },
   run: { headed: { type: "boolean" } },
@@ -105,6 +117,32 @@ export async function runCli(arguments_: string[]): Promise<void> {
     if (operation === "validate")
       return validatePlanCommand(requireArgument(path, "plan validate"));
     if (operation === "show") return showPlanCommand(requireArgument(path, "plan show"));
+    if (operation === "rehearse") {
+      const rehearsalOutput = stringOption(parsed, "output");
+      const result = await rehearsePlanFile({
+        planArgument: requireArgument(path, "plan rehearse"),
+        ...(rehearsalOutput ? { outputDirectory: rehearsalOutput } : {}),
+        attempt: numberOption(parsed, "attempt", 1),
+        headless: !parsed.options.has("headed"),
+      });
+      if (parsed.options.has("json"))
+        console.log(JSON.stringify({ ok: result.report.status === "passed", ...result }, null, 2));
+      else {
+        console.log(`[demo-recorder] Rehearsal ${result.report.status}: ${result.report.planName}`);
+        console.log(
+          `[demo-recorder] Report: ${resolve(result.outputDirectory, result.report.artifacts.report)}`,
+        );
+        if (result.report.failure)
+          console.log(
+            `[demo-recorder] Failed at step ${result.report.failure.stepIndex}: ${result.report.failure.error}`,
+          );
+      }
+      if (result.report.status === "failed")
+        throw new Error(
+          `Plan rehearsal failed at step ${result.report.failure?.stepIndex ?? "unknown"}`,
+        );
+      return;
+    }
     throw new Error(`Unknown plan operation: ${operation ?? "missing"}\n${usage()}`);
   }
   if (command === "auth") {

@@ -277,6 +277,21 @@ export const explorationVerificationReportSchema = z.object({
 });
 export type ExplorationVerificationReport = z.infer<typeof explorationVerificationReportSchema>;
 
+export const explorationDraftPlanRequestSchema = z.object({
+  version: z.literal(1),
+  verificationId: nonempty,
+  name: nonempty.regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
+  goal: nonempty.max(2_000),
+  audience: nonempty.max(500).optional(),
+  targetDurationMs: z
+    .number()
+    .int()
+    .positive()
+    .max(30 * 60_000)
+    .optional(),
+});
+export type ExplorationDraftPlanRequest = z.infer<typeof explorationDraftPlanRequestSchema>;
+
 export const explorationSessionReportSchema = z.object({
   schemaVersion: z.literal(2),
   id: nonempty,

@@ -26,17 +26,26 @@ export async function resolvePlanLocator(page: Page, spec: LocatorSpec): Promise
   const methods = [spec.primary, ...(spec.fallbacks ?? [])];
   const failures: string[] = [];
   for (const method of methods) {
-    const locator = locatorForMethod(page, method).first();
+    const locator = locatorForMethod(page, method);
     try {
+      await locator.first().waitFor({ state: "attached", timeout: 3_000 });
+      const count = await locator.count();
+      if (count !== 1) {
+        failures.push(`${method.by} matched ${count} elements; expected exactly one`);
+        continue;
+      }
       await locator.waitFor({ state: "visible", timeout: 3_000 });
       return locator;
     } catch (error) {
       failures.push(error instanceof Error ? error.message : String(error));
     }
   }
-  throw new Error(`No plan locator matched (${methods.map((method) => method.by).join(", ")})`, {
-    cause: new Error(failures.join("\n")),
-  });
+  throw new Error(
+    `No unique plan locator matched (${methods.map((method) => method.by).join(", ")})`,
+    {
+      cause: new Error(failures.join("\n")),
+    },
+  );
 }
 
 async function executeAction(page: Page, actions: DemoActions, step: DemoAction): Promise<void> {

@@ -4,7 +4,9 @@ import { closeSync, existsSync, openSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseDemoPlan, type DemoPlan } from "../demo-plan/index.js";
 import {
+  explorationDraftPlanRequestSchema,
   explorationFindQuerySchema,
   explorationFindResultSchema,
   explorationLaunchConfigSchema,
@@ -15,6 +17,7 @@ import {
   explorationVerificationReportSchema,
   explorationVerificationRequestSchema,
   type ExplorationAction,
+  type ExplorationDraftPlanRequest,
   type ExplorationFindQuery,
   type ExplorationFindResult,
   type ExplorationLaunchConfig,
@@ -189,6 +192,19 @@ export async function actInInteractiveSession(
     body: action,
   });
   return explorationTransitionSchema.parse(result.transition);
+}
+
+export async function exportInteractiveSessionPlan(
+  sessionRoot: string,
+  id: string,
+  input: ExplorationDraftPlanRequest,
+): Promise<DemoPlan> {
+  const descriptor = await readDescriptor(sessionRoot, id);
+  const result = await request<{ plan: unknown }>(descriptor, "/export-plan", {
+    method: "POST",
+    body: explorationDraftPlanRequestSchema.parse(input),
+  });
+  return parseDemoPlan(result.plan);
 }
 
 export async function verifyInteractiveSession(

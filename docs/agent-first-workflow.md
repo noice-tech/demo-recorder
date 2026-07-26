@@ -21,18 +21,22 @@ The CLI's `explorer` module provides:
 - runtime action policy, semantic diffs, and before/after state-transition evidence;
 - append-only observation/transition journals and recoverable state graphs;
 - agent-selected transition paths replayed and verified in a fresh browser context;
-- generic repository facts without secret values;
+- bounded repository facts with file/byte/truncation metrics, skipped-symlink reporting, and optional explicitly advisory hints without secret values;
 - agent-selected local process startup, readiness, logs, and cleanup;
 - detached headed authentication sessions;
 - cookies/local-storage and same-origin session-storage profiles.
 
-For ordinary sites, one-shot exploration navigates discovered HTTP links directly. For SPA state, the agent uses `explore start`, inspects an observation, proposes one bounded `explore act`, and repeats. Once it selects a connected transition path, `explore verify` replays durable locator candidates in a fresh context, rejects ambiguous matches, and checks expected semantic fingerprints and URLs before `explore finish`. The default policy permits same-origin navigation and clearly presentational controls while blocking forms, destructive actions, external side effects, and unknown controls. Temporary refs expire when a new observation is authoritative and never enter verification paths.
+For ordinary sites, one-shot exploration navigates discovered HTTP links directly while using the same semantic page/target collectors and persisting viewport screenshots and AI-oriented ARIA evidence. For SPA state, the agent uses `explore start`, inspects an observation, proposes one bounded `explore act`, and repeats. Once it selects a connected transition path, `explore verify` replays durable locator candidates in a fresh context, rejects ambiguous matches, and checks expected semantic fingerprints and URLs before `explore finish`. The default policy permits same-origin navigation and clearly presentational controls while blocking forms, destructive actions, external side effects, and unknown controls. Temporary refs expire when a new observation is authoritative and never enter verification paths.
 
 ### Planner
 
 The CLI's `demo-plan` module is a protocol rather than an AI. It validates agent-authored `DemoPlan` documents, rejects default cross-origin and destructive steps, enforces read-only constraints, estimates duration, and produces a storyboard.
 
-Plans use accessible locator specifications with controlled fallbacks. Generated TypeScript is unnecessary; the recorder executes validated JSON directly.
+A passing verified exploration path can be exported into a draft plan. The exporter uses the locator candidate actually proven in the clean replay, retains bounded fallbacks, and compiles observed URL and heading changes into ordinary assertions. The coding agent remains the director and can shorten, reorder, or annotate the draft.
+
+Plans use accessible locator specifications with controlled fallbacks. Locator resolution requires exactly one visible match and never silently selects `.first()`. Generated TypeScript is unnecessary; the recorder executes validated JSON directly.
+
+`plan rehearse` executes the validated plan in a fresh browser without video capture. It writes per-step timing and, on failure, the exact step, current URL, ARIA snapshot, screenshot, trace, and focused repair hints. The agent can make a targeted edit and use attempts 2 or 3; the runtime rejects later attempts. Final capture never invokes this repair workflow.
 
 ### Recorder and renderer
 

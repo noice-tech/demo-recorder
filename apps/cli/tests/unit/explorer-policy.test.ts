@@ -32,6 +32,7 @@ describe("exploration risk classification", () => {
     ["Create project", "BUTTON", undefined, "reversible"],
     ["Open details", "BUTTON", undefined, "read-only"],
     ["Email", "INPUT", "email", "unknown"],
+    ["Save workspace", "BUTTON", "submit", "unknown"],
   ] as const)("classifies %s as %s", (name, tagName, inputType, expected) => {
     expect(
       classifyExplorationElementRisk({

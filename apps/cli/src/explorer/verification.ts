@@ -34,6 +34,15 @@ async function resolveVerifiedTarget(
   const failures: string[] = [];
   for (const candidate of transition.target.candidates) {
     const locator = locatorForCandidate(page, candidate);
+    const attached = await locator
+      .first()
+      .waitFor({ state: "attached", timeout: 3_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!attached) {
+      failures.push(`${candidate.by} did not attach within 3000ms`);
+      continue;
+    }
     const count = await locator.count().catch(() => 0);
     if (count !== 1) {
       failures.push(`${candidate.by} matched ${count} elements`);

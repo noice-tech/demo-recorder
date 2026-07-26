@@ -181,10 +181,56 @@ try {
       workspace,
     );
     const verification = JSON.parse(verificationText) as {
-      verification?: { status?: string };
+      verification?: { id?: string; status?: string };
     };
     if (verification.verification?.status !== "passed")
       throw new Error("Packaged exploration path verification did not pass");
+    await writeFile(
+      join(workspace, "draft-request.json"),
+      `${JSON.stringify({
+        version: 1,
+        verificationId: verification.verification.id,
+        name: "verified-package-smoke",
+        goal: "Replay the verified packaged exploration path",
+      })}\n`,
+    );
+    await runNpm(
+      [
+        "exec",
+        "--",
+        "demo-recorder",
+        "explore",
+        "export-plan",
+        "package-smoke",
+        "--input",
+        "draft-request.json",
+        "--output",
+        "verified-demo-plan.json",
+        "--json",
+      ],
+      workspace,
+    );
+    await runNpm(
+      ["exec", "--", "demo-recorder", "plan", "validate", "verified-demo-plan.json"],
+      workspace,
+    );
+    const rehearsalText = await runNpm(
+      [
+        "exec",
+        "--",
+        "demo-recorder",
+        "plan",
+        "rehearse",
+        "verified-demo-plan.json",
+        "--output",
+        "verified-rehearsal",
+        "--json",
+      ],
+      workspace,
+    );
+    const rehearsal = JSON.parse(rehearsalText) as { report?: { status?: string } };
+    if (rehearsal.report?.status !== "passed")
+      throw new Error("Packaged verified-plan rehearsal did not pass");
     await runNpm(
       ["exec", "--", "demo-recorder", "explore", "finish", "package-smoke", "--json"],
       workspace,

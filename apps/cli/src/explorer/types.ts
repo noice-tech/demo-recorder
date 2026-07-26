@@ -15,12 +15,15 @@ export type ExploredPage = {
   title: string;
   depth: number;
   headings: string[];
+  layers?: Array<{ role: string; name: string }>;
   links: ExploredLink[];
   controls: ExploredControl[];
   hasPasswordField: boolean;
   hasForm: boolean;
   captchaIndicators: string[];
   screenshotPath: string;
+  viewportScreenshotPath?: string;
+  ariaSnapshotPath?: string;
   errors: string[];
 };
 
@@ -33,10 +36,45 @@ export type RepositoryReport = {
   testFiles: string[];
   environmentVariableNames: string[];
   authenticationHints: string[];
+  advisoryHints?: {
+    source: string;
+    routes: string[];
+    tests: string[];
+    authentication: string[];
+    notes: string[];
+  };
+  scan: {
+    limits: {
+      maxFiles: number;
+      maxEntries: number;
+      maxTotalBytes: number;
+      maxFileBytes: number;
+      readConcurrency: number;
+    };
+    entriesVisited: number;
+    candidateFiles: number;
+    filesSelected: number;
+    filesRead: number;
+    bytesRead: number;
+    skippedLargeFiles: number;
+    skippedSymlinks: number;
+    errors: number;
+    truncated: boolean;
+  };
+};
+
+export type RepositoryInspectionOptions = {
+  maxFiles?: number;
+  maxEntries?: number;
+  maxTotalBytes?: number;
+  maxFileBytes?: number;
+  readConcurrency?: number;
+  hintsPath?: string;
 };
 
 export type ExplorationReport = {
   version: 1;
+  evidenceVersion?: 2;
   id: string;
   createdAt: string;
   target: {
@@ -72,4 +110,5 @@ export type ExploreSiteOptions = {
   sessionStoragePath?: string;
   authProfile?: string;
   repositoryPath?: string;
+  repositoryHintsPath?: string;
 };

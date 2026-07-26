@@ -18,6 +18,56 @@
         <p>Plan, review, and ship your next product update from one focused workspace.</p>
       </section>
 
+      <section class="panel" aria-labelledby="exploration-states-heading">
+        <h2 id="exploration-states-heading">Exploration states</h2>
+        <div role="tablist" aria-label="Workspace views">
+          <button
+            id="overview-tab"
+            role="tab"
+            aria-selected="true"
+            aria-controls="workspace-tab-panel"
+          >
+            Overview
+          </button>
+          <button
+            id="activity-tab"
+            role="tab"
+            aria-selected="false"
+            aria-controls="workspace-tab-panel"
+          >
+            Activity
+          </button>
+        </div>
+        <div id="workspace-tab-panel" role="tabpanel" aria-live="polite">
+          <h3 id="workspace-tab-heading">Workspace overview</h3>
+          <p id="workspace-tab-copy">Three projects are ready for review.</p>
+        </div>
+        <div>
+          <button id="open-details">Open details</button>
+          <button id="duplicate-details">Open details</button>
+          <button id="view-insights" aria-expanded="false">View insights</button>
+          <span id="insights-status" role="status"></span>
+        </div>
+        <div id="shadow-host"></div>
+        <iframe
+          title="Embedded preview"
+          srcdoc="<!doctype html><button>Preview action</button>"
+        ></iframe>
+        <a href="https://example.com/outside" target="_blank">Open external example</a>
+        <a href="data:text/plain,preview" download="preview.txt">Download preview</a>
+        <form>
+          <label>Workspace name <input name="workspace" /></label
+          ><button type="submit">Save workspace</button>
+        </form>
+        <button type="button">Delete workspace</button>
+      </section>
+
+      <dialog id="details-dialog" aria-label="Project details">
+        <h2>Project details</h2>
+        <p>Review milestones without changing project data.</p>
+        <button id="close-details">Close details</button>
+      </dialog>
+
       <section id="project-panel" class="panel" aria-live="polite">
         <div id="empty-state">
           <div class="empty-icon">✦</div>

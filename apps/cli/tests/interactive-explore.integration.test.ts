@@ -1,4 +1,4 @@
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -121,6 +121,86 @@ describe.sequential("interactive exploration", () => {
     }
   }, 30_000);
 
+  it("observes tabs, dialogs, shadow controls, and conservative frame/risk boundaries", async () => {
+    const app = await fixture();
+    const outputDirectory = await temporaryDirectory("demo-recorder-interactive-states-");
+    const session = new InteractiveExplorationSession(
+      launchConfig("states", app.baseUrl, outputDirectory, "read-only"),
+    );
+    try {
+      const observation = await session.start();
+      expect(
+        observation.interactiveElements.some((element) => element.name === "Open shadow preview"),
+      ).toBe(true);
+      expect(
+        observation.interactiveElements.some((element) => element.name === "Preview action"),
+      ).toBe(false);
+      expect(
+        observation.interactiveElements.find((element) => element.name === "Delete workspace")
+          ?.risk,
+      ).toBe("destructive");
+      expect(
+        observation.interactiveElements.find((element) => element.name === "Open external example")
+          ?.risk,
+      ).toBe("external-side-effect");
+      expect(
+        observation.interactiveElements.find((element) => element.name === "Download preview")
+          ?.risk,
+      ).toBe("external-side-effect");
+      expect(
+        observation.interactiveElements.find((element) => element.name === "Save workspace")?.risk,
+      ).toBe("unknown");
+      const activity = observation.interactiveElements.find(
+        (element) => element.role === "tab" && element.name === "Activity",
+      );
+      const tabTransition = await session.act({
+        type: "click",
+        observationId: observation.id,
+        ref: activity?.ref ?? "missing",
+      });
+      expect(tabTransition.status).toBe("succeeded");
+      expect(tabTransition.diff?.headingsAdded).toContain("Recent activity");
+      const activityObservation = await session.observe("async-state");
+      const insights = activityObservation.interactiveElements.find(
+        (element) => element.name === "View insights",
+      );
+      const insightsTransition = await session.act({
+        type: "click",
+        observationId: activityObservation.id,
+        ref: insights?.ref ?? "missing",
+      });
+      expect(insightsTransition.status).toBe("succeeded");
+      expect(insightsTransition.outcome.settledReason).toBe("quiet");
+      const insightsObservation = await session.observe("open-layer");
+      expect(
+        await readFile(join(outputDirectory, insightsObservation.artifacts.snapshot), "utf8"),
+      ).toContain("Insights ready");
+      const details = insightsObservation.interactiveElements.find((element) =>
+        element.target.candidates.some(
+          (candidate) => candidate.by === "css" && candidate.selector === "#open-details",
+        ),
+      );
+      const dialogTransition = await session.act({
+        type: "click",
+        observationId: insightsObservation.id,
+        ref: details?.ref ?? "missing",
+      });
+      expect(dialogTransition.status).toBe("succeeded");
+      expect(dialogTransition.diff?.layersAdded).toContain("dialog|Project details");
+      const verification = await session.verify({
+        version: 1,
+        transitionIds: [tabTransition.id, insightsTransition.id, dialogTransition.id],
+      });
+      expect(verification.status).toBe("passed");
+      expect(verification.steps[2]?.candidateUsed).toEqual({
+        by: "css",
+        selector: "#open-details",
+      });
+    } finally {
+      await session.close("finished");
+    }
+  }, 40_000);
+
   it("records a same-URL state transition when reversible exploration is explicit", async () => {
     const app = await fixture();
     const outputDirectory = await temporaryDirectory("demo-recorder-interactive-reversible-");
@@ -171,6 +251,21 @@ describe.sequential("interactive exploration", () => {
         status: "passed",
         candidateUsed: { by: "role", role: "button" },
       });
+      const draftPlan = session.exportPlan({
+        version: 1,
+        verificationId: verification.id,
+        name: "verified-project-flow",
+        goal: "Show the verified project setup flow",
+      });
+      expect(draftPlan.brief.constraints.modifyData).toBe(true);
+      expect(
+        draftPlan.capture.steps.some(
+          (step) =>
+            step.type === "assert-visible" &&
+            step.locator.primary.by === "role" &&
+            step.locator.primary.name === "Summer campaign",
+        ),
+      ).toBe(true);
       await expect(
         access(join(outputDirectory, verification.artifacts.report)),
       ).resolves.toBeUndefined();
@@ -275,6 +370,61 @@ describe.sequential("interactive exploration", () => {
     expect(report.status).toBe("finished");
     expect(report.metrics.observations).toBe(3);
   }, 40_000);
+
+  it("isolates named sessions, rejects duplicate starts, and replaces stale descriptors", async () => {
+    const app = await fixture();
+    const root = await temporaryDirectory("demo-recorder-session-isolation-");
+    const sessionRoot = join(root, "sessions");
+    await writeFile(
+      join(root, "stale.json"),
+      JSON.stringify({
+        version: 1,
+        id: "stale",
+        pid: 999_999,
+        port: 65_000,
+        token: "stale-token",
+        outputDirectory: join(root, "stale-output"),
+        launchConfigPath: join(root, "stale.launch.json"),
+      }),
+    );
+    await rm(sessionRoot, { recursive: true, force: true });
+    const staleRoot = root;
+    const stale = await startInteractiveSession({
+      sessionRoot: staleRoot,
+      config: launchConfig("stale", app.baseUrl, join(root, "stale-output"), "read-only"),
+    });
+    expect(stale.observation.id).toBe("obs-0001");
+    await finishInteractiveSession(staleRoot, "stale");
+
+    const firstConfig = launchConfig("isolated-a", app.baseUrl, join(root, "a"), "reversible");
+    const secondConfig = launchConfig("isolated-b", app.baseUrl, join(root, "b"), "read-only");
+    const [first, second] = await Promise.all([
+      startInteractiveSession({ sessionRoot, config: firstConfig }),
+      startInteractiveSession({ sessionRoot, config: secondConfig }),
+    ]);
+    try {
+      await expect(startInteractiveSession({ sessionRoot, config: firstConfig })).rejects.toThrow(
+        "already active",
+      );
+      const createProject = first.observation.interactiveElements.find(
+        (element) => element.name === "Create project",
+      );
+      const changed = await actInInteractiveSession(sessionRoot, "isolated-a", {
+        type: "click",
+        observationId: first.observation.id,
+        ref: createProject?.ref ?? "missing",
+      });
+      expect(changed.status).toBe("succeeded");
+      const unchanged = await observeInteractiveSession(sessionRoot, "isolated-b");
+      expect(unchanged.stateId).toBe(second.observation.stateId);
+      expect(unchanged.headings).not.toContain("Summer campaign");
+    } finally {
+      await Promise.all([
+        finishInteractiveSession(sessionRoot, "isolated-a").catch(() => undefined),
+        finishInteractiveSession(sessionRoot, "isolated-b").catch(() => undefined),
+      ]);
+    }
+  }, 60_000);
 
   it.runIf(process.platform !== "win32")(
     "stops a managed app even when its shell leader exits",
