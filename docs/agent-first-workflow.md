@@ -14,21 +14,28 @@ Demo Recorder contains no embedded model client. A coding agent supplies semanti
 
 The CLI's `explorer` module provides:
 
-- bounded same-origin Playwright crawling;
-- headings, links, controls, forms, redirects, errors, and screenshots;
-- control classification without form submission;
-- generic repository facts without secret values;
+- bounded same-origin Playwright surface mapping;
+- persistent browser sessions across separate agent shell calls;
+- AI-oriented ARIA snapshots, viewport screenshots, headings, layers, controls, and errors;
+- observation-scoped element refs and durable locator candidates;
+- runtime action policy, semantic diffs, and before/after state-transition evidence;
+- append-only observation/transition journals and recoverable state graphs;
+- agent-selected transition paths replayed and verified in a fresh browser context;
 - agent-selected local process startup, readiness, logs, and cleanup;
 - detached headed authentication sessions;
 - cookies/local-storage and same-origin session-storage profiles.
 
-Exploration navigates discovered HTTP links directly. It reports tabs, menus, accordions, and other candidate controls for the agent, but does not click ambiguous or destructive controls.
+For ordinary sites, one-shot exploration navigates discovered HTTP links directly while using the same semantic page/target collectors and persisting viewport screenshots and AI-oriented ARIA evidence. For SPA state, the agent uses `explore start`, inspects an observation, proposes one bounded `explore act`, and repeats. Once it selects a connected transition path, `explore verify` replays durable locator candidates in a fresh context, rejects ambiguous matches, and checks expected semantic fingerprints and URLs before `explore finish`. The default policy permits same-origin navigation and clearly presentational controls while blocking forms, destructive actions, external side effects, and unknown controls. Temporary refs expire when a new observation is authoritative and never enter verification paths.
 
 ### Planner
 
 The CLI's `demo-plan` module is a protocol rather than an AI. It validates agent-authored `DemoPlan` documents, rejects default cross-origin and destructive steps, enforces read-only constraints, estimates duration, and produces a storyboard.
 
-Plans use accessible locator specifications with controlled fallbacks. Generated TypeScript is unnecessary; the recorder executes validated JSON directly.
+A passing verified exploration path can be exported into a draft plan. The exporter uses the locator candidate actually proven in the clean replay, retains bounded fallbacks, and compiles observed URL and heading changes into ordinary assertions. The coding agent remains the director and can shorten, reorder, or annotate the draft.
+
+Plans use accessible locator specifications with controlled fallbacks. Locator resolution requires exactly one visible match and never silently selects `.first()`. Generated TypeScript is unnecessary; the recorder executes validated JSON directly.
+
+`plan rehearse` executes the validated plan in a fresh browser without video capture. It writes per-step timing and, on failure, the exact step, current URL, ARIA snapshot, screenshot, trace, and focused repair hints. The agent can make a targeted edit and use attempts 2 or 3; the runtime rejects later attempts. Final capture never invokes this repair workflow.
 
 ### Recorder and renderer
 
@@ -41,14 +48,15 @@ The CLI's `renderer` module continues to derive click zooms automatically. A val
 Plans do not require an approval prompt. Instead, defaults are deliberately restrictive:
 
 - same-origin navigation only;
+- same-origin main-frame navigation enforcement in persistent exploration;
 - no form submission during exploration;
-- no destructive exploration actions;
+- no destructive, external-side-effect, or unknown exploration actions by default;
 - no fill, press, or selection in plans where `modifyData` is false;
 - destructive locator names are rejected;
 - explicit local start commands only;
 - generated and authentication state ignored by Git.
 
-If a requested story genuinely requires data mutation, the agent must encode that intent by changing the brief constraints. Exploration itself remains read-only.
+If a requested story genuinely requires data mutation, the agent must encode that intent in the plan constraints. Persistent exploration remains `read-only` by default; an explicit `reversible` profile is limited to disposable local or staging state and still blocks destructive and external-side-effect controls. These policies reduce risk but cannot prove that arbitrary application code has no hidden server-side effect.
 
 ## Authentication lifecycle
 

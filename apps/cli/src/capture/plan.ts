@@ -1,42 +1,17 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page } from "playwright";
+import { resolveUniqueLocator } from "../browser/locator.js";
 import type { DemoAction, DemoPlan, LocatorSpec } from "../demo-plan/index.js";
 import { createRecordingSession } from "./session.js";
 import type { DemoActions, RecordingSessionOptions } from "./types.js";
 
-type LocatorMethod = LocatorSpec["primary"];
-
-function locatorForMethod(page: Page, method: LocatorMethod): Locator {
-  if (method.by === "role") {
-    return page.getByRole(method.role as Parameters<Page["getByRole"]>[0], {
-      ...(method.name === undefined ? {} : { name: method.name }),
-      ...(method.exact === undefined ? {} : { exact: method.exact }),
-    });
-  }
-  if (method.by === "text") return page.getByText(method.text, { exact: method.exact ?? false });
-  if (method.by === "label") return page.getByLabel(method.label, { exact: method.exact ?? false });
-  if (method.by === "placeholder")
-    return page.getByPlaceholder(method.placeholder, { exact: method.exact ?? false });
-  if (method.by === "test-id") return page.getByTestId(method.testId);
-  return page.locator(method.selector);
-}
-
 export async function resolvePlanLocator(page: Page, spec: LocatorSpec): Promise<Locator> {
-  const methods = [spec.primary, ...(spec.fallbacks ?? [])];
-  const failures: string[] = [];
-  for (const method of methods) {
-    const locator = locatorForMethod(page, method).first();
-    try {
-      await locator.waitFor({ state: "visible", timeout: 3_000 });
-      return locator;
-    } catch (error) {
-      failures.push(error instanceof Error ? error.message : String(error));
-    }
-  }
-  throw new Error(`No plan locator matched (${methods.map((method) => method.by).join(", ")})`, {
-    cause: new Error(failures.join("\n")),
-  });
+  return (
+    await resolveUniqueLocator(page, [spec.primary, ...(spec.fallbacks ?? [])], {
+      description: "No unique plan locator matched",
+    })
+  ).locator;
 }
 
 async function executeAction(page: Page, actions: DemoActions, step: DemoAction): Promise<void> {

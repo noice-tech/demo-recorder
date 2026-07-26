@@ -15,28 +15,21 @@ export type ExploredPage = {
   title: string;
   depth: number;
   headings: string[];
+  layers?: Array<{ role: string; name: string }>;
   links: ExploredLink[];
   controls: ExploredControl[];
   hasPasswordField: boolean;
   hasForm: boolean;
   captchaIndicators: string[];
   screenshotPath: string;
+  viewportScreenshotPath?: string;
+  ariaSnapshotPath?: string;
   errors: string[];
-};
-
-export type RepositoryReport = {
-  path: string;
-  packageManager?: string;
-  framework?: string;
-  scripts: Record<string, string>;
-  routeFiles: string[];
-  testFiles: string[];
-  environmentVariableNames: string[];
-  authenticationHints: string[];
 };
 
 export type ExplorationReport = {
   version: 1;
+  evidenceVersion?: 2;
   id: string;
   createdAt: string;
   target: {
@@ -56,7 +49,6 @@ export type ExplorationReport = {
     evidence: string[];
     profile?: string;
   };
-  repository?: RepositoryReport;
   pages: ExploredPage[];
   risks: string[];
 };

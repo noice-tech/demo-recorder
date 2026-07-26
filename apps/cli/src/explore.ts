@@ -1,13 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, isAbsolute, join, resolve } from "node:path";
-import {
-  authProfilePaths,
-  exploreSite,
-  inspectRepository,
-  startManagedApp,
-} from "./explorer/index.js";
+import { isAbsolute, join, resolve } from "node:path";
 import { numberOption, stringOption, type ParsedArguments } from "./arguments.js";
+import { authProfilePaths, exploreSite, startManagedApp } from "./explorer/index.js";
+import {
+  interactiveExploreCommand,
+  isInteractiveExploreOperation,
+} from "./interactive-explore-command.js";
 import { workingDirectory } from "./paths.js";
 
 function generatedId(prefix: string): string {
@@ -19,6 +17,9 @@ function resolveWorkingPath(path: string): string {
 }
 
 export async function exploreCommand(arguments_: ParsedArguments): Promise<string> {
+  const operation = arguments_.positionals[0];
+  if (isInteractiveExploreOperation(operation))
+    return interactiveExploreCommand(operation, arguments_);
   const url = stringOption(arguments_, "url");
   if (!url) throw new Error("explore requires --url <http-or-https-url>");
   const repositoryPath = stringOption(arguments_, "repo");
@@ -69,18 +70,6 @@ export async function exploreCommand(arguments_: ParsedArguments): Promise<strin
     console.log(`[demo-recorder] Exploration saved: ${outputDirectory}`);
     return outputDirectory;
   } finally {
-    if (managed) await managed.close();
+    await managed?.close();
   }
-}
-
-export async function inspectRepositoryCommand(arguments_: ParsedArguments): Promise<string> {
-  const repositoryPath = resolve(workingDirectory, stringOption(arguments_, "repo") ?? ".");
-  const outputPath = resolveWorkingPath(
-    stringOption(arguments_, "output") ?? join(workingDirectory, ".demo-recorder/repository.json"),
-  );
-  const report = await inspectRepository(repositoryPath);
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`);
-  console.log(`[demo-recorder] Repository report saved: ${outputPath}`);
-  return outputPath;
 }

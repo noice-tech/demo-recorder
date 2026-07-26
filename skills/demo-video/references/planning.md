@@ -42,4 +42,15 @@ Actions are `navigate`, `move`, `click`, `fill`, `press`, `select`, `scroll`, `w
 
 If the target must be managed, add `repositoryPath`, `startCommand`, and optionally `readinessUrl`. If authenticated, add `authProfile`.
 
+Before recording, rehearse the validated plan without video capture:
+
+```bash
+npx --yes @noice-tech/demo-recorder@0.0.1 plan rehearse \
+  .demo-recorder/plans/product-demo/demo-plan.json \
+  --attempt 1 \
+  --json
+```
+
+A failed rehearsal writes the failing step, sanitized current URL, ARIA snapshot, screenshot, trace, and focused repair hints. The host agent may revise only the failing plan area and rerun with `--attempt 2` or `--attempt 3`; attempts outside 1–3 are rejected. Require a passing rehearsal before final capture. The final `run` command remains deterministic and never invokes repair logic.
+
 Presentation may include absolute source-timeline `trimStartMs`, `trimEndMs`, and explicit `zoomSegments`. Prefer capture `hold` steps for deliberate pacing. Add trims only after inspecting a recording; the renderer validates them against source duration without changing the manifest or WebM.

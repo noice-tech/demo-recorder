@@ -1,7 +1,14 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { join, relative } from "node:path";
+import { relative } from "node:path";
 import { chromium } from "playwright";
-import { inspectRepository } from "./repository.js";
+import {
+  destructiveActionPattern,
+  isFormControl,
+  navigationActionPattern,
+} from "../browser/action-risk.js";
+import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
+import { collectInteractiveTargets } from "./interactive-targets.js";
+import { capturePageSemanticEvidence } from "./page-observation.js";
+import { sanitizeExplorationError, sanitizeExplorationUrl } from "./privacy.js";
 import { installSessionStorage, loadSessionStorage } from "./session-storage.js";
 import type {
   ExploredControl,
@@ -10,25 +17,45 @@ import type {
   ExploreSiteOptions,
 } from "./types.js";
 
-const destructivePattern =
-  /\b(delete|remove|purchase|buy|pay|publish|send|invite|place order|sign out|log out)\b/i;
-const navigationPattern =
-  /\b(home|about|pricing|examples?|features?|docs|blog|next|previous|back|menu|open|learn|view)\b/i;
 const captchaPattern = /captcha|recaptcha|hcaptcha|challenge-platform|cf-turnstile/i;
 const authPattern = /\b(login|log in|sign in|signin|authenticate|password|oauth|unauthorized)\b/i;
+const presentationalControlPattern = /accordion|carousel|expand|collapse/i;
+const presentationalRoles = new Set(["tab", "menuitem"]);
 
-function classifyControl(
-  role: string,
-  name: string,
-  tag: string,
-  type: string,
-): ExploredControl["classification"] {
-  if (destructivePattern.test(name)) return "destructive";
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || type === "submit") return "form";
-  if (role === "link" || navigationPattern.test(name)) return "navigation";
-  if (["tab", "menuitem"].includes(role) || /accordion|carousel|expand|collapse/i.test(name))
-    return "presentational";
-  return "ambiguous";
+type ControlClassificationInput = {
+  role: string;
+  name: string;
+  tag: string;
+  type: string;
+};
+
+const controlClassificationRules: Array<{
+  classification: Exclude<ExploredControl["classification"], "ambiguous">;
+  matches: (control: ControlClassificationInput) => boolean;
+}> = [
+  {
+    classification: "destructive",
+    matches: ({ name }) => destructiveActionPattern.test(name),
+  },
+  {
+    classification: "form",
+    matches: ({ tag, type }) => isFormControl(tag, type),
+  },
+  {
+    classification: "navigation",
+    matches: ({ role, name }) => role === "link" || navigationActionPattern.test(name),
+  },
+  {
+    classification: "presentational",
+    matches: ({ role, name }) =>
+      presentationalRoles.has(role) || presentationalControlPattern.test(name),
+  },
+];
+
+function classifyControl(control: ControlClassificationInput): ExploredControl["classification"] {
+  return (
+    controlClassificationRules.find((rule) => rule.matches(control))?.classification ?? "ambiguous"
+  );
 }
 
 function safeName(value: string): string {
@@ -41,8 +68,8 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
   const sameOriginOnly = options.sameOriginOnly ?? true;
   const target = new URL(options.baseUrl);
   if (!/^https?:$/.test(target.protocol)) throw new Error("Exploration URL must use HTTP or HTTPS");
-  await mkdir(join(options.outputDirectory, "screenshots"), { recursive: true });
-  await mkdir(join(options.outputDirectory, "diagnostics"), { recursive: true });
+  const artifacts = new ExplorationArtifactStore(options.outputDirectory);
+  await artifacts.initialize(["snapshots", "screenshots", "viewport-screenshots", "diagnostics"]);
 
   const browser = await chromium.launch({ headless: options.headless ?? true });
   const context = await browser.newContext({
@@ -74,21 +101,9 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
         });
         await page.waitForTimeout(500);
         if (response && response.status() >= 400) errors.push(`HTTP ${response.status()}`);
-        const finalUrl = page.url();
-        const headings: string[] = [];
-        const headingLocator = page.locator("h1, h2, h3, [role=heading]");
-        for (let index = 0; index < Math.min(await headingLocator.count(), 50); index += 1) {
-          const text = (
-            await headingLocator
-              .nth(index)
-              .innerText()
-              .catch(() => "")
-          )
-            .trim()
-            .replace(/\s+/g, " ")
-            .slice(0, 300);
-          if (text) headings.push(text);
-        }
+        const semantics = await capturePageSemanticEvidence(page);
+        const finalUrl = semantics.url;
+        const headings = semantics.headings;
         const rawLinks: Array<{ name: string; href: string }> = [];
         const linkLocator = page.locator("a[href]");
         for (let index = 0; index < Math.min(await linkLocator.count(), 200); index += 1) {
@@ -106,54 +121,50 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
           const absolute = new URL(href, finalUrl).href;
           if (/^https?:/.test(absolute)) rawLinks.push({ name, href: absolute });
         }
-        const rawControls: Array<{ role: string; name: string; tag: string; type: string }> = [];
-        const controlLocator = page.locator(
-          "button, input, textarea, select, [role=button], [role=tab], [role=menuitem]",
-        );
-        for (let index = 0; index < Math.min(await controlLocator.count(), 200); index += 1) {
-          const control = controlLocator.nth(index);
-          const tag = await control.evaluate((element) => element.tagName);
-          const type = (await control.getAttribute("type")) ?? "";
-          const name = (
-            (await control.getAttribute("aria-label")) ??
-            (await control.getAttribute("title")) ??
-            (await control.getAttribute("placeholder")) ??
-            (await control.innerText().catch(() => ""))
-          )
-            .trim()
-            .replace(/\s+/g, " ")
-            .slice(0, 300);
-          if (!name) continue;
-          const implicitRole =
-            tag === "BUTTON"
-              ? "button"
-              : tag === "INPUT" || tag === "TEXTAREA"
-                ? "textbox"
-                : tag === "SELECT"
-                  ? "combobox"
-                  : "control";
-          rawControls.push({
-            role: (await control.getAttribute("role")) ?? implicitRole,
-            name,
-            tag,
-            type,
-          });
-        }
+        const { elements: observedTargets } = await collectInteractiveTargets(page, target.href);
         const html = (await page.content()).slice(0, 2_000_000);
         const hasPasswordField = (await page.locator('input[type="password"]').count()) > 0;
         const hasForm = (await page.locator("form").count()) > 0;
-        const screenshotFilename = `${String(pages.length + 1).padStart(2, "0")}-${safeName(new URL(finalUrl).pathname)}.png`;
-        const screenshotAbsolute = join(options.outputDirectory, "screenshots", screenshotFilename);
-        await page.screenshot({ path: screenshotAbsolute, fullPage: true });
+        const artifactStem = `${String(pages.length + 1).padStart(2, "0")}-${safeName(new URL(finalUrl).pathname)}`;
+        const screenshotFilename = `${artifactStem}.png`;
+        const screenshotArtifact = `screenshots/${screenshotFilename}`;
+        const viewportScreenshotArtifact = `viewport-screenshots/${screenshotFilename}`;
+        const snapshotArtifact = `snapshots/${artifactStem}.yml`;
+        const screenshotAbsolute = artifacts.path(screenshotArtifact);
+        await Promise.all([
+          artifacts.writeExternalFile(
+            screenshotArtifact,
+            explorationArtifactLimits.screenshotBytes,
+            (path) => page.screenshot({ path, fullPage: true }).then(() => {}),
+          ),
+          artifacts.writeExternalFile(
+            viewportScreenshotArtifact,
+            explorationArtifactLimits.screenshotBytes,
+            (path) => page.screenshot({ path, fullPage: false, scale: "css" }).then(() => {}),
+          ),
+          artifacts.writeText(
+            snapshotArtifact,
+            `${semantics.snapshot.trimEnd()}\n`,
+            explorationArtifactLimits.snapshotBytes,
+          ),
+        ]);
         const links = rawLinks.map((link) => ({
-          ...link,
+          name: link.name,
+          href: sanitizeExplorationUrl(link.href),
           sameOrigin: new URL(link.href).origin === target.origin,
         }));
-        const controls = rawControls.map((control) => ({
-          role: control.role,
-          name: control.name,
-          classification: classifyControl(control.role, control.name, control.tag, control.type),
-        }));
+        const controls = observedTargets
+          .filter((element) => !element.href)
+          .map((element) => ({
+            role: element.role ?? element.tagName.toLowerCase(),
+            name: element.name,
+            classification: classifyControl({
+              role: element.role ?? "control",
+              name: element.name,
+              tag: element.tagName,
+              type: element.inputType ?? "",
+            }),
+          }));
         const captchaIndicators = [
           ...new Set(
             (html.match(new RegExp(captchaPattern.source, "gi")) ?? []).map((value) =>
@@ -162,20 +173,23 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
           ),
         ];
         pages.push({
-          url: finalUrl,
+          url: sanitizeExplorationUrl(finalUrl),
           title: await page.title(),
           depth: item.depth,
           headings,
+          layers: semantics.layers,
           links,
           controls,
           hasPasswordField,
           hasForm,
           captchaIndicators,
           screenshotPath: relative(options.outputDirectory, screenshotAbsolute),
-          errors: errors.slice(0, 50),
+          viewportScreenshotPath: viewportScreenshotArtifact,
+          ariaSnapshotPath: snapshotArtifact,
+          errors: errors.slice(0, 50).map(sanitizeExplorationError),
         });
         if (item.depth < maxDepth) {
-          for (const link of links) {
+          for (const link of rawLinks) {
             const candidate = new URL(link.href);
             candidate.hash = "";
             if (sameOriginOnly && candidate.origin !== target.origin) continue;
@@ -186,9 +200,11 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
           }
         }
       } catch (error) {
-        errors.push(error instanceof Error ? error.message : String(error));
+        errors.push(
+          sanitizeExplorationError(error instanceof Error ? error.message : String(error)),
+        );
         pages.push({
-          url: item.url,
+          url: sanitizeExplorationUrl(item.url),
           title: "",
           depth: item.depth,
           headings: [],
@@ -224,15 +240,13 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
       new URL(entryPage.url).origin === target.origin &&
       /auth|login|sign-in|signin/i.test(new URL(entryPage.url).pathname)),
   );
-  const repository = options.repositoryPath
-    ? await inspectRepository(options.repositoryPath)
-    : undefined;
   const report: ExplorationReport = {
     version: 1,
+    evidenceVersion: 2,
     id: options.outputDirectory.split(/[\\/]/).pop() ?? "exploration",
     createdAt: new Date().toISOString(),
     target: {
-      baseUrl: target.href,
+      baseUrl: sanitizeExplorationUrl(target.href),
       ...(options.repositoryPath ? { repositoryPath: options.repositoryPath } : {}),
     },
     limits: { maxPages, maxDepth, sameOriginOnly },
@@ -244,7 +258,6 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
       evidence: [...new Set(authEvidence)],
       ...(options.authProfile ? { profile: options.authProfile } : {}),
     },
-    ...(repository ? { repository } : {}),
     pages,
     risks: [
       ...new Set(
@@ -256,11 +269,8 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
       ),
     ],
   };
-  await writeFile(
-    join(options.outputDirectory, "exploration.json"),
-    `${JSON.stringify(report, null, 2)}\n`,
-  );
-  await writeFile(join(options.outputDirectory, "summary.md"), explorationSummary(report));
+  await artifacts.writeJson("exploration.json", report);
+  await artifacts.writeText("summary.md", explorationSummary(report));
   return report;
 }
 
@@ -285,6 +295,8 @@ export function explorationSummary(report: ExplorationReport): string {
       `- Safe navigation links: ${page.links.filter((link) => link.sameOrigin).length}`,
       `- Forms present: ${page.hasForm ? "yes" : "no"}`,
       `- Screenshot: ${page.screenshotPath || "unavailable"}`,
+      `- Viewport screenshot: ${page.viewportScreenshotPath || "unavailable"}`,
+      `- ARIA snapshot: ${page.ariaSnapshotPath || "unavailable"}`,
       "",
     );
   }

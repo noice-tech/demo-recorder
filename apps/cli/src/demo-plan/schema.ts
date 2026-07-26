@@ -1,19 +1,7 @@
 import { z } from "zod";
+import { locatorMethodSchema } from "../browser/locator.js";
 
 const nonempty = z.string().trim().min(1);
-const locatorMethodSchema = z.discriminatedUnion("by", [
-  z.object({
-    by: z.literal("role"),
-    role: nonempty,
-    name: nonempty.optional(),
-    exact: z.boolean().optional(),
-  }),
-  z.object({ by: z.literal("text"), text: nonempty, exact: z.boolean().optional() }),
-  z.object({ by: z.literal("label"), label: nonempty, exact: z.boolean().optional() }),
-  z.object({ by: z.literal("placeholder"), placeholder: nonempty, exact: z.boolean().optional() }),
-  z.object({ by: z.literal("test-id"), testId: nonempty }),
-  z.object({ by: z.literal("css"), selector: nonempty }),
-]);
 
 export const locatorSchema = z.object({
   primary: locatorMethodSchema,

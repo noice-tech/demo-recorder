@@ -7,9 +7,11 @@ import {
   generateZoomSegments,
   loadRecordingManifest,
 } from "@noice-tech/demo-recorder-core";
+import { chromium } from "playwright";
 import { afterAll, describe, expect, it } from "vitest";
-import { recordDemoPlan } from "../src/capture/index.js";
+import { recordDemoPlan, resolvePlanLocator } from "../src/capture/index.js";
 import { parseDemoPlan } from "../src/demo-plan/index.js";
+import { rehearseDemoPlan } from "../src/rehearsal.js";
 import { startFixtureServer } from "./support/fixture-server.js";
 
 const fixtureDirectory = fileURLToPath(new URL("fixtures/example-app", import.meta.url));
@@ -66,6 +68,90 @@ describe.sequential("capture pipeline", () => {
     await fixture.close();
     await expect(fetch(`${fixture.baseUrl}/__ready`)).rejects.toThrow();
   });
+
+  it("rejects ambiguous capture locators and accepts a unique fallback", async () => {
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    try {
+      await page.setContent(
+        '<button id="primary">Open details</button><button>Open details</button>',
+      );
+      await expect(
+        resolvePlanLocator(page, {
+          primary: { by: "role", role: "button", name: "Open details", exact: true },
+        }),
+      ).rejects.toThrow("No unique plan locator matched");
+      const resolved = await resolvePlanLocator(page, {
+        primary: { by: "role", role: "button", name: "Open details", exact: true },
+        fallbacks: [{ by: "css", selector: "#primary" }],
+      });
+      expect(await resolved.getAttribute("id")).toBe("primary");
+    } finally {
+      await browser.close();
+    }
+  }, 20_000);
+
+  it("rehearses a plan without creating a video capture", async () => {
+    const outputDirectory = await temporaryDirectory("demo-recorder-rehearsal-");
+    const fixture = await startFixtureServer(fixtureDirectory);
+    try {
+      const report = await rehearseDemoPlan({
+        plan: examplePlan(fixture.baseUrl),
+        planPath: "demo-plan.json",
+        outputDirectory,
+        attempt: 1,
+        headless: true,
+      });
+      expect(report.status).toBe("passed");
+      expect(report.steps.every((step) => step.status === "passed")).toBe(true);
+      await expect(access(join(outputDirectory, report.artifacts.report))).resolves.toBeUndefined();
+      await expect(
+        access(join(outputDirectory, report.artifacts.trace ?? "missing")),
+      ).resolves.toBeUndefined();
+      await expect(
+        access(join(outputDirectory, report.artifacts.finalScreenshot ?? "missing")),
+      ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  }, 30_000);
+
+  it("writes bounded repair evidence for a failed rehearsal", async () => {
+    const outputDirectory = await temporaryDirectory("demo-recorder-rehearsal-failure-");
+    const fixture = await startFixtureServer(fixtureDirectory);
+    try {
+      const plan = parseDemoPlan({
+        version: 1,
+        name: "failed-rehearsal",
+        brief: { goal: "Exercise targeted rehearsal diagnostics" },
+        target: { baseUrl: fixture.baseUrl },
+        capture: {
+          steps: [
+            { type: "navigate", url: "/" },
+            {
+              type: "assert-visible",
+              locator: { primary: { by: "text", text: "Missing state", exact: true } },
+            },
+          ],
+        },
+      });
+      const report = await rehearseDemoPlan({
+        plan,
+        planPath: "failed.demo-plan.json",
+        outputDirectory,
+        attempt: 2,
+        headless: true,
+      });
+      expect(report.status).toBe("failed");
+      expect(report.failure).toMatchObject({ stepIndex: 2 });
+      expect(report.failure?.repairHints.length).toBeGreaterThan(0);
+      await expect(
+        access(join(outputDirectory, report.artifacts.failureSnapshot ?? "missing")),
+      ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  }, 30_000);
 
   it("executes a plan and records valid capture artifacts", async () => {
     const parent = await temporaryDirectory("demo-recorder-plan-recording-");

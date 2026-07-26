@@ -44,7 +44,12 @@ const packs = JSON.parse(packOutput) as Array<{
 const packed = packs[0];
 if (!packed) throw new Error("npm pack did not return a package");
 const included = new Set(packed.files.map((file) => file.path));
-for (const required of ["dist/cli.js", "dist/auth-daemon.js", "assets/remotion/index.html"]) {
+for (const required of [
+  "dist/cli.js",
+  "dist/auth-daemon.js",
+  "dist/exploration-daemon.js",
+  "assets/remotion/index.html",
+]) {
   if (!included.has(required)) throw new Error(`Packed package is missing ${required}`);
 }
 const forbiddenPackagePaths = [
@@ -83,12 +88,150 @@ try {
   const setupText = await runNpm(["exec", "--", "demo-recorder", "setup", "--json"], workspace);
   const setup = JSON.parse(setupText) as { status?: string };
   if (setup.status !== "ready") throw new Error(`Packaged setup status: ${setup.status}`);
-  await runNpm(["exec", "--", "demo-recorder", "inspect-repo", "--repo", "."], workspace);
-  const repositoryReport = await stat(join(workspace, ".demo-recorder/repository.json"));
-  if (repositoryReport.size === 0) throw new Error("Packaged repository report is empty");
-
   const fixture = await startFixtureServer(fixtureDirectory);
   try {
+    const explorationStartText = await runNpm(
+      [
+        "exec",
+        "--",
+        "demo-recorder",
+        "explore",
+        "start",
+        "--url",
+        fixture.baseUrl,
+        "--session",
+        "package-smoke",
+        "--policy",
+        "reversible",
+        "--json",
+      ],
+      workspace,
+    );
+    const explorationStart = JSON.parse(explorationStartText) as {
+      ok?: boolean;
+      observation?: { id?: string };
+    };
+    if (!explorationStart.ok || explorationStart.observation?.id !== "obs-0001")
+      throw new Error("Packaged interactive exploration did not start correctly");
+    const explorationObserveText = await runNpm(
+      ["exec", "--", "demo-recorder", "explore", "observe", "package-smoke", "--json"],
+      workspace,
+    );
+    const explorationObserve = JSON.parse(explorationObserveText) as {
+      observation?: {
+        id?: string;
+        interactiveElements?: Array<{ ref?: string; name?: string }>;
+      };
+    };
+    if (explorationObserve.observation?.id !== "obs-0002")
+      throw new Error("Packaged interactive exploration did not preserve its browser session");
+    const createProject = explorationObserve.observation.interactiveElements?.find(
+      (element) => element.name === "Create project",
+    );
+    await writeFile(
+      join(workspace, "exploration-action.json"),
+      `${JSON.stringify({
+        type: "click",
+        observationId: explorationObserve.observation.id,
+        ref: createProject?.ref,
+      })}\n`,
+    );
+    const explorationActionText = await runNpm(
+      [
+        "exec",
+        "--",
+        "demo-recorder",
+        "explore",
+        "act",
+        "package-smoke",
+        "--input",
+        "exploration-action.json",
+        "--json",
+      ],
+      workspace,
+    );
+    const explorationAction = JSON.parse(explorationActionText) as {
+      transition?: { id?: string; status?: string };
+    };
+    if (explorationAction.transition?.status !== "succeeded")
+      throw new Error("Packaged interactive exploration action did not succeed");
+    await writeFile(
+      join(workspace, "verification-path.json"),
+      `${JSON.stringify({
+        version: 1,
+        transitionIds: [explorationAction.transition.id],
+      })}\n`,
+    );
+    const verificationText = await runNpm(
+      [
+        "exec",
+        "--",
+        "demo-recorder",
+        "explore",
+        "verify",
+        "package-smoke",
+        "--input",
+        "verification-path.json",
+        "--json",
+      ],
+      workspace,
+    );
+    const verification = JSON.parse(verificationText) as {
+      verification?: { id?: string; status?: string };
+    };
+    if (verification.verification?.status !== "passed")
+      throw new Error("Packaged exploration path verification did not pass");
+    await writeFile(
+      join(workspace, "draft-request.json"),
+      `${JSON.stringify({
+        version: 1,
+        verificationId: verification.verification.id,
+        name: "verified-package-smoke",
+        goal: "Replay the verified packaged exploration path",
+      })}\n`,
+    );
+    await runNpm(
+      [
+        "exec",
+        "--",
+        "demo-recorder",
+        "explore",
+        "export-plan",
+        "package-smoke",
+        "--input",
+        "draft-request.json",
+        "--output",
+        "verified-demo-plan.json",
+        "--json",
+      ],
+      workspace,
+    );
+    await runNpm(
+      ["exec", "--", "demo-recorder", "plan", "validate", "verified-demo-plan.json"],
+      workspace,
+    );
+    const rehearsalText = await runNpm(
+      [
+        "exec",
+        "--",
+        "demo-recorder",
+        "plan",
+        "rehearse",
+        "verified-demo-plan.json",
+        "--output",
+        "verified-rehearsal",
+        "--json",
+      ],
+      workspace,
+    );
+    const rehearsal = JSON.parse(rehearsalText) as { report?: { status?: string } };
+    if (rehearsal.report?.status !== "passed")
+      throw new Error("Packaged verified-plan rehearsal did not pass");
+    await runNpm(
+      ["exec", "--", "demo-recorder", "explore", "finish", "package-smoke", "--json"],
+      workspace,
+    );
+
     await writeFile(
       join(workspace, "demo-plan.json"),
       `${JSON.stringify(

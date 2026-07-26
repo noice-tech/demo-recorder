@@ -22,15 +22,19 @@ User brief → Coding agent + skill
 
 ## 2. Explorer
 
-`apps/cli/src/explorer` owns bounded Playwright exploration, screenshots, page/control summaries, authentication detection, generic repository facts, managed local app processes, and local auth profiles.
+`apps/cli/src/explorer` owns bounded Playwright exploration, persistent agent-directed browser sessions, ARIA snapshots, screenshots, observation-scoped control refs, conservative state/transition graphs, managed local app processes, and local auth profiles.
 
-Exploration is same-origin and read-only by default. Ordinary links are followed directly; form submission and ambiguous/destructive controls are excluded. Repository reports include environment-variable names but never secret values.
+The one-shot mapper follows ordinary links. Persistent sessions expose an `observe → one bounded action → observe` protocol so an agent can inspect tabs, menus, dialogs, drawers, and other same-URL state. Every accepted action records policy, an explicit semantic diff, and before/after evidence in append-only journals and an atomically materialized graph. Temporary refs are valid only for their observation; durable role/test-ID/text/CSS target recipes are stored with transitions.
+
+An agent can select a connected sequence of successful transition IDs and invoke `explore verify`. Verification starts a fresh authenticated context, reproduces the initial state, resolves each durable candidate only when it uniquely identifies a visible element, replays the bounded action, and checks the expected semantic fingerprint and sanitized URL. Reports, step screenshots, and a separate Playwright trace remain exploration evidence; verification does not improvise or reuse temporary refs. Main-frame locators pierce open shadow roots through Playwright's public locator behavior. Cross-origin and child-frame controls are intentionally not assigned main-frame refs in this version; agents can observe the iframe boundary but must treat frame-specific interaction as unsupported rather than guessing.
+
+Exploration is same-origin and uses a conservative `read-only` policy by default. Destructive, external-side-effect, form, and unknown controls are blocked; an explicit `reversible` profile can permit mutation-like controls in disposable environments. These are runtime guardrails rather than a guarantee that arbitrary application code has no server-side effects.
 
 ## 3. Planner protocol
 
-`apps/cli/src/demo-plan` owns the versioned `DemoBrief`, locator, action, presentation, and `DemoPlan` schemas. It validates origin and safety constraints, estimates duration, and renders storyboards. It contains no semantic model: the coding agent authors the plan.
+`apps/cli/src/demo-plan` owns the versioned `DemoBrief`, locator, action, presentation, and `DemoPlan` schemas. It validates origin and safety constraints, estimates duration, and renders storyboards. A passing verified path can be exported as a draft plan using the locator candidate proven during replay and ordinary URL/visibility assertions as postconditions. It contains no semantic model: the coding agent remains responsible for editorial planning.
 
-Declarative JSON is the default execution format because it is inspectable, schema validated, portable, and safer than arbitrary generated code.
+`plan rehearse` executes the deterministic plan without video capture and produces bounded failure evidence for up to three agent-directed repair attempts. Final recording contains no explorer or repair fallback. Declarative JSON is the default execution format because it is inspectable, schema validated, portable, and safer than arbitrary generated code.
 
 ## 4. Target environments
 
@@ -44,7 +48,7 @@ A detached loopback auth session opens headed Chromium while returning conversat
 
 `apps/cli/src/capture` owns Chromium video capture, the shared relative clock, interaction instrumentation, plan locator resolution, plan execution, media inspection, and finalization. Instrumented navigation, movement, click, fill, key, selection, scroll, visibility, URL, and hold actions execute a validated plan.
 
-The recorder executes validated plan actions through instrumented Playwright helpers so cursor and semantic metadata remain synchronized. Incomplete recording directories are removed on failure.
+The recorder executes validated plan actions through instrumented Playwright helpers so cursor and semantic metadata remain synchronized. Locator candidates must resolve to exactly one element; ambiguous matches are errors rather than implicit first-element selection. Incomplete recording directories are removed on failure.
 
 ## 7. Recording format
 

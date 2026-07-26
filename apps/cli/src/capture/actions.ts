@@ -26,6 +26,7 @@ type ResolvedTarget = {
 
 async function resolveTarget(locator: Locator): Promise<ResolvedTarget> {
   await locator.waitFor({ state: "visible" });
+  await locator.scrollIntoViewIfNeeded();
   const bounds = await locator.boundingBox();
   if (!bounds) throw new Error("Interaction target has no visible bounding box");
 

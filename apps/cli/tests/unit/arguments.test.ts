@@ -49,6 +49,8 @@ describe("CLI argument parsing", () => {
       { command: "setup", option: "json" },
       { command: "explore", option: "headed" },
       { command: "explore", option: "allow-cross-origin" },
+      { command: "plan", option: "headed" },
+      { command: "plan", option: "json" },
       { command: "record", option: "headed" },
       { command: "run", option: "headed" },
     ];
@@ -64,7 +66,6 @@ describe("CLI argument parsing", () => {
       "doctor",
       "setup",
       "explore",
-      "inspect-repo",
       "inspect",
       "plan",
       "auth",
