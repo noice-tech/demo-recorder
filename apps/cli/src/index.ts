@@ -4,7 +4,13 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { authCommand } from "./auth.js";
-import { numberOption, parseArguments, stringOption, type OptionDefinitions } from "./arguments.js";
+import {
+  numberOption,
+  parseArguments,
+  stringOption,
+  type OptionDefinitions,
+  type ParsedArguments,
+} from "./arguments.js";
 import { doctorCommand, setupCommand } from "./environment.js";
 import { exploreCommand } from "./explore.js";
 import { inspectVideoCommand } from "./inspect-video.js";
@@ -119,6 +125,48 @@ async function runPlanCommand(parsed: ReturnType<typeof parseArguments>): Promis
     );
 }
 
+type CommandHandler = (parsed: ParsedArguments) => unknown | Promise<unknown>;
+
+function runAuthCommand(parsed: ParsedArguments): Promise<void> {
+  const [operation, ...positionals] = parsed.positionals;
+  return authCommand(operation, { ...parsed, positionals });
+}
+
+function runRecordCommand(parsed: ParsedArguments): Promise<unknown> {
+  const plan = stringOption(parsed, "plan");
+  if (!plan) throw new Error(`Missing --plan for record\n${usage()}`);
+  return recordPlan(plan, { headless: !parsed.options.has("headed") });
+}
+
+const commandHandlers = new Map<string, CommandHandler>([
+  ["doctor", doctorCommand],
+  ["setup", setupCommand],
+  ["explore", (parsed) => exploreCommand(parsed)],
+  [
+    "inspect",
+    (parsed) => inspectVideoCommand(requireArgument(parsed.positionals[0], "inspect"), parsed),
+  ],
+  ["plan", runPlanCommand],
+  ["auth", runAuthCommand],
+  ["record", runRecordCommand],
+  [
+    "run",
+    (parsed) =>
+      runPlan(requireArgument(parsed.positionals[0], "run"), {
+        headless: !parsed.options.has("headed"),
+      }),
+  ],
+  ["render", (parsed) => renderRecording(requireArgument(parsed.positionals[0], "render"))],
+  [
+    "create",
+    () => {
+      throw new Error(
+        "`create` is an agent workflow, not an embedded model command. Ask your coding agent to load the demo-video skill, explore the target, write a plan, and run it.",
+      );
+    },
+  ],
+]);
+
 export async function runCli(arguments_: string[]): Promise<void> {
   const [command, ...rest] = arguments_;
   if (["--help", "-h", "help"].includes(command ?? "")) {
@@ -129,36 +177,13 @@ export async function runCli(arguments_: string[]): Promise<void> {
     console.log(cliVersion);
     return;
   }
-  const parsed = parseArguments(rest, commandOptions[command ?? ""] ?? {});
-  if (command === "doctor") return doctorCommand(parsed);
-  if (command === "setup") return setupCommand(parsed);
-  if (command === "explore") return void (await exploreCommand(parsed));
-  if (command === "inspect") {
-    return inspectVideoCommand(requireArgument(parsed.positionals[0], command), parsed);
-  }
-  if (command === "plan") return runPlanCommand(parsed);
-  if (command === "auth") {
-    const [operation, ...positionals] = parsed.positionals;
-    return authCommand(operation, { ...parsed, positionals });
-  }
-  if (command === "record") {
-    const plan = stringOption(parsed, "plan");
-    if (!plan) throw new Error(`Missing --plan for record\n${usage()}`);
-    return void (await recordPlan(plan, { headless: !parsed.options.has("headed") }));
-  }
-  if (command === "run") {
-    return void (await runPlan(requireArgument(parsed.positionals[0], command), {
-      headless: !parsed.options.has("headed"),
-    }));
-  }
-  if (command === "render")
-    return void (await renderRecording(requireArgument(parsed.positionals[0], command)));
-  if (command === "create") {
-    throw new Error(
-      "`create` is an agent workflow, not an embedded model command. Ask your coding agent to load the demo-video skill, explore the target, write a plan, and run it.",
-    );
-  }
-  throw new Error(`${command ? `Unknown command: ${command}` : "Missing command"}\n${usage()}`);
+
+  const commandName = command ?? "";
+  const parsed = parseArguments(rest, commandOptions[commandName] ?? {});
+  const handler = commandHandlers.get(commandName);
+  if (!handler)
+    throw new Error(`${command ? `Unknown command: ${command}` : "Missing command"}\n${usage()}`);
+  await handler(parsed);
 }
 
 function isMainModule(): boolean {

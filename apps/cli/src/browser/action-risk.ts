@@ -1,3 +1,9 @@
+const formControlTags = new Set(["INPUT", "TEXTAREA", "SELECT"]);
+
+export function isFormControl(tagName: string, inputType?: string): boolean {
+  return formControlTags.has(tagName) || inputType === "submit";
+}
+
 export const destructiveActionPattern =
   /\b(delete|remove|erase|destroy|purchase|buy|pay|publish|send|invite|deploy|merge|revoke|reset|cancel subscription|confirm order|place order|sign out|log out)\b/i;
 

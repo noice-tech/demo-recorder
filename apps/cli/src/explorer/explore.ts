@@ -1,6 +1,10 @@
 import { relative } from "node:path";
 import { chromium } from "playwright";
-import { destructiveActionPattern, navigationActionPattern } from "../browser/action-risk.js";
+import {
+  destructiveActionPattern,
+  isFormControl,
+  navigationActionPattern,
+} from "../browser/action-risk.js";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
 import { collectInteractiveTargets } from "./interactive-targets.js";
 import { capturePageSemanticEvidence } from "./page-observation.js";
@@ -15,19 +19,43 @@ import type {
 
 const captchaPattern = /captcha|recaptcha|hcaptcha|challenge-platform|cf-turnstile/i;
 const authPattern = /\b(login|log in|sign in|signin|authenticate|password|oauth|unauthorized)\b/i;
+const presentationalControlPattern = /accordion|carousel|expand|collapse/i;
+const presentationalRoles = new Set(["tab", "menuitem"]);
 
-function classifyControl(
-  role: string,
-  name: string,
-  tag: string,
-  type: string,
-): ExploredControl["classification"] {
-  if (destructiveActionPattern.test(name)) return "destructive";
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || type === "submit") return "form";
-  if (role === "link" || navigationActionPattern.test(name)) return "navigation";
-  if (["tab", "menuitem"].includes(role) || /accordion|carousel|expand|collapse/i.test(name))
-    return "presentational";
-  return "ambiguous";
+type ControlClassificationInput = {
+  role: string;
+  name: string;
+  tag: string;
+  type: string;
+};
+
+const controlClassificationRules: Array<{
+  classification: Exclude<ExploredControl["classification"], "ambiguous">;
+  matches: (control: ControlClassificationInput) => boolean;
+}> = [
+  {
+    classification: "destructive",
+    matches: ({ name }) => destructiveActionPattern.test(name),
+  },
+  {
+    classification: "form",
+    matches: ({ tag, type }) => isFormControl(tag, type),
+  },
+  {
+    classification: "navigation",
+    matches: ({ role, name }) => role === "link" || navigationActionPattern.test(name),
+  },
+  {
+    classification: "presentational",
+    matches: ({ role, name }) =>
+      presentationalRoles.has(role) || presentationalControlPattern.test(name),
+  },
+];
+
+function classifyControl(control: ControlClassificationInput): ExploredControl["classification"] {
+  return (
+    controlClassificationRules.find((rule) => rule.matches(control))?.classification ?? "ambiguous"
+  );
 }
 
 function safeName(value: string): string {
@@ -130,12 +158,12 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
           .map((element) => ({
             role: element.role ?? element.tagName.toLowerCase(),
             name: element.name,
-            classification: classifyControl(
-              element.role ?? "control",
-              element.name,
-              element.tagName,
-              element.inputType ?? "",
-            ),
+            classification: classifyControl({
+              role: element.role ?? "control",
+              name: element.name,
+              tag: element.tagName,
+              type: element.inputType ?? "",
+            }),
           }));
         const captchaIndicators = [
           ...new Set(

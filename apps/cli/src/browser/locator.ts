@@ -20,18 +20,23 @@ export const locatorMethodSchema = z.discriminatedUnion("by", [
 export type LocatorMethod = z.infer<typeof locatorMethodSchema>;
 
 export function locatorForMethod(page: Page, method: LocatorMethod): Locator {
-  if (method.by === "role") {
-    return page.getByRole(method.role as Parameters<Page["getByRole"]>[0], {
-      ...(method.name === undefined ? {} : { name: method.name }),
-      ...(method.exact === undefined ? {} : { exact: method.exact }),
-    });
+  switch (method.by) {
+    case "role":
+      return page.getByRole(method.role as Parameters<Page["getByRole"]>[0], {
+        ...(method.name === undefined ? {} : { name: method.name }),
+        ...(method.exact === undefined ? {} : { exact: method.exact }),
+      });
+    case "text":
+      return page.getByText(method.text, { exact: method.exact ?? false });
+    case "label":
+      return page.getByLabel(method.label, { exact: method.exact ?? false });
+    case "placeholder":
+      return page.getByPlaceholder(method.placeholder, { exact: method.exact ?? false });
+    case "test-id":
+      return page.getByTestId(method.testId);
+    case "css":
+      return page.locator(method.selector);
   }
-  if (method.by === "text") return page.getByText(method.text, { exact: method.exact ?? false });
-  if (method.by === "label") return page.getByLabel(method.label, { exact: method.exact ?? false });
-  if (method.by === "placeholder")
-    return page.getByPlaceholder(method.placeholder, { exact: method.exact ?? false });
-  if (method.by === "test-id") return page.getByTestId(method.testId);
-  return page.locator(method.selector);
 }
 
 export async function resolveUniqueLocator(
