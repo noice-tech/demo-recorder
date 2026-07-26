@@ -62,20 +62,20 @@ The renderer uses automatic click zooms unless a validated presentation file pro
 
 ## 9. Composition
 
-`apps/remotion` is the only React application. `ProductDemo` renders the browser frame, source WebM, synthetic cursor, click feedback, and one shared camera transform. Video and overlays use core's coordinate projection.
+`packages/ffmpeg-renderer` builds a single FFmpeg filter graph for the browser frame, source WebM, synthetic cursor, click feedback, bundled Inter title, and shared camera transform. Timed overlays are generated from frame-sampled core timeline data and transformed with the video.
 
 ## 10. Renderer
 
-`apps/cli/src/renderer` validates recording and presentation paths, serves the original WebM through an exact loopback URL, loads the packaged prebuilt Remotion composition, and renders H.264 MP4 with Playwright's Chromium executable. It never changes source media and cleans servers and partial output on failure.
+`apps/cli/src/renderer` validates recording and presentation paths, prepares immutable capture inputs, and delegates to the FFmpeg renderer. The renderer probes user-installed FFmpeg and ffprobe capabilities, invokes `libx264` directly, reports progress, and removes partial output after failures or interruption. It never changes source media or starts a media server.
 
 ## Dependency direction
 
 ```text
-core ← cli capture + renderer
-core ← remotion
+core ← cli capture + ffmpeg renderer
+ffmpeg renderer ← cli renderer
 demo-plan ← cli capture + renderer
 explorer + capture + renderer ← CLI commands
 agent skill → CLI commands
 ```
 
-`packages/core` is the only private implementation package and has no Playwright, React, or Remotion dependency. Node-only exploration, planning, capture, and rendering remain separate source modules inside `apps/cli` rather than separate workspaces. React remains confined to `apps/remotion`.
+`packages/core` contains framework-independent contracts and pure timeline logic. `packages/ffmpeg-renderer` is the private media implementation package and depends on core, while Node-only exploration, planning, capture, and orchestration remain source modules inside `apps/cli`. Rendering has no browser or React dependency.

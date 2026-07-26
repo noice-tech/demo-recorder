@@ -15,8 +15,6 @@
     "test:package": "pnpm package:cli && tsx scripts/package-smoke.ts",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test",
     "clean": "tsx scripts/clean.ts",
-    "studio": "pnpm --filter @noice-tech/demo-recorder-remotion studio",
-    "studio:recording": "tsx scripts/studio-recording.ts",
     "package:cli": "turbo run package --filter=@noice-tech/demo-recorder",
     "demo-recorder": "pnpm --filter @noice-tech/demo-recorder exec tsx src/index.ts",
     "demo:explore": "pnpm demo-recorder explore",

@@ -31,6 +31,10 @@ if (bundle.includes("@noice-tech/demo-recorder-")) {
 if (bundle.includes("@remotion/")) {
   throw new Error("Distribution bundle still contains a Remotion import");
 }
+const packagedNotice = await readFile(join(cliRoot, "THIRD_PARTY_NOTICES.md"), "utf8");
+if (/remotion/i.test(packagedNotice)) {
+  throw new Error("Packaged third-party notices still reference the legacy renderer");
+}
 
 const packOutput = await runNpm(["pack", "--ignore-scripts", "--json"], cliRoot);
 const packs = JSON.parse(packOutput) as Array<{
@@ -62,7 +66,9 @@ const forbiddenPackagePaths = [
   "assets/remotion/",
 ];
 if ([...included].some((path) => forbiddenPackagePaths.some((prefix) => path.startsWith(prefix)))) {
-  throw new Error("Packed package contains generated state, tests, fixtures, or Studio media");
+  throw new Error(
+    "Packed package contains generated state, tests, fixtures, or legacy renderer assets",
+  );
 }
 
 const tarball = resolve(cliRoot, packed.filename);

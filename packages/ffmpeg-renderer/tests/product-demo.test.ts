@@ -39,7 +39,7 @@ const input: ProductDemoRenderInput = {
 };
 
 describe("product demo graph generation", () => {
-  it("uses the Remotion-compatible ceil frame count and one-process graph", () => {
+  it("uses the established ceil frame count and one-process graph", () => {
     const graph = buildProductDemoFilterGraph(input);
     expect(graph.frameCount).toBe(45);
     expect(graph.durationMs).toBe(1500);
