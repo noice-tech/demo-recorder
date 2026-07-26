@@ -3,6 +3,7 @@ import { locatorMethodSchema } from "../browser/locator.js";
 
 const nonempty = z.string().trim().min(1);
 
+// Launch-time configuration shared by the CLI client and detached session daemon.
 export const explorationPolicySchema = z.enum(["read-only", "reversible"]);
 export type ExplorationPolicyName = z.infer<typeof explorationPolicySchema>;
 
@@ -33,6 +34,8 @@ export const explorationLocatorMethodSchema = locatorMethodSchema;
 
 export type ExplorationLocatorMethod = z.infer<typeof explorationLocatorMethodSchema>;
 
+// Durable evidence recorded for each observed control. Refs are session-local; locator recipes
+// are persisted so verification and plan export can replay the interaction later.
 export const explorationTargetRecipeSchema = z.object({
   description: nonempty,
   candidates: z.array(explorationLocatorMethodSchema).min(1).max(5),
@@ -94,6 +97,7 @@ export const explorationObservationSchema = z.object({
 });
 export type ExplorationObservation = z.infer<typeof explorationObservationSchema>;
 
+// Commands accepted by the interactive session API.
 export const explorationActionSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("click"),
@@ -220,6 +224,7 @@ export const explorationGraphSchema = z.object({
 });
 export type ExplorationGraph = z.infer<typeof explorationGraphSchema>;
 
+// Fresh-context replay contracts. A successful report is the prerequisite for plan export.
 export const explorationVerificationRequestSchema = z.object({
   version: z.literal(1),
   transitionIds: z
@@ -284,6 +289,7 @@ export const explorationDraftPlanRequestSchema = z.object({
 });
 export type ExplorationDraftPlanRequest = z.infer<typeof explorationDraftPlanRequestSchema>;
 
+// Small status documents used for daemon discovery and CLI polling.
 export const explorationSessionReportSchema = z.object({
   schemaVersion: z.literal(2),
   id: nonempty,

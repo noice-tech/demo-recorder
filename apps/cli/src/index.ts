@@ -94,6 +94,38 @@ function formatError(error: unknown): string {
   return messages.join("\n  caused by: ");
 }
 
+async function runPlanCommand(parsed: ReturnType<typeof parseArguments>): Promise<void> {
+  const [operation, path] = parsed.positionals;
+  if (operation === "validate") return validatePlanCommand(requireArgument(path, "plan validate"));
+  if (operation === "show") return showPlanCommand(requireArgument(path, "plan show"));
+  if (operation !== "rehearse")
+    throw new Error(`Unknown plan operation: ${operation ?? "missing"}\n${usage()}`);
+
+  const rehearsalOutput = stringOption(parsed, "output");
+  const result = await rehearsePlanFile({
+    planArgument: requireArgument(path, "plan rehearse"),
+    ...(rehearsalOutput ? { outputDirectory: rehearsalOutput } : {}),
+    attempt: numberOption(parsed, "attempt", 1),
+    headless: !parsed.options.has("headed"),
+  });
+  if (parsed.options.has("json")) {
+    console.log(JSON.stringify({ ok: result.report.status === "passed", ...result }, null, 2));
+  } else {
+    console.log(`[demo-recorder] Rehearsal ${result.report.status}: ${result.report.planName}`);
+    console.log(
+      `[demo-recorder] Report: ${resolve(result.outputDirectory, result.report.artifacts.report)}`,
+    );
+    if (result.report.failure)
+      console.log(
+        `[demo-recorder] Failed at step ${result.report.failure.stepIndex}: ${result.report.failure.error}`,
+      );
+  }
+  if (result.report.status === "failed")
+    throw new Error(
+      `Plan rehearsal failed at step ${result.report.failure?.stepIndex ?? "unknown"}`,
+    );
+}
+
 export async function runCli(arguments_: string[]): Promise<void> {
   const [command, ...rest] = arguments_;
   if (["--help", "-h", "help"].includes(command ?? "")) {
@@ -112,39 +144,7 @@ export async function runCli(arguments_: string[]): Promise<void> {
   if (command === "inspect") {
     return inspectVideoCommand(requireArgument(parsed.positionals[0], command), parsed);
   }
-  if (command === "plan") {
-    const [operation, path] = parsed.positionals;
-    if (operation === "validate")
-      return validatePlanCommand(requireArgument(path, "plan validate"));
-    if (operation === "show") return showPlanCommand(requireArgument(path, "plan show"));
-    if (operation === "rehearse") {
-      const rehearsalOutput = stringOption(parsed, "output");
-      const result = await rehearsePlanFile({
-        planArgument: requireArgument(path, "plan rehearse"),
-        ...(rehearsalOutput ? { outputDirectory: rehearsalOutput } : {}),
-        attempt: numberOption(parsed, "attempt", 1),
-        headless: !parsed.options.has("headed"),
-      });
-      if (parsed.options.has("json"))
-        console.log(JSON.stringify({ ok: result.report.status === "passed", ...result }, null, 2));
-      else {
-        console.log(`[demo-recorder] Rehearsal ${result.report.status}: ${result.report.planName}`);
-        console.log(
-          `[demo-recorder] Report: ${resolve(result.outputDirectory, result.report.artifacts.report)}`,
-        );
-        if (result.report.failure)
-          console.log(
-            `[demo-recorder] Failed at step ${result.report.failure.stepIndex}: ${result.report.failure.error}`,
-          );
-      }
-      if (result.report.status === "failed")
-        throw new Error(
-          `Plan rehearsal failed at step ${result.report.failure?.stepIndex ?? "unknown"}`,
-        );
-      return;
-    }
-    throw new Error(`Unknown plan operation: ${operation ?? "missing"}\n${usage()}`);
-  }
+  if (command === "plan") return runPlanCommand(parsed);
   if (command === "auth") {
     const [operation, ...positionals] = parsed.positionals;
     return authCommand(operation, { ...parsed, positionals });

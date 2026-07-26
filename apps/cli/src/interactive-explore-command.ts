@@ -157,114 +157,171 @@ async function startCommand(arguments_: ParsedArguments): Promise<string> {
   return outputDirectory;
 }
 
+type SessionOperation = Exclude<InteractiveExploreOperation, "start">;
+
+type SessionCommandContext = {
+  arguments: ParsedArguments;
+  id: string;
+  outputDirectory: string;
+};
+
+type SessionCommandHandler = (context: SessionCommandContext) => Promise<string>;
+
+async function readRequiredJson(
+  arguments_: ParsedArguments,
+  operation: string,
+  expectedFile: string,
+): Promise<unknown> {
+  const inputPath = stringOption(arguments_, "input");
+  if (!inputPath) throw new Error(`explore ${operation} requires --input <${expectedFile}>`);
+  return JSON.parse(await readFile(resolveWorkingPath(inputPath), "utf8")) as unknown;
+}
+
+async function observeCommand(context: SessionCommandContext): Promise<string> {
+  const observation = await observeInteractiveSession(sessionRoot, context.id);
+  printJsonOrHuman(
+    context.arguments,
+    {
+      ok: true,
+      sessionId: context.id,
+      outputDirectory: context.outputDirectory,
+      observation,
+    },
+    [`[demo-recorder] Output: ${context.outputDirectory}`, ...observationLines(observation)],
+  );
+  return observation.artifacts.observation;
+}
+
+async function findCommand(context: SessionCommandContext): Promise<string> {
+  const text = stringOption(context.arguments, "text");
+  const regex = stringOption(context.arguments, "regex");
+  const result = await findInInteractiveSession(sessionRoot, context.id, {
+    ...(text ? { text } : {}),
+    ...(regex ? { regex } : {}),
+  });
+  const lines = result.matches.map(
+    (match) =>
+      `${match.ref ? `[${match.ref}] ` : ""}${match.role ?? match.kind} ${JSON.stringify(match.text)}${match.risk ? ` — ${match.risk}` : ""}`,
+  );
+  printJsonOrHuman(
+    context.arguments,
+    { ok: true, sessionId: context.id, outputDirectory: context.outputDirectory, result },
+    lines.length > 0 ? lines : ["No matches in the current observation"],
+  );
+  return context.id;
+}
+
+async function exportPlanCommand(context: SessionCommandContext): Promise<string> {
+  const request = explorationDraftPlanRequestSchema.parse(
+    await readRequiredJson(context.arguments, "export-plan", "draft-request.json"),
+  );
+  const plan = await exportInteractiveSessionPlan(sessionRoot, context.id, request);
+  const planPath = resolveWorkingPath(
+    stringOption(context.arguments, "output") ??
+      join(context.outputDirectory, "draft-plans", `${request.name}.demo-plan.json`),
+  );
+  await mkdir(dirname(planPath), { recursive: true });
+  await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`);
+  printJsonOrHuman(
+    context.arguments,
+    { ok: true, sessionId: context.id, outputDirectory: context.outputDirectory, planPath, plan },
+    [
+      `[demo-recorder] Verified draft plan saved: ${planPath}`,
+      `[demo-recorder] Steps: ${plan.capture.steps.length}`,
+    ],
+  );
+  return planPath;
+}
+
+async function verifyCommand(context: SessionCommandContext): Promise<string> {
+  const request = explorationVerificationRequestSchema.parse(
+    await readRequiredJson(context.arguments, "verify", "path.json"),
+  );
+  const verification = await verifyInteractiveSession(sessionRoot, context.id, request);
+  printJsonOrHuman(
+    context.arguments,
+    {
+      ok: verification.status === "passed",
+      sessionId: context.id,
+      outputDirectory: context.outputDirectory,
+      verification,
+    },
+    verificationLines(verification),
+  );
+  if (verification.status !== "passed")
+    throw new Error(verification.error ?? `Verification failed: ${verification.id}`);
+  return verification.artifacts.report;
+}
+
+async function actCommand(context: SessionCommandContext): Promise<string> {
+  const action = explorationActionSchema.parse(
+    await readRequiredJson(context.arguments, "act", "action.json"),
+  );
+  const transition = await actInInteractiveSession(sessionRoot, context.id, action);
+  printJsonOrHuman(
+    context.arguments,
+    {
+      ok: true,
+      sessionId: context.id,
+      outputDirectory: context.outputDirectory,
+      transition,
+    },
+    transitionLines(transition),
+  );
+  return context.id;
+}
+
+async function finishCommand(context: SessionCommandContext, abort: boolean): Promise<string> {
+  const report = await finishInteractiveSession(sessionRoot, context.id, abort);
+  printJsonOrHuman(
+    context.arguments,
+    { ok: true, sessionId: context.id, outputDirectory: context.outputDirectory, report },
+    reportLines(report),
+  );
+  return context.id;
+}
+
+async function statusCommand(context: SessionCommandContext): Promise<string> {
+  const report = await interactiveSessionStatus(sessionRoot, context.id);
+  printJsonOrHuman(
+    context.arguments,
+    { ok: true, sessionId: context.id, outputDirectory: context.outputDirectory, report },
+    reportLines(report),
+  );
+  return context.id;
+}
+
+const sessionCommandHandlers: Record<SessionOperation, SessionCommandHandler> = {
+  observe: observeCommand,
+  find: findCommand,
+  act: actCommand,
+  verify: verifyCommand,
+  "export-plan": exportPlanCommand,
+  finish: (context) => finishCommand(context, false),
+  abort: (context) => finishCommand(context, true),
+  status: statusCommand,
+};
+
+async function listSessionsCommand(arguments_: ParsedArguments): Promise<string> {
+  const sessions = await listInteractiveSessions(sessionRoot);
+  printJsonOrHuman(
+    arguments_,
+    { ok: true, sessions },
+    sessions.length > 0 ? sessions : ["No active exploration sessions"],
+  );
+  return sessionRoot;
+}
+
 export async function interactiveExploreCommand(
   operation: InteractiveExploreOperation,
   arguments_: ParsedArguments,
 ): Promise<string> {
   if (operation === "start") return startCommand(arguments_);
-  const id = stringOption(arguments_, "session") ?? arguments_.positionals[1];
-  if (operation === "status" && !id) {
-    const sessions = await listInteractiveSessions(sessionRoot);
-    printJsonOrHuman(
-      arguments_,
-      { ok: true, sessions },
-      sessions.length > 0 ? sessions : ["No active exploration sessions"],
-    );
-    return sessionRoot;
-  }
-  if (!id) throw new Error(`explore ${operation} requires a session ID`);
-  const outputDirectory = await interactiveSessionDirectory(sessionRoot, id);
 
-  if (operation === "observe") {
-    const observation = await observeInteractiveSession(sessionRoot, id);
-    printJsonOrHuman(arguments_, { ok: true, sessionId: id, outputDirectory, observation }, [
-      `[demo-recorder] Output: ${outputDirectory}`,
-      ...observationLines(observation),
-    ]);
-    return observation.artifacts.observation;
-  }
-  if (operation === "find") {
-    const text = stringOption(arguments_, "text");
-    const regex = stringOption(arguments_, "regex");
-    const result = await findInInteractiveSession(sessionRoot, id, {
-      ...(text ? { text } : {}),
-      ...(regex ? { regex } : {}),
-    });
-    printJsonOrHuman(
-      arguments_,
-      { ok: true, sessionId: id, outputDirectory, result },
-      result.matches.length > 0
-        ? result.matches.map(
-            (match) =>
-              `${match.ref ? `[${match.ref}] ` : ""}${match.role ?? match.kind} ${JSON.stringify(match.text)}${match.risk ? ` — ${match.risk}` : ""}`,
-          )
-        : ["No matches in the current observation"],
-    );
-    return id;
-  }
-  if (operation === "export-plan") {
-    const inputPath = stringOption(arguments_, "input");
-    if (!inputPath) throw new Error("explore export-plan requires --input <draft-request.json>");
-    const request = explorationDraftPlanRequestSchema.parse(
-      JSON.parse(await readFile(resolveWorkingPath(inputPath), "utf8")) as unknown,
-    );
-    const plan = await exportInteractiveSessionPlan(sessionRoot, id, request);
-    const planPath = resolveWorkingPath(
-      stringOption(arguments_, "output") ??
-        join(outputDirectory, "draft-plans", `${request.name}.demo-plan.json`),
-    );
-    await mkdir(dirname(planPath), { recursive: true });
-    await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`);
-    printJsonOrHuman(arguments_, { ok: true, sessionId: id, outputDirectory, planPath, plan }, [
-      `[demo-recorder] Verified draft plan saved: ${planPath}`,
-      `[demo-recorder] Steps: ${plan.capture.steps.length}`,
-    ]);
-    return planPath;
-  }
-  if (operation === "verify") {
-    const inputPath = stringOption(arguments_, "input");
-    if (!inputPath) throw new Error("explore verify requires --input <path.json>");
-    const request = explorationVerificationRequestSchema.parse(
-      JSON.parse(await readFile(resolveWorkingPath(inputPath), "utf8")) as unknown,
-    );
-    const verification = await verifyInteractiveSession(sessionRoot, id, request);
-    printJsonOrHuman(
-      arguments_,
-      { ok: verification.status === "passed", sessionId: id, outputDirectory, verification },
-      verificationLines(verification),
-    );
-    if (verification.status !== "passed")
-      throw new Error(verification.error ?? `Verification failed: ${verification.id}`);
-    return verification.artifacts.report;
-  }
-  if (operation === "act") {
-    const inputPath = stringOption(arguments_, "input");
-    if (!inputPath) throw new Error("explore act requires --input <action.json>");
-    const action = explorationActionSchema.parse(
-      JSON.parse(await readFile(resolveWorkingPath(inputPath), "utf8")) as unknown,
-    );
-    const transition = await actInInteractiveSession(sessionRoot, id, action);
-    printJsonOrHuman(
-      arguments_,
-      { ok: true, sessionId: id, outputDirectory, transition },
-      transitionLines(transition),
-    );
-    return id;
-  }
-  if (operation === "finish" || operation === "abort") {
-    const report = await finishInteractiveSession(sessionRoot, id, operation === "abort");
-    printJsonOrHuman(
-      arguments_,
-      { ok: true, sessionId: id, outputDirectory, report },
-      reportLines(report),
-    );
-    return id;
-  }
-  const report = await interactiveSessionStatus(sessionRoot, id);
-  printJsonOrHuman(
-    arguments_,
-    { ok: true, sessionId: id, outputDirectory, report },
-    reportLines(report),
-  );
-  return id;
+  const id = stringOption(arguments_, "session") ?? arguments_.positionals[1];
+  if (operation === "status" && !id) return listSessionsCommand(arguments_);
+  if (!id) throw new Error(`explore ${operation} requires a session ID`);
+
+  const outputDirectory = await interactiveSessionDirectory(sessionRoot, id);
+  return sessionCommandHandlers[operation]({ arguments: arguments_, id, outputDirectory });
 }

@@ -40,25 +40,30 @@ async function executeReplayAction(
   baseUrl: string,
 ): Promise<ExplorationLocatorMethod | undefined> {
   const action = transition.action;
-  if (action.type === "click" || action.type === "hover") {
-    const target = await resolveVerifiedTarget(page, transition);
-    if (action.type === "click") await target.locator.click({ timeout: 5_000 });
-    else await target.locator.hover({ timeout: 5_000 });
-    return target.candidate;
+  switch (action.type) {
+    case "click":
+    case "hover": {
+      const target = await resolveVerifiedTarget(page, transition);
+      if (action.type === "click") await target.locator.click({ timeout: 5_000 });
+      else await target.locator.hover({ timeout: 5_000 });
+      return target.candidate;
+    }
+    case "goto":
+      await page.goto(new URL(action.url, baseUrl).href, {
+        waitUntil: "domcontentloaded",
+        timeout: 30_000,
+      });
+      return undefined;
+    case "back":
+      await page.goBack({ waitUntil: "domcontentloaded", timeout: 30_000 });
+      return undefined;
+    case "scroll":
+      await page.mouse.wheel(action.deltaX, action.deltaY);
+      return undefined;
+    case "wait":
+      await page.waitForTimeout(action.durationMs);
+      return undefined;
   }
-  if (action.type === "goto") {
-    await page.goto(new URL(action.url, baseUrl).href, {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    });
-  } else if (action.type === "back") {
-    await page.goBack({ waitUntil: "domcontentloaded", timeout: 30_000 });
-  } else if (action.type === "scroll") {
-    await page.mouse.wheel(action.deltaX, action.deltaY);
-  } else {
-    await page.waitForTimeout(action.durationMs);
-  }
-  return undefined;
 }
 
 function validateSelectedPath(
@@ -87,6 +92,91 @@ function validateSelectedPath(
   return selected;
 }
 
+type VerificationStep = ExplorationVerificationReport["steps"][number];
+
+function expectedState(observation: ExplorationObservation): VerificationStep["expected"] {
+  return {
+    observationId: observation.id,
+    stateId: observation.stateId,
+    semanticFingerprint: observation.semanticFingerprint,
+    url: observation.url,
+  };
+}
+
+async function captureActualState(page: Page): Promise<NonNullable<VerificationStep["actual"]>> {
+  const snapshot = await page.ariaSnapshot({ mode: "ai", depth: 12, timeout: 5_000 });
+  return {
+    semanticFingerprint: explorationSemanticFingerprint(new URL(page.url()).pathname, snapshot),
+    url: sanitizeExplorationUrl(page.url()),
+  };
+}
+
+async function verifyTransitionStep(options: {
+  page: Page;
+  transition: ExplorationTransition;
+  expected: ExplorationObservation;
+  artifacts: ExplorationArtifactStore;
+  baseUrl: string;
+  sequence: number;
+  screenshot: string;
+}): Promise<VerificationStep> {
+  const startedAt = Date.now();
+  let candidateUsed: ExplorationLocatorMethod | undefined;
+  const common = {
+    sequence: options.sequence,
+    transitionId: options.transition.id,
+    action: sanitizeExplorationAction(options.transition.action, options.baseUrl),
+    expected: expectedState(options.expected),
+  };
+
+  try {
+    candidateUsed = await executeReplayAction(options.page, options.transition, options.baseUrl);
+    await waitForSemanticQuiet(options.page);
+    const actual = await captureActualState(options.page);
+    await options.artifacts.writeExternalFile(
+      options.screenshot,
+      explorationArtifactLimits.screenshotBytes,
+      (path) => options.page.screenshot({ path, fullPage: false, scale: "css" }).then(() => {}),
+    );
+    const matches =
+      actual.semanticFingerprint === options.expected.semanticFingerprint &&
+      actual.url === options.expected.url;
+    return {
+      ...common,
+      status: matches ? "passed" : "failed",
+      ...(candidateUsed ? { candidateUsed } : {}),
+      actual,
+      durationMs: Date.now() - startedAt,
+      screenshot: options.screenshot,
+      ...(matches
+        ? {}
+        : {
+            error: `Postcondition mismatch for ${options.transition.id}: expected state ${options.expected.stateId}`,
+          }),
+    };
+  } catch (error) {
+    const message = sanitizeExplorationError(
+      error instanceof Error ? error.message : String(error),
+    );
+    const actual = await captureActualState(options.page).catch(() => undefined);
+    const screenshot = await options.artifacts
+      .writeExternalFile(options.screenshot, explorationArtifactLimits.screenshotBytes, (path) =>
+        options.page.screenshot({ path, fullPage: false, scale: "css" }).then(() => {}),
+      )
+      .then(() => options.screenshot)
+      .catch(() => undefined);
+    return {
+      ...common,
+      status: "failed",
+      ...(candidateUsed ? { candidateUsed } : {}),
+      ...(actual ? { actual } : {}),
+      durationMs: Date.now() - startedAt,
+      ...(screenshot ? { screenshot } : {}),
+      error: message,
+    };
+  }
+}
+
 export async function verifyExplorationPath(options: {
   browser: Browser;
   config: ExplorationLaunchConfig;
@@ -113,6 +203,8 @@ export async function verifyExplorationPath(options: {
     const observationById = new Map(
       options.observations.map((observation) => [observation.id, observation]),
     );
+    // Replay in a fresh context: success in the exploratory page alone can hide state leakage
+    // from cookies, DOM mutations, or an accidental dependency on earlier actions.
     context = await createGuardedBrowserContext(options.browser, {
       baseUrl: options.config.baseUrl,
       ...(options.config.storageStatePath
@@ -141,92 +233,21 @@ export async function verifyExplorationPath(options: {
         `Fresh context did not reproduce initial state ${initial.stateId}: expected ${initial.semanticFingerprint}, received ${initialFingerprint}`,
       );
 
-    for (let index = 0; index < selected.length; index += 1) {
-      const transition = selected[index]!;
+    for (const [index, transition] of selected.entries()) {
       const expected = observationById.get(transition.toObservationId!);
       if (!expected) throw new Error(`Missing expected observation ${transition.toObservationId}`);
-      const startedAt = Date.now();
-      let candidateUsed: ExplorationLocatorMethod | undefined;
-      const screenshot = `${directory}/step-${String(index + 1).padStart(3, "0")}.png`;
-      try {
-        candidateUsed = await executeReplayAction(page, transition, options.config.baseUrl);
-        await waitForSemanticQuiet(page);
-        const snapshot = await page.ariaSnapshot({ mode: "ai", depth: 12, timeout: 5_000 });
-        const actual = {
-          semanticFingerprint: explorationSemanticFingerprint(
-            new URL(page.url()).pathname,
-            snapshot,
-          ),
-          url: sanitizeExplorationUrl(page.url()),
-        };
-        await options.artifacts.writeExternalFile(
-          screenshot,
-          explorationArtifactLimits.screenshotBytes,
-          (path) => page.screenshot({ path, fullPage: false, scale: "css" }).then(() => {}),
-        );
-        const matches =
-          actual.semanticFingerprint === expected.semanticFingerprint &&
-          actual.url === expected.url;
-        steps.push({
-          sequence: index + 1,
-          transitionId: transition.id,
-          action: sanitizeExplorationAction(transition.action, options.config.baseUrl),
-          status: matches ? "passed" : "failed",
-          ...(candidateUsed ? { candidateUsed } : {}),
-          expected: {
-            observationId: expected.id,
-            stateId: expected.stateId,
-            semanticFingerprint: expected.semanticFingerprint,
-            url: expected.url,
-          },
-          actual,
-          durationMs: Date.now() - startedAt,
-          screenshot,
-          ...(matches
-            ? {}
-            : {
-                error: `Postcondition mismatch for ${transition.id}: expected state ${expected.stateId}`,
-              }),
-        });
-        if (!matches) {
-          failure = steps.at(-1)?.error;
-          break;
-        }
-      } catch (error) {
-        failure = sanitizeExplorationError(error instanceof Error ? error.message : String(error));
-        const actual = await page
-          .ariaSnapshot({ mode: "ai", depth: 12, timeout: 5_000 })
-          .then((snapshot) => ({
-            semanticFingerprint: explorationSemanticFingerprint(
-              new URL(page.url()).pathname,
-              snapshot,
-            ),
-            url: sanitizeExplorationUrl(page.url()),
-          }))
-          .catch(() => undefined);
-        const failureScreenshot = await options.artifacts
-          .writeExternalFile(screenshot, explorationArtifactLimits.screenshotBytes, (path) =>
-            page.screenshot({ path, fullPage: false, scale: "css" }).then(() => {}),
-          )
-          .then(() => screenshot)
-          .catch(() => undefined);
-        steps.push({
-          sequence: index + 1,
-          transitionId: transition.id,
-          action: sanitizeExplorationAction(transition.action, options.config.baseUrl),
-          status: "failed",
-          ...(candidateUsed ? { candidateUsed } : {}),
-          expected: {
-            observationId: expected.id,
-            stateId: expected.stateId,
-            semanticFingerprint: expected.semanticFingerprint,
-            url: expected.url,
-          },
-          ...(actual ? { actual } : {}),
-          durationMs: Date.now() - startedAt,
-          ...(failureScreenshot ? { screenshot: failureScreenshot } : {}),
-          error: failure,
-        });
+      const step = await verifyTransitionStep({
+        page,
+        transition,
+        expected,
+        artifacts: options.artifacts,
+        baseUrl: options.config.baseUrl,
+        sequence: index + 1,
+        screenshot: `${directory}/step-${String(index + 1).padStart(3, "0")}.png`,
+      });
+      steps.push(step);
+      if (step.status === "failed") {
+        failure = step.error ?? `Verification failed for ${transition.id}`;
         break;
       }
     }

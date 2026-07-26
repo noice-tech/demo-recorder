@@ -32,6 +32,8 @@ import {
   explorationFindResultSchema,
   explorationObservationSchema,
   explorationTransitionSchema,
+  type ExplorationAction,
+  type ExplorationFindQuery,
   type ExplorationFindResult,
   type ExplorationLaunchConfig,
   type ExplorationObservation,
@@ -44,6 +46,40 @@ import { verifyExplorationPath } from "./verification.js";
 
 type Settled = ExplorationObservation["settled"];
 
+type InteractionEffects = {
+  popupBlocked: boolean;
+  downloadBlocked: boolean;
+  dialogDismissed: boolean;
+};
+
+function createFindMatcher(query: ExplorationFindQuery): (value: string) => boolean {
+  if (query.text) {
+    const expected = query.text.toLocaleLowerCase();
+    return (value) => value.toLocaleLowerCase().includes(expected);
+  }
+
+  const pattern = query.regex;
+  if (!pattern) throw new Error("Exploration regex search is missing its pattern");
+  try {
+    const regex = new RegExp(pattern);
+    return (value) => regex.test(value);
+  } catch (error) {
+    throw new Error(`Invalid exploration search regular expression: ${query.regex}`, {
+      cause: error,
+    });
+  }
+}
+
+function emptyInteractionEffects(): InteractionEffects {
+  return { popupBlocked: false, downloadBlocked: false, dialogDismissed: false };
+}
+
+/**
+ * Owns the long-lived browser used by an interactive exploration.
+ *
+ * Each command produces immutable observations and transitions on disk. Element refs belong to
+ * the latest observation only and are refreshed immediately before use to avoid stale actions.
+ */
 export class InteractiveExplorationSession {
   private browser!: Browser;
   private context!: BrowserContext;
@@ -62,9 +98,7 @@ export class InteractiveExplorationSession {
   private transitions: ExplorationTransition[] = [];
   private verifications: ExplorationVerificationReport[] = [];
   private errors: string[] = [];
-  private popupBlocked = false;
-  private downloadBlocked = false;
-  private dialogDismissed = false;
+  private interactionEffects = emptyInteractionEffects();
   private closed = false;
   private readonly artifacts: ExplorationArtifactStore;
 
@@ -106,13 +140,13 @@ export class InteractiveExplorationSession {
     );
     attachBlockedInteractionHandlers(page, {
       onDialog: () => {
-        this.dialogDismissed = true;
+        this.interactionEffects.dialogDismissed = true;
       },
       onPopup: () => {
-        this.popupBlocked = true;
+        this.interactionEffects.popupBlocked = true;
       },
       onDownload: () => {
-        this.downloadBlocked = true;
+        this.interactionEffects.downloadBlocked = true;
       },
     });
   }
@@ -150,11 +184,7 @@ export class InteractiveExplorationSession {
       new URL(currentUrl).pathname,
       snapshot,
     );
-    let stateId = this.states.get(semanticFingerprint);
-    if (!stateId) {
-      stateId = `state-${String(++this.stateSequence).padStart(4, "0")}`;
-      this.states.set(semanticFingerprint, stateId);
-    }
+    const stateId = this.stateIdFor(semanticFingerprint);
     const observation = explorationObservationSchema.parse({
       schemaVersion: 2,
       id,
@@ -193,25 +223,8 @@ export class InteractiveExplorationSession {
 
   find(input: unknown): ExplorationFindResult {
     const query = explorationFindQuerySchema.parse(input);
-    const observation = this.currentObservation;
-    if (!observation) throw new Error("Exploration session has no current observation");
-    let matchesText: (value: string) => boolean;
-    if (query.text) {
-      const expected = query.text.toLocaleLowerCase();
-      matchesText = (value) => value.toLocaleLowerCase().includes(expected);
-    } else {
-      const pattern = query.regex;
-      if (!pattern) throw new Error("Exploration regex search is missing its pattern");
-      let regex: RegExp;
-      try {
-        regex = new RegExp(pattern);
-      } catch (error) {
-        throw new Error(`Invalid exploration search regular expression: ${query.regex}`, {
-          cause: error,
-        });
-      }
-      matchesText = (value) => regex.test(value);
-    }
+    const observation = this.requireCurrentObservation();
+    const matchesText = createFindMatcher(query);
     const matches: ExplorationFindResult["matches"] = [];
     for (const element of observation.interactiveElements) {
       if (!matchesText(`${element.role ?? ""} ${element.name}`)) continue;
@@ -269,8 +282,7 @@ export class InteractiveExplorationSession {
   async act(input: unknown): Promise<ExplorationTransition> {
     this.ensureWithinLimits();
     const action = explorationActionSchema.parse(input);
-    const before = this.currentObservation;
-    if (!before) throw new Error("Exploration session has no current observation");
+    const before = this.requireCurrentObservation();
     let entry = "ref" in action ? this.refs.get(action.ref) : undefined;
     if ("observationId" in action && action.observationId !== before.id)
       throw new Error(
@@ -292,28 +304,27 @@ export class InteractiveExplorationSession {
     const sequence = ++this.transitionSequence;
     const id = `transition-${String(sequence).padStart(4, "0")}`;
     const startedAt = Date.now();
-    this.popupBlocked = false;
-    this.downloadBlocked = false;
-    this.dialogDismissed = false;
+    const transitionBase = {
+      schemaVersion: 2 as const,
+      id,
+      sequence,
+      createdAt: new Date().toISOString(),
+      action,
+      policy,
+      fromObservationId: before.id,
+      fromStateId: before.stateId,
+      ...(entry ? { target: entry.element.target } : {}),
+    };
+    this.interactionEffects = emptyInteractionEffects();
 
     if (!policy.allowed) {
       const blocked = explorationTransitionSchema.parse({
-        schemaVersion: 2,
-        id,
-        sequence,
-        createdAt: new Date().toISOString(),
-        action,
+        ...transitionBase,
         status: "blocked",
-        policy,
-        fromObservationId: before.id,
-        fromStateId: before.stateId,
-        ...(entry ? { target: entry.element.target } : {}),
         outcome: {
           urlChanged: false,
           semanticChanged: false,
-          popupBlocked: false,
-          downloadBlocked: false,
-          dialogDismissed: false,
+          ...emptyInteractionEffects(),
         },
         durationMs: Date.now() - startedAt,
       });
@@ -322,51 +333,21 @@ export class InteractiveExplorationSession {
     }
 
     try {
-      if (action.type === "click") {
-        if (!entry) throw new Error(`Unknown element reference: ${action.ref}`);
-        if (!entry.element.enabled) throw new Error(`Element ${action.ref} is disabled`);
-        await entry.locator.click({ timeout: 5_000 });
-      } else if (action.type === "hover") {
-        if (!entry) throw new Error(`Unknown element reference: ${action.ref}`);
-        await entry.locator.hover({ timeout: 5_000 });
-      } else if (action.type === "goto") {
-        const destination = new URL(action.url, this.config.baseUrl);
-        if (destination.origin !== new URL(this.config.baseUrl).origin)
-          throw new Error(
-            `Cross-origin navigation is blocked: ${sanitizeExplorationUrl(destination.href)}`,
-          );
-        await this.page.goto(destination.href, { waitUntil: "domcontentloaded", timeout: 30_000 });
-      } else if (action.type === "back") {
-        await this.page.goBack({ waitUntil: "domcontentloaded", timeout: 30_000 });
-      } else if (action.type === "scroll") {
-        await this.page.mouse.wheel(action.deltaX, action.deltaY);
-      } else {
-        await this.page.waitForTimeout(action.durationMs);
-      }
+      await this.performAction(action, entry);
       const settled = await waitForSemanticQuiet(this.page, {
         explicit: action.type === "wait",
       });
       const after = await this.observe(`after-${action.type}`, settled);
       const transition = explorationTransitionSchema.parse({
-        schemaVersion: 2,
-        id,
-        sequence,
-        createdAt: new Date().toISOString(),
-        action,
+        ...transitionBase,
         status: "succeeded",
-        policy,
-        fromObservationId: before.id,
-        fromStateId: before.stateId,
         toObservationId: after.id,
         toStateId: after.stateId,
-        ...(entry ? { target: entry.element.target } : {}),
         diff: diffExplorationObservations(before, after),
         outcome: {
           urlChanged: before.url !== after.url,
           semanticChanged: before.semanticFingerprint !== after.semanticFingerprint,
-          popupBlocked: this.popupBlocked,
-          downloadBlocked: this.downloadBlocked,
-          dialogDismissed: this.dialogDismissed,
+          ...this.interactionEffects,
           settledReason: settled.reason === "initial" ? "quiet" : settled.reason,
         },
         durationMs: Date.now() - startedAt,
@@ -375,28 +356,71 @@ export class InteractiveExplorationSession {
       return transition;
     } catch (error) {
       const transition = explorationTransitionSchema.parse({
-        schemaVersion: 2,
-        id,
-        sequence,
-        createdAt: new Date().toISOString(),
-        action,
+        ...transitionBase,
         status: "failed",
-        policy,
-        fromObservationId: before.id,
-        fromStateId: before.stateId,
-        ...(entry ? { target: entry.element.target } : {}),
         outcome: {
           urlChanged: before.url !== sanitizeExplorationUrl(this.page.url()),
           semanticChanged: false,
-          popupBlocked: this.popupBlocked,
-          downloadBlocked: this.downloadBlocked,
-          dialogDismissed: this.dialogDismissed,
+          ...this.interactionEffects,
         },
         durationMs: Date.now() - startedAt,
         error: sanitizeExplorationError(error instanceof Error ? error.message : String(error)),
       });
       await this.persistTransition(transition);
       return transition;
+    }
+  }
+
+  private requireCurrentObservation(): ExplorationObservation {
+    if (!this.currentObservation) throw new Error("Exploration session has no current observation");
+    return this.currentObservation;
+  }
+
+  private stateIdFor(fingerprint: string): string {
+    const existing = this.states.get(fingerprint);
+    if (existing) return existing;
+
+    const stateId = `state-${String(++this.stateSequence).padStart(4, "0")}`;
+    this.states.set(fingerprint, stateId);
+    return stateId;
+  }
+
+  private async performAction(
+    action: ExplorationAction,
+    entry: ExplorationRefEntry | undefined,
+  ): Promise<void> {
+    switch (action.type) {
+      case "click":
+        if (!entry) throw new Error(`Unknown element reference: ${action.ref}`);
+        if (!entry.element.enabled) throw new Error(`Element ${action.ref} is disabled`);
+        await entry.locator.click({ timeout: 5_000 });
+        return;
+      case "hover":
+        if (!entry) throw new Error(`Unknown element reference: ${action.ref}`);
+        await entry.locator.hover({ timeout: 5_000 });
+        return;
+      case "goto": {
+        const destination = new URL(action.url, this.config.baseUrl);
+        // Keep this check next to the navigation even though policy also rejects external URLs.
+        // It is the final boundary before untrusted input reaches Playwright.
+        if (destination.origin !== new URL(this.config.baseUrl).origin)
+          throw new Error(
+            `Cross-origin navigation is blocked: ${sanitizeExplorationUrl(destination.href)}`,
+          );
+        await this.page.goto(destination.href, {
+          waitUntil: "domcontentloaded",
+          timeout: 30_000,
+        });
+        return;
+      }
+      case "back":
+        await this.page.goBack({ waitUntil: "domcontentloaded", timeout: 30_000 });
+        return;
+      case "scroll":
+        await this.page.mouse.wheel(action.deltaX, action.deltaY);
+        return;
+      case "wait":
+        await this.page.waitForTimeout(action.durationMs);
     }
   }
 

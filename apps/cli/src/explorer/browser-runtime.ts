@@ -64,6 +64,8 @@ export function attachBlockedInteractionHandlers(
   });
 }
 
+// Prefer a stable accessibility snapshot over network-idle: modern apps often keep sockets and
+// analytics requests open even when the user-visible state has settled.
 export async function waitForSemanticQuiet(
   page: Page,
   options: { initial?: boolean; explicit?: boolean } = {},

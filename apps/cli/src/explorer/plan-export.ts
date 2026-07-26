@@ -53,27 +53,26 @@ function actionForTransition(
 ): DemoAction {
   const action = transition.action;
   const purpose = action.reason ?? `Replay verified transition ${transition.id}`;
-  if (action.type === "click")
-    return { type: "click", locator: locatorForTransition(transition, chosen), purpose };
-  if (action.type === "hover")
-    return { type: "move", locator: locatorForTransition(transition, chosen), purpose };
-  if (action.type === "goto")
-    return {
-      type: "navigate",
-      url: replayUrl(action.url, baseUrl, includeUrlState),
-      purpose,
-    };
-  if (action.type === "scroll")
-    return {
-      type: "scroll",
-      deltaX: action.deltaX,
-      deltaY: action.deltaY,
-      purpose,
-    };
-  if (action.type === "wait") return { type: "hold", durationMs: action.durationMs, purpose };
-  throw new Error(
-    `Verified transition ${transition.id} uses back navigation, which cannot be exported deterministically`,
-  );
+  switch (action.type) {
+    case "click":
+      return { type: "click", locator: locatorForTransition(transition, chosen), purpose };
+    case "hover":
+      return { type: "move", locator: locatorForTransition(transition, chosen), purpose };
+    case "goto":
+      return {
+        type: "navigate",
+        url: replayUrl(action.url, baseUrl, includeUrlState),
+        purpose,
+      };
+    case "scroll":
+      return { type: "scroll", deltaX: action.deltaX, deltaY: action.deltaY, purpose };
+    case "wait":
+      return { type: "hold", durationMs: action.durationMs, purpose };
+    case "back":
+      throw new Error(
+        `Verified transition ${transition.id} uses back navigation, which cannot be exported deterministically`,
+      );
+  }
 }
 
 export function exportVerifiedPathToDemoPlan(options: {

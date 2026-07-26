@@ -78,6 +78,8 @@ async function request<T>(
   return result;
 }
 
+const daemonStartupTimeoutMs = 90_000;
+
 async function terminateDaemon(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
   const signal = (value: NodeJS.Signals): void => {
@@ -94,6 +96,67 @@ async function terminateDaemon(child: ChildProcess): Promise<void> {
     new Promise<boolean>((resolveWait) => setTimeout(() => resolveWait(false), 5_000)),
   ]);
   if (!exited) signal("SIGKILL");
+}
+
+async function readDaemonLogTail(path: string): Promise<string> {
+  const contents = await readFile(path, "utf8").catch(() => "");
+  const tail = contents.trim().slice(-4_000);
+  return tail ? `\n${tail}` : "";
+}
+
+async function removeStartupFiles(launchConfigPath: string, descriptorPath: string): Promise<void> {
+  await Promise.all([rm(launchConfigPath, { force: true }), rm(descriptorPath, { force: true })]);
+}
+
+async function waitForDaemonStartup(options: {
+  child: ChildProcess;
+  sessionRoot: string;
+  sessionId: string;
+  launchConfigPath: string;
+  descriptorPath: string;
+  daemonLogPath: string;
+}): Promise<{
+  descriptor: ExplorationSessionDescriptor;
+  observation: ExplorationObservation;
+}> {
+  const deadline = Date.now() + daemonStartupTimeoutMs;
+  while (Date.now() < deadline) {
+    if (options.child.exitCode !== null) {
+      await removeStartupFiles(options.launchConfigPath, options.descriptorPath);
+      throw new Error(
+        `Exploration daemon exited with code ${options.child.exitCode}${await readDaemonLogTail(options.daemonLogPath)}`,
+      );
+    }
+
+    // The daemon writes its descriptor only after the browser, first observation, and HTTP
+    // listener are ready. A status request verifies that the descriptor is not stale.
+    const descriptor = await readDescriptor(options.sessionRoot, options.sessionId).catch(
+      () => undefined,
+    );
+    if (descriptor) {
+      const status = await request<{ report: ExplorationSessionReport }>(descriptor, "/status", {
+        timeoutMs: 2_000,
+      }).catch(() => undefined);
+      if (status?.report.latestObservationId) {
+        const observationPath = join(
+          descriptor.outputDirectory,
+          "observations",
+          `${status.report.latestObservationId}.json`,
+        );
+        const observation = explorationObservationSchema.parse(
+          JSON.parse(await readFile(observationPath, "utf8")) as unknown,
+        );
+        return { descriptor, observation };
+      }
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
+  }
+
+  await terminateDaemon(options.child);
+  await removeStartupFiles(options.launchConfigPath, options.descriptorPath);
+  throw new Error(
+    `Exploration daemon did not start within ${daemonStartupTimeoutMs}ms${await readDaemonLogTail(options.daemonLogPath)}`,
+  );
 }
 
 export async function startInteractiveSession(options: {
@@ -133,44 +196,14 @@ export async function startInteractiveSession(options: {
   });
   closeSync(daemonLog);
   child.unref();
-  const startupTimeoutMs = 90_000;
-  const deadline = Date.now() + startupTimeoutMs;
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) {
-      await Promise.all([
-        rm(launchConfigPath, { force: true }),
-        rm(descriptorPath, { force: true }),
-      ]);
-      const daemonError = await readFile(daemonLogPath, "utf8").catch(() => "");
-      throw new Error(
-        `Exploration daemon exited with code ${child.exitCode}${daemonError.trim() ? `\n${daemonError.trim().slice(-4_000)}` : ""}`,
-      );
-    }
-    const descriptor = await readDescriptor(options.sessionRoot, config.id).catch(() => undefined);
-    if (descriptor) {
-      const status = await request<{ report: ExplorationSessionReport }>(descriptor, "/status", {
-        timeoutMs: 2_000,
-      }).catch(() => undefined);
-      if (status?.report.latestObservationId) {
-        const observationPath = join(
-          descriptor.outputDirectory,
-          "observations",
-          `${status.report.latestObservationId}.json`,
-        );
-        const observation = explorationObservationSchema.parse(
-          JSON.parse(await readFile(observationPath, "utf8")) as unknown,
-        );
-        return { descriptor, observation };
-      }
-    }
-    await new Promise((resolveWait) => setTimeout(resolveWait, 100));
-  }
-  await terminateDaemon(child);
-  await Promise.all([rm(launchConfigPath, { force: true }), rm(descriptorPath, { force: true })]);
-  const daemonError = await readFile(daemonLogPath, "utf8").catch(() => "");
-  throw new Error(
-    `Exploration daemon did not start within ${startupTimeoutMs}ms${daemonError.trim() ? `\n${daemonError.trim().slice(-4_000)}` : ""}`,
-  );
+  return waitForDaemonStartup({
+    child,
+    sessionRoot: options.sessionRoot,
+    sessionId: config.id,
+    launchConfigPath,
+    descriptorPath,
+    daemonLogPath,
+  });
 }
 
 export async function interactiveSessionDirectory(

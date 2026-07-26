@@ -50,43 +50,49 @@ export type RehearsalReport = {
 };
 
 async function executeRehearsalAction(plan: DemoPlan, page: Page, step: DemoAction): Promise<void> {
-  if (step.type === "navigate") {
-    await page.goto(new URL(step.url, plan.target.baseUrl).href, {
-      waitUntil: "domcontentloaded",
-      timeout: 30_000,
-    });
-    return;
+  switch (step.type) {
+    case "navigate":
+      await page.goto(new URL(step.url, plan.target.baseUrl).href, {
+        waitUntil: "domcontentloaded",
+        timeout: 30_000,
+      });
+      return;
+    case "scroll":
+      await page.mouse.wheel(step.deltaX ?? 0, step.deltaY);
+      return;
+    case "hold":
+      await page.waitForTimeout(step.durationMs);
+      return;
+    case "wait-for-url":
+      await page.waitForURL(step.urlPattern, step.timeoutMs ? { timeout: step.timeoutMs } : {});
+      return;
   }
-  if (step.type === "scroll") {
-    await page.mouse.wheel(step.deltaX ?? 0, step.deltaY);
-    return;
-  }
-  if (step.type === "hold") {
-    await page.waitForTimeout(step.durationMs);
-    return;
-  }
-  if (step.type === "wait-for-url") {
-    await page.waitForURL(step.urlPattern, step.timeoutMs ? { timeout: step.timeoutMs } : {});
-    return;
-  }
+
   const locator = await resolvePlanLocator(page, step.locator);
-  if (step.type === "move") {
-    const bounds = await locator.boundingBox();
-    if (!bounds) throw new Error("Move target has no visible bounding box");
-    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-  } else if (step.type === "click") {
-    await locator.click({ button: step.button ?? "left" });
-  } else if (step.type === "fill") {
-    await locator.fill(step.value);
-  } else if (step.type === "press") {
-    await locator.press(step.key);
-  } else if (step.type === "select") {
-    await locator.selectOption(step.value);
-  } else {
-    await locator.waitFor({
-      state: "visible",
-      ...(step.timeoutMs ? { timeout: step.timeoutMs } : {}),
-    });
+  switch (step.type) {
+    case "move": {
+      const bounds = await locator.boundingBox();
+      if (!bounds) throw new Error("Move target has no visible bounding box");
+      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      return;
+    }
+    case "click":
+      await locator.click({ button: step.button ?? "left" });
+      return;
+    case "fill":
+      await locator.fill(step.value);
+      return;
+    case "press":
+      await locator.press(step.key);
+      return;
+    case "select":
+      await locator.selectOption(step.value);
+      return;
+    case "wait-for":
+      await locator.waitFor({
+        state: "visible",
+        ...(step.timeoutMs ? { timeout: step.timeoutMs } : {}),
+      });
   }
 }
 
@@ -101,32 +107,45 @@ function errorWithCauses(error: unknown): string {
   return messages.join("; caused by: ");
 }
 
-function repairHints(error: string): string[] {
-  if (/matched \d+ elements|expected exactly one|unique plan locator/i.test(error))
-    return [
+const repairHintRules = [
+  {
+    pattern: /matched \d+ elements|expected exactly one|unique plan locator/i,
+    hints: [
       "Refine the primary locator or add a unique test-ID/CSS fallback from verified evidence.",
       "Do not use positional selection to hide the ambiguity.",
-    ];
-  if (/No unique plan locator matched|Timed out|waiting for/i.test(error))
-    return [
+    ],
+  },
+  {
+    pattern: /No unique plan locator matched|Timed out|waiting for/i,
+    hints: [
       "Inspect the failure ARIA snapshot and screenshot, then re-explore only this state.",
       "Update the locator or preceding postcondition before the next rehearsal attempt.",
-    ];
-  if (/URL|navigation/i.test(error))
-    return [
+    ],
+  },
+  {
+    pattern: /URL|navigation/i,
+    hints: [
       "Compare the current sanitized URL with the expected wait-for-url pattern.",
       "Confirm the preceding navigation remains same-origin and deterministic.",
-    ];
-  return [
-    "Inspect the failure snapshot and trace and revise only the failing step.",
-    "Re-run rehearsal with the next attempt number; final capture does not repair plans.",
-  ];
+    ],
+  },
+] as const;
+
+function repairHints(error: string): string[] {
+  const matched = repairHintRules.find((rule) => rule.pattern.test(error));
+  return matched
+    ? [...matched.hints]
+    : [
+        "Inspect the failure snapshot and trace and revise only the failing step.",
+        "Re-run rehearsal with the next attempt number; final capture does not repair plans.",
+      ];
 }
 
 async function closeContext(context: BrowserContext | undefined): Promise<void> {
   await context?.close().catch(() => undefined);
 }
 
+/** Replays a plan without recording video and captures evidence at the first failing step. */
 export async function rehearseDemoPlan(options: {
   plan: DemoPlan;
   planPath: string;

@@ -145,6 +145,8 @@ export class ExplorationArtifactStore {
     throw new ExplorationArtifactLimitError(`Artifact ${relativePath} exceeds ${maxBytes} bytes`);
   }
 
+  // Walk each component instead of relying on recursive mkdir: an existing symlink anywhere in
+  // the path could otherwise redirect artifacts outside the configured output root.
   private async ensureDirectory(relativeDirectory: string): Promise<void> {
     if (!relativeDirectory || relativeDirectory === ".") return;
     const normalizedRelative = this.relativePath(this.path(relativeDirectory));
@@ -174,6 +176,7 @@ export class ExplorationArtifactStore {
       throw new Error(`Exploration artifact cannot be a symbolic link: ${absolutePath}`);
   }
 
+  // Publish only complete files. Readers may poll these artifacts while the daemon is running.
   private async atomicWrite(relativePath: string, content: Buffer): Promise<void> {
     const absolutePath = this.path(relativePath);
     await this.ensureDirectory(this.relativePath(dirname(absolutePath)));
