@@ -35,6 +35,31 @@ type ScanMetrics = RepositoryReport["scan"];
 
 type ReadCandidate = { path: string; size: number };
 
+type PackageMetadata = {
+  scripts?: Record<string, string>;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+};
+
+function detectFramework(dependencies: Record<string, string>): string | undefined {
+  if (dependencies.next) return "Next.js";
+  if (dependencies["react-router"] || dependencies["react-router-dom"]) return "React Router";
+  if (dependencies.nuxt) return "Nuxt";
+  if (dependencies.svelte || dependencies["@sveltejs/kit"]) return "Svelte";
+  if (dependencies.vue) return "Vue";
+  if (dependencies.react) return "React";
+  return undefined;
+}
+
+function detectPackageManager(files: string[]): string | undefined {
+  const names = new Set(files.map((file) => basename(file)));
+  if (names.has("pnpm-lock.yaml")) return "pnpm";
+  if (names.has("yarn.lock")) return "yarn";
+  if (names.has("bun.lockb") || names.has("bun.lock")) return "bun";
+  if (names.has("package-lock.json")) return "npm";
+  return undefined;
+}
+
 function boundedInteger(
   value: number | undefined,
   fallback: number,
@@ -240,11 +265,7 @@ export async function inspectRepository(
   const files = await walk(root, scan);
   const candidates = await selectReadCandidates(files, scan);
   const contents = await readConcurrently(candidates, limits.readConcurrency, scan);
-  let packageJson: {
-    scripts?: Record<string, string>;
-    dependencies?: Record<string, string>;
-    devDependencies?: Record<string, string>;
-  } = {};
+  let packageJson: PackageMetadata = {};
   const packageText = contents.get(join(root, "package.json"));
   if (packageText) {
     try {
@@ -254,28 +275,8 @@ export async function inspectRepository(
     }
   }
   const dependencies = { ...packageJson.dependencies, ...packageJson.devDependencies };
-  const framework = dependencies.next
-    ? "Next.js"
-    : dependencies["react-router"] || dependencies["react-router-dom"]
-      ? "React Router"
-      : dependencies.nuxt
-        ? "Nuxt"
-        : dependencies.svelte || dependencies["@sveltejs/kit"]
-          ? "Svelte"
-          : dependencies.vue
-            ? "Vue"
-            : dependencies.react
-              ? "React"
-              : undefined;
-  const packageManager = files.some((file) => basename(file) === "pnpm-lock.yaml")
-    ? "pnpm"
-    : files.some((file) => basename(file) === "yarn.lock")
-      ? "yarn"
-      : files.some((file) => basename(file) === "bun.lockb" || basename(file) === "bun.lock")
-        ? "bun"
-        : files.some((file) => basename(file) === "package-lock.json")
-          ? "npm"
-          : undefined;
+  const framework = detectFramework(dependencies);
+  const packageManager = detectPackageManager(files);
   const relativeFiles = files.map((file) => relative(root, file));
   const routePattern =
     /(^|\/)(app|pages|routes)\/|route\.(?:js|jsx|ts|tsx)$|router\.(?:js|jsx|ts|tsx)$/;

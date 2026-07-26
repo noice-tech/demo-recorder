@@ -75,6 +75,10 @@ A passing verification can be exported to a validating draft plan while the sess
 }
 ```
 
+If the verified initial route or an explicit `goto` transition depends on a query string or
+fragment, export refuses to persist that URL state by default. Add `"includeUrlState": true` to
+the request only after confirming those values contain no credentials, tokens, or private data.
+
 ```bash
 npx --yes @noice-tech/demo-recorder@0.0.1 explore export-plan product-demo \
   --input draft-request.json \

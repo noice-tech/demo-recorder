@@ -10,6 +10,7 @@ export async function startManagedApp(options: {
   cwd: string;
   readinessUrl: string;
   timeoutMs?: number;
+  signal?: AbortSignal;
   log?: (line: string) => void;
 }): Promise<ManagedApp> {
   const log = options.log ?? (() => undefined);
@@ -61,8 +62,15 @@ export async function startManagedApp(options: {
 
   const deadline = Date.now() + (options.timeoutMs ?? 60_000);
   while (Date.now() < deadline) {
+    if (options.signal?.aborted) {
+      await terminate();
+      throw new Error(`Managed application startup was aborted: ${options.readinessUrl}`);
+    }
     try {
-      const response = await fetch(options.readinessUrl);
+      const fetchSignal = options.signal
+        ? AbortSignal.any([options.signal, AbortSignal.timeout(2_000)])
+        : AbortSignal.timeout(2_000);
+      const response = await fetch(options.readinessUrl, { signal: fetchSignal });
       if (response.ok) {
         let closed = false;
         return {

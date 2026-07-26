@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { lstat, mkdir, open, rename, rm, stat } from "node:fs/promises";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { chmod, lstat, mkdir, open, rename, rm, stat } from "node:fs/promises";
+import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
 
 export const explorationArtifactLimits = {
   snapshotBytes: 2 * 1024 * 1024,
@@ -108,12 +108,41 @@ export class ExplorationArtifactStore {
     }
   }
 
+  async writeExternalFile(
+    relativePath: string,
+    maxBytes: number,
+    write: (temporaryPath: string) => Promise<void>,
+  ): Promise<void> {
+    const absolutePath = this.path(relativePath);
+    await this.ensureDirectory(this.relativePath(dirname(absolutePath)));
+    await this.rejectSymlink(absolutePath);
+    const extension = extname(absolutePath);
+    const stem = extension ? absolutePath.slice(0, -extension.length) : absolutePath;
+    const temporaryPath = `${stem}.${process.pid}.${randomBytes(6).toString("hex")}.tmp${extension}`;
+    try {
+      await write(temporaryPath);
+      const metadata = await lstat(temporaryPath);
+      if (!metadata.isFile() || metadata.isSymbolicLink())
+        throw new Error(`External artifact writer did not create a regular file: ${relativePath}`);
+      if (metadata.size > maxBytes)
+        throw new ExplorationArtifactLimitError(
+          `Artifact ${relativePath} exceeds ${maxBytes} bytes`,
+        );
+      await chmod(temporaryPath, 0o600);
+      await rename(temporaryPath, absolutePath);
+    } catch (error) {
+      await rm(temporaryPath, { force: true }).catch(() => undefined);
+      throw error;
+    }
+  }
+
   async assertFileLimit(relativePath: string, maxBytes: number): Promise<void> {
     const absolutePath = this.path(relativePath);
     await this.rejectSymlink(absolutePath);
     const metadata = await stat(absolutePath);
-    if (metadata.size > maxBytes)
-      throw new ExplorationArtifactLimitError(`Artifact ${relativePath} exceeds ${maxBytes} bytes`);
+    if (metadata.size <= maxBytes) return;
+    await rm(absolutePath, { force: true });
+    throw new ExplorationArtifactLimitError(`Artifact ${relativePath} exceeds ${maxBytes} bytes`);
   }
 
   private async ensureDirectory(relativeDirectory: string): Promise<void> {

@@ -4,10 +4,13 @@ import { chromium, type BrowserContext, type Page } from "playwright";
 import { resolvePlanLocator } from "./capture/plan.js";
 import { loadDemoPlan, type DemoAction, type DemoPlan } from "./demo-plan/index.js";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./explorer/artifacts.js";
+import {
+  attachBlockedInteractionHandlers,
+  createGuardedBrowserContext,
+} from "./explorer/browser-runtime.js";
 import { authProfilePaths } from "./explorer/auth.js";
 import { startManagedApp } from "./explorer/managed-app.js";
 import { sanitizeExplorationError, sanitizeExplorationUrl } from "./explorer/privacy.js";
-import { installSessionStorage, loadSessionStorage } from "./explorer/session-storage.js";
 import { workingDirectory } from "./paths.js";
 
 export type RehearsalStepResult = {
@@ -152,32 +155,14 @@ export async function rehearseDemoPlan(options: {
   let finalEvidence = false;
 
   try {
-    context = await browser.newContext({
-      viewport: { width: 1440, height: 900 },
-      acceptDownloads: false,
-      ...(options.storageStatePath ? { storageState: options.storageStatePath } : {}),
-    });
-    if (options.sessionStoragePath)
-      await installSessionStorage(context, await loadSessionStorage(options.sessionStoragePath));
-    const allowedOrigin = new URL(options.plan.target.baseUrl).origin;
-    await context.route("**/*", async (route) => {
-      const request = route.request();
-      if (
-        request.isNavigationRequest() &&
-        request.frame().parentFrame() === null &&
-        /^https?:/.test(request.url()) &&
-        new URL(request.url()).origin !== allowedOrigin
-      ) {
-        await route.abort("blockedbyclient");
-        return;
-      }
-      await route.continue();
+    context = await createGuardedBrowserContext(browser, {
+      baseUrl: options.plan.target.baseUrl,
+      ...(options.storageStatePath ? { storageStatePath: options.storageStatePath } : {}),
+      ...(options.sessionStoragePath ? { sessionStoragePath: options.sessionStoragePath } : {}),
     });
     await context.tracing.start({ screenshots: true, snapshots: true, sources: false });
     const page = await context.newPage();
-    page.on("dialog", (dialog) => void dialog.dismiss().catch(() => undefined));
-    page.on("popup", (popup) => void popup.close().catch(() => undefined));
-    page.on("download", (download) => void download.cancel().catch(() => undefined));
+    attachBlockedInteractionHandlers(page);
 
     for (const [index, step] of options.plan.capture.steps.entries()) {
       const startedAt = Date.now();
@@ -216,40 +201,32 @@ export async function rehearseDemoPlan(options: {
             `${snapshot.trimEnd()}\n`,
             explorationArtifactLimits.snapshotBytes,
           ),
-          page.screenshot({
-            path: artifacts.path(failureScreenshot),
-            fullPage: false,
-            scale: "css",
-          }),
+          artifacts.writeExternalFile(
+            failureScreenshot,
+            explorationArtifactLimits.screenshotBytes,
+            (path) => page.screenshot({ path, fullPage: false, scale: "css" }).then(() => {}),
+          ),
         ])
-          .then(async () => {
-            await artifacts.assertFileLimit(
-              failureScreenshot,
-              explorationArtifactLimits.screenshotBytes,
-            );
-            return true;
-          })
+          .then(() => true)
           .catch(() => false);
         break;
       }
     }
     if (!failure) {
-      await page.screenshot({
-        path: artifacts.path(finalScreenshot),
-        fullPage: false,
-        scale: "css",
-      });
-      await artifacts.assertFileLimit(finalScreenshot, explorationArtifactLimits.screenshotBytes);
+      await artifacts.writeExternalFile(
+        finalScreenshot,
+        explorationArtifactLimits.screenshotBytes,
+        (path) => page.screenshot({ path, fullPage: false, scale: "css" }).then(() => {}),
+      );
       finalEvidence = true;
     }
   } finally {
     if (context) {
-      traceAvailable = await context.tracing
-        .stop({ path: artifacts.path(traceArtifact) })
-        .then(async () => {
-          await artifacts.assertFileLimit(traceArtifact, explorationArtifactLimits.traceBytes);
-          return true;
-        })
+      traceAvailable = await artifacts
+        .writeExternalFile(traceArtifact, explorationArtifactLimits.traceBytes, (path) =>
+          context!.tracing.stop({ path }),
+        )
+        .then(() => true)
         .catch(() => false);
       await closeContext(context);
     }

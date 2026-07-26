@@ -1,5 +1,11 @@
 import type { Browser, BrowserContext, Locator, Page } from "playwright";
+import { resolveUniqueLocator } from "../browser/locator.js";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
+import {
+  attachBlockedInteractionHandlers,
+  createGuardedBrowserContext,
+  waitForSemanticQuiet,
+} from "./browser-runtime.js";
 import { explorationSemanticFingerprint } from "./graph.js";
 import {
   explorationVerificationReportSchema,
@@ -10,20 +16,11 @@ import {
   type ExplorationTransition,
   type ExplorationVerificationReport,
 } from "./interactive-schema.js";
-import { sanitizeExplorationError, sanitizeExplorationUrl } from "./privacy.js";
-import { installSessionStorage, loadSessionStorage } from "./session-storage.js";
-
-function locatorForCandidate(page: Page, candidate: ExplorationLocatorMethod): Locator {
-  if (candidate.by === "role")
-    return page.getByRole(
-      candidate.role as Parameters<Page["getByRole"]>[0],
-      candidate.name ? { name: candidate.name, exact: candidate.exact ?? true } : {},
-    );
-  if (candidate.by === "test-id") return page.getByTestId(candidate.testId);
-  if (candidate.by === "text")
-    return page.getByText(candidate.text, { exact: candidate.exact ?? true });
-  return page.locator(candidate.selector);
-}
+import {
+  sanitizeExplorationAction,
+  sanitizeExplorationError,
+  sanitizeExplorationUrl,
+} from "./privacy.js";
 
 async function resolveVerifiedTarget(
   page: Page,
@@ -31,49 +28,10 @@ async function resolveVerifiedTarget(
 ): Promise<{ locator: Locator; candidate: ExplorationLocatorMethod }> {
   if (!transition.target)
     throw new Error(`Transition ${transition.id} has no durable target recipe`);
-  const failures: string[] = [];
-  for (const candidate of transition.target.candidates) {
-    const locator = locatorForCandidate(page, candidate);
-    const attached = await locator
-      .first()
-      .waitFor({ state: "attached", timeout: 3_000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!attached) {
-      failures.push(`${candidate.by} did not attach within 3000ms`);
-      continue;
-    }
-    const count = await locator.count().catch(() => 0);
-    if (count !== 1) {
-      failures.push(`${candidate.by} matched ${count} elements`);
-      continue;
-    }
-    if (!(await locator.isVisible().catch(() => false))) {
-      failures.push(`${candidate.by} matched a hidden element`);
-      continue;
-    }
-    return { locator, candidate };
-  }
-  throw new Error(
-    `No unique visible locator candidate resolved for ${transition.id}: ${failures.join("; ")}`,
-  );
-}
-
-async function waitForSemanticQuiet(page: Page): Promise<void> {
-  const deadline = Date.now() + 2_500;
-  let previous = "";
-  let stableSince = Date.now();
-  while (Date.now() < deadline) {
-    await page.waitForTimeout(100);
-    const snapshot = await page.ariaSnapshot({ mode: "default", depth: 8, timeout: 2_000 });
-    const normalized = snapshot.replaceAll(/\s+/g, " ").trim();
-    if (normalized === previous) {
-      if (Date.now() - stableSince >= 250) return;
-    } else {
-      previous = normalized;
-      stableSince = Date.now();
-    }
-  }
+  const resolved = await resolveUniqueLocator(page, transition.target.candidates, {
+    description: `No unique visible locator candidate resolved for ${transition.id}`,
+  });
+  return { locator: resolved.locator, candidate: resolved.method };
 }
 
 async function executeReplayAction(
@@ -155,35 +113,18 @@ export async function verifyExplorationPath(options: {
     const observationById = new Map(
       options.observations.map((observation) => [observation.id, observation]),
     );
-    context = await options.browser.newContext({
-      viewport: { width: 1440, height: 900 },
-      acceptDownloads: false,
-      ...(options.config.storageStatePath ? { storageState: options.config.storageStatePath } : {}),
-    });
-    if (options.config.sessionStoragePath)
-      await installSessionStorage(
-        context,
-        await loadSessionStorage(options.config.sessionStoragePath),
-      );
-    const allowedOrigin = new URL(options.config.baseUrl).origin;
-    await context.route("**/*", async (route) => {
-      const routeRequest = route.request();
-      if (
-        routeRequest.isNavigationRequest() &&
-        routeRequest.frame().parentFrame() === null &&
-        /^https?:/.test(routeRequest.url()) &&
-        new URL(routeRequest.url()).origin !== allowedOrigin
-      ) {
-        await route.abort("blockedbyclient");
-        return;
-      }
-      await route.continue();
+    context = await createGuardedBrowserContext(options.browser, {
+      baseUrl: options.config.baseUrl,
+      ...(options.config.storageStatePath
+        ? { storageStatePath: options.config.storageStatePath }
+        : {}),
+      ...(options.config.sessionStoragePath
+        ? { sessionStoragePath: options.config.sessionStoragePath }
+        : {}),
     });
     await context.tracing.start({ screenshots: true, snapshots: true, sources: false });
     const page = await context.newPage();
-    page.on("dialog", (dialog) => void dialog.dismiss().catch(() => undefined));
-    page.on("popup", (popup) => void popup.close().catch(() => undefined));
-    page.on("download", (download) => void download.cancel().catch(() => undefined));
+    attachBlockedInteractionHandlers(page);
     await page.goto(options.config.baseUrl, {
       waitUntil: "domcontentloaded",
       timeout: 30_000,
@@ -218,14 +159,10 @@ export async function verifyExplorationPath(options: {
           ),
           url: sanitizeExplorationUrl(page.url()),
         };
-        await page.screenshot({
-          path: options.artifacts.path(screenshot),
-          fullPage: false,
-          scale: "css",
-        });
-        await options.artifacts.assertFileLimit(
+        await options.artifacts.writeExternalFile(
           screenshot,
           explorationArtifactLimits.screenshotBytes,
+          (path) => page.screenshot({ path, fullPage: false, scale: "css" }).then(() => {}),
         );
         const matches =
           actual.semanticFingerprint === expected.semanticFingerprint &&
@@ -233,7 +170,7 @@ export async function verifyExplorationPath(options: {
         steps.push({
           sequence: index + 1,
           transitionId: transition.id,
-          action: transition.action,
+          action: sanitizeExplorationAction(transition.action, options.config.baseUrl),
           status: matches ? "passed" : "failed",
           ...(candidateUsed ? { candidateUsed } : {}),
           expected: {
@@ -267,24 +204,16 @@ export async function verifyExplorationPath(options: {
             url: sanitizeExplorationUrl(page.url()),
           }))
           .catch(() => undefined);
-        const failureScreenshot = await page
-          .screenshot({
-            path: options.artifacts.path(screenshot),
-            fullPage: false,
-            scale: "css",
-          })
-          .then(async () => {
-            await options.artifacts.assertFileLimit(
-              screenshot,
-              explorationArtifactLimits.screenshotBytes,
-            );
-            return screenshot;
-          })
+        const failureScreenshot = await options.artifacts
+          .writeExternalFile(screenshot, explorationArtifactLimits.screenshotBytes, (path) =>
+            page.screenshot({ path, fullPage: false, scale: "css" }).then(() => {}),
+          )
+          .then(() => screenshot)
           .catch(() => undefined);
         steps.push({
           sequence: index + 1,
           transitionId: transition.id,
-          action: transition.action,
+          action: sanitizeExplorationAction(transition.action, options.config.baseUrl),
           status: "failed",
           ...(candidateUsed ? { candidateUsed } : {}),
           expected: {
@@ -305,15 +234,11 @@ export async function verifyExplorationPath(options: {
     failure = sanitizeExplorationError(error instanceof Error ? error.message : String(error));
   } finally {
     if (context) {
-      traceAvailable = await context.tracing
-        .stop({ path: options.artifacts.path(traceArtifact) })
-        .then(async () => {
-          await options.artifacts.assertFileLimit(
-            traceArtifact,
-            explorationArtifactLimits.traceBytes,
-          );
-          return true;
-        })
+      traceAvailable = await options.artifacts
+        .writeExternalFile(traceArtifact, explorationArtifactLimits.traceBytes, (path) =>
+          context!.tracing.stop({ path }),
+        )
+        .then(() => true)
         .catch(() => false);
       await context.close().catch(() => undefined);
     }

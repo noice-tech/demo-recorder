@@ -1,3 +1,5 @@
+import type { ExplorationAction } from "./interactive-schema.js";
+
 const urlInTextPattern = /https?:\/\/[^\s)\]}>'"]+/g;
 
 export function sanitizeExplorationUrl(value: string): string {
@@ -11,6 +13,15 @@ export function sanitizeExplorationUrl(value: string): string {
   } catch {
     return value.slice(0, 500);
   }
+}
+
+export function sanitizeExplorationAction(
+  action: ExplorationAction,
+  baseUrl?: string,
+): ExplorationAction {
+  if (action.type !== "goto") return action;
+  const url = baseUrl ? new URL(action.url, baseUrl).href : action.url;
+  return { ...action, url: sanitizeExplorationUrl(url) };
 }
 
 export function sanitizeExplorationError(value: string): string {

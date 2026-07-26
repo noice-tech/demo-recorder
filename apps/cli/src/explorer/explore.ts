@@ -1,5 +1,6 @@
 import { relative } from "node:path";
 import { chromium } from "playwright";
+import { destructiveActionPattern, navigationActionPattern } from "../browser/action-risk.js";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
 import { collectInteractiveTargets } from "./interactive-targets.js";
 import { capturePageSemanticEvidence } from "./page-observation.js";
@@ -13,10 +14,6 @@ import type {
   ExploreSiteOptions,
 } from "./types.js";
 
-const destructivePattern =
-  /\b(delete|remove|purchase|buy|pay|publish|send|invite|place order|sign out|log out)\b/i;
-const navigationPattern =
-  /\b(home|about|pricing|examples?|features?|docs|blog|next|previous|back|menu|open|learn|view)\b/i;
 const captchaPattern = /captcha|recaptcha|hcaptcha|challenge-platform|cf-turnstile/i;
 const authPattern = /\b(login|log in|sign in|signin|authenticate|password|oauth|unauthorized)\b/i;
 
@@ -26,9 +23,9 @@ function classifyControl(
   tag: string,
   type: string,
 ): ExploredControl["classification"] {
-  if (destructivePattern.test(name)) return "destructive";
+  if (destructiveActionPattern.test(name)) return "destructive";
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || type === "submit") return "form";
-  if (role === "link" || navigationPattern.test(name)) return "navigation";
+  if (role === "link" || navigationActionPattern.test(name)) return "navigation";
   if (["tab", "menuitem"].includes(role) || /accordion|carousel|expand|collapse/i.test(name))
     return "presentational";
   return "ambiguous";
@@ -108,23 +105,20 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
         const snapshotArtifact = `snapshots/${artifactStem}.yml`;
         const screenshotAbsolute = artifacts.path(screenshotArtifact);
         await Promise.all([
-          page.screenshot({ path: screenshotAbsolute, fullPage: true }),
-          page.screenshot({
-            path: artifacts.path(viewportScreenshotArtifact),
-            fullPage: false,
-            scale: "css",
-          }),
+          artifacts.writeExternalFile(
+            screenshotArtifact,
+            explorationArtifactLimits.screenshotBytes,
+            (path) => page.screenshot({ path, fullPage: true }).then(() => {}),
+          ),
+          artifacts.writeExternalFile(
+            viewportScreenshotArtifact,
+            explorationArtifactLimits.screenshotBytes,
+            (path) => page.screenshot({ path, fullPage: false, scale: "css" }).then(() => {}),
+          ),
           artifacts.writeText(
             snapshotArtifact,
             `${semantics.snapshot.trimEnd()}\n`,
             explorationArtifactLimits.snapshotBytes,
-          ),
-        ]);
-        await Promise.all([
-          artifacts.assertFileLimit(screenshotArtifact, explorationArtifactLimits.screenshotBytes),
-          artifacts.assertFileLimit(
-            viewportScreenshotArtifact,
-            explorationArtifactLimits.screenshotBytes,
           ),
         ]);
         const links = rawLinks.map((link) => ({
@@ -168,7 +162,7 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
           errors: errors.slice(0, 50).map(sanitizeExplorationError),
         });
         if (item.depth < maxDepth) {
-          for (const link of links) {
+          for (const link of rawLinks) {
             const candidate = new URL(link.href);
             candidate.hash = "";
             if (sameOriginOnly && candidate.origin !== target.origin) continue;
@@ -183,7 +177,7 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
           sanitizeExplorationError(error instanceof Error ? error.message : String(error)),
         );
         pages.push({
-          url: item.url,
+          url: sanitizeExplorationUrl(item.url),
           title: "",
           depth: item.depth,
           headings: [],

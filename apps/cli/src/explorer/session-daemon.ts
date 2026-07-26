@@ -17,8 +17,11 @@ const config = explorationLaunchConfigSchema.parse(
 let managedApp: ManagedApp | undefined;
 let session: InteractiveExplorationSession | undefined;
 let stopping = false;
+let acceptingRequests = true;
 let watchdog: NodeJS.Timeout | undefined;
+let server: ReturnType<typeof createServer> | undefined;
 let requestQueue: Promise<void> = Promise.resolve();
+const startupAbort = new AbortController();
 
 async function serialize<T>(operation: () => Promise<T> | T): Promise<T> {
   const result = requestQueue.then(operation, operation);
@@ -45,11 +48,23 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
 async function cleanup(status: "finished" | "aborted" | "failed"): Promise<void> {
   if (stopping) return;
   stopping = true;
+  acceptingRequests = false;
+  startupAbort.abort();
   if (watchdog) clearTimeout(watchdog);
   await session?.close(status).catch(() => undefined);
   await managedApp?.close().catch(() => undefined);
   await Promise.all([rm(sessionDescriptorPath, { force: true }), rm(configPath, { force: true })]);
 }
+
+const stopOnSignal = (signal: NodeJS.Signals) => {
+  startupAbort.abort();
+  void cleanup("aborted").finally(() => {
+    server?.close();
+    process.exitCode = signal === "SIGINT" ? 130 : 143;
+  });
+};
+process.once("SIGINT", () => stopOnSignal("SIGINT"));
+process.once("SIGTERM", () => stopOnSignal("SIGTERM"));
 
 try {
   if (config.startCommand) {
@@ -59,18 +74,23 @@ try {
       command: config.startCommand,
       cwd: config.repositoryPath,
       readinessUrl: config.readinessUrl ?? config.baseUrl,
+      signal: startupAbort.signal,
     });
   }
   session = new InteractiveExplorationSession(config);
   const initialObservation = await session.start();
 
-  const server = createServer(async (request, response) => {
+  const activeServer = createServer(async (request, response) => {
     response.setHeader("content-type", "application/json");
     if (request.headers.authorization !== `Bearer ${bearerToken}`) {
       response.writeHead(403).end(JSON.stringify({ ok: false, error: "Forbidden" }));
       return;
     }
     try {
+      if (!acceptingRequests && request.url !== "/status") {
+        response.writeHead(409).end(JSON.stringify({ ok: false, error: "Session is stopping" }));
+        return;
+      }
       if (request.method === "GET" && request.url === "/status") {
         response.end(JSON.stringify({ ok: true, report: session?.report() }));
         return;
@@ -81,35 +101,35 @@ try {
         return;
       }
       if (request.method === "POST" && request.url === "/act") {
-        const input = await readJson(request);
-        const transition = await serialize(() => session?.act(input));
+        const transition = await serialize(async () => session?.act(await readJson(request)));
         response.end(JSON.stringify({ ok: true, transition }));
         return;
       }
       if (request.method === "POST" && request.url === "/find") {
-        const input = await readJson(request);
-        const result = await serialize(() => session?.find(input));
+        const result = await serialize(async () => session?.find(await readJson(request)));
         response.end(JSON.stringify({ ok: true, result }));
         return;
       }
       if (request.method === "POST" && request.url === "/verify") {
-        const input = await readJson(request);
-        const verification = await serialize(() => session?.verify(input));
+        const verification = await serialize(async () => session?.verify(await readJson(request)));
         response.end(JSON.stringify({ ok: true, verification }));
         return;
       }
       if (request.method === "POST" && request.url === "/export-plan") {
-        const input = await readJson(request);
-        const plan = await serialize(() => session?.exportPlan(input));
+        const plan = await serialize(async () => session?.exportPlan(await readJson(request)));
         response.end(JSON.stringify({ ok: true, plan }));
         return;
       }
       if (request.method === "POST" && ["/finish", "/abort"].includes(request.url ?? "")) {
+        acceptingRequests = false;
         const status = request.url === "/finish" ? "finished" : "aborted";
-        const report = session?.report(status);
-        await serialize(() => cleanup(status));
+        const report = await serialize(async () => {
+          const value = session?.report(status);
+          await cleanup(status);
+          return value;
+        });
         response.end(JSON.stringify({ ok: true, report }));
-        setImmediate(() => server.close());
+        setImmediate(() => activeServer.close());
         return;
       }
       response.writeHead(404).end(JSON.stringify({ ok: false, error: "Not found" }));
@@ -122,16 +142,17 @@ try {
       );
     }
   });
+  server = activeServer;
 
   await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => resolve());
+    activeServer.once("error", reject);
+    activeServer.listen(0, "127.0.0.1", () => resolve());
   });
-  const address = server.address();
+  const address = activeServer.address();
   if (!address || typeof address === "string")
     throw new Error("Exploration daemon has no TCP address");
   watchdog = setTimeout(() => {
-    void serialize(() => cleanup("aborted")).finally(() => server.close());
+    void serialize(() => cleanup("aborted")).finally(() => activeServer.close());
   }, config.maxDurationMs + 30_000);
   watchdog.unref();
   await writeFile(
@@ -152,15 +173,6 @@ try {
     )}\n`,
     { mode: 0o600 },
   );
-
-  const stopOnSignal = (signal: NodeJS.Signals) => {
-    void cleanup("aborted").finally(() => {
-      server.close();
-      process.exitCode = signal === "SIGINT" ? 130 : 143;
-    });
-  };
-  process.once("SIGINT", () => stopOnSignal("SIGINT"));
-  process.once("SIGTERM", () => stopOnSignal("SIGTERM"));
 } catch (error) {
   await cleanup("failed");
   throw error;

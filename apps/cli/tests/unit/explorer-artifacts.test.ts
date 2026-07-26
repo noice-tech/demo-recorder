@@ -6,7 +6,11 @@ import {
   ExplorationArtifactLimitError,
   ExplorationArtifactStore,
 } from "../../src/explorer/artifacts.js";
-import { sanitizeExplorationError, sanitizeExplorationUrl } from "../../src/explorer/privacy.js";
+import {
+  sanitizeExplorationAction,
+  sanitizeExplorationError,
+  sanitizeExplorationUrl,
+} from "../../src/explorer/privacy.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -86,6 +90,20 @@ describe("exploration artifact store", () => {
     await expect(store.assertFileLimit("screenshot.png", 10)).rejects.toBeInstanceOf(
       ExplorationArtifactLimitError,
     );
+    await expect(readFile(join(root, "screenshot.png"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("publishes bounded external artifacts atomically", async () => {
+    const root = await temporaryDirectory();
+    const store = new ExplorationArtifactStore(root);
+    await store.writeExternalFile("screenshot.png", 20, (path) =>
+      writeFile(path, Buffer.alloc(10)),
+    );
+    expect((await readFile(join(root, "screenshot.png"))).byteLength).toBe(10);
+    await expect(
+      store.writeExternalFile("oversized.png", 10, (path) => writeFile(path, Buffer.alloc(20))),
+    ).rejects.toBeInstanceOf(ExplorationArtifactLimitError);
+    expect(await readdir(root)).toEqual(["screenshot.png"]);
   });
 });
 
@@ -93,6 +111,15 @@ describe("exploration privacy", () => {
   it("removes credentials, query values, and fragments from shareable URLs", () => {
     const input = "https://user:password@example.com/private?token=super-secret#access-key";
     expect(sanitizeExplorationUrl(input)).toBe("https://example.com/private");
+  });
+
+  it("sanitizes relative navigation actions before persistence", () => {
+    expect(
+      sanitizeExplorationAction(
+        { type: "goto", url: "/private?token=secret#fragment" },
+        "https://example.com/base",
+      ),
+    ).toEqual({ type: "goto", url: "https://example.com/private" });
   });
 
   it("sanitizes URLs embedded in browser errors", () => {

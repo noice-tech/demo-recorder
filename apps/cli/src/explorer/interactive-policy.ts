@@ -1,18 +1,15 @@
+import {
+  destructiveActionPattern,
+  externalEffectPattern,
+  mutationActionPattern,
+  presentationalActionPattern,
+} from "../browser/action-risk.js";
 import type {
   ExploredInteractiveElementV2,
   ExplorationAction,
   ExplorationPolicyName,
   ExplorationTransition,
 } from "./interactive-schema.js";
-
-const destructivePattern =
-  /\b(delete|remove|erase|destroy|purchase|buy|pay|publish|send|invite|deploy|merge|revoke|reset|cancel subscription|place order|sign out|log out)\b/i;
-const mutationPattern =
-  /\b(create|add|upload|approve|launch|save|edit|rename|subscribe|follow|submit|sign up|create account|checkout)\b/i;
-const externalEffectPattern =
-  /\b(oauth|authorize|grant access|download|install|open in|continue to)\b/i;
-const presentationalPattern =
-  /\b(open|close|view|show|hide|expand|collapse|next|previous|back|menu|tab|details|preview|examples?|features?|templates?)\b/i;
 
 export type ExplorationElementRiskInput = {
   role?: string;
@@ -29,7 +26,7 @@ export function classifyExplorationElementRisk(element: ExplorationElementRiskIn
   reasons: string[];
 } {
   const description = `${element.role ?? ""} ${element.name}`.trim();
-  if (destructivePattern.test(description))
+  if (destructiveActionPattern.test(description))
     return { risk: "destructive", reasons: ["Target text matches a destructive action"] };
   if (externalEffectPattern.test(description))
     return {
@@ -47,10 +44,10 @@ export function classifyExplorationElementRisk(element: ExplorationElementRiskIn
   if (
     element.role === "tab" ||
     element.expanded !== undefined ||
-    presentationalPattern.test(description)
+    presentationalActionPattern.test(description)
   )
     return { risk: "read-only", reasons: ["Control appears presentational"] };
-  if (mutationPattern.test(description))
+  if (mutationActionPattern.test(description))
     return {
       risk: "reversible",
       reasons: ["Target text suggests application data may change"],

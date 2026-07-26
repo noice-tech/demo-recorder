@@ -44,7 +44,7 @@ function parseAriaRoot(snapshot: string): { role?: string; name?: string } {
 }
 
 function cssId(id: string): string {
-  return `#${id.replaceAll(/([^A-Za-z0-9_-])/g, "\\$1")}`;
+  return /^-?[A-Za-z_][A-Za-z0-9_-]*$/.test(id) ? `#${id}` : `[id=${JSON.stringify(id)}]`;
 }
 
 function implicitRole(tagName: string, inputType?: string): string | undefined {

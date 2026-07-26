@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { closeSync, existsSync, openSync } from "node:fs";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -61,9 +61,10 @@ async function readDescriptor(
 async function request<T>(
   descriptor: ExplorationSessionDescriptor,
   path: string,
-  options?: { body?: unknown; method?: "GET" | "POST" },
+  options?: { body?: unknown; method?: "GET" | "POST"; timeoutMs?: number },
 ): Promise<T> {
   const response = await fetch(`http://127.0.0.1:${descriptor.port}${path}`, {
+    signal: AbortSignal.timeout(options?.timeoutMs ?? 60_000),
     method: options?.method ?? "GET",
     headers: {
       authorization: `Bearer ${descriptor.token}`,
@@ -75,6 +76,24 @@ async function request<T>(
   if (!response.ok || !result.ok)
     throw new Error(result.error ?? `Exploration session request failed: HTTP ${response.status}`);
   return result;
+}
+
+async function terminateDaemon(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const signal = (value: NodeJS.Signals): void => {
+    try {
+      if (process.platform !== "win32" && child.pid) process.kill(-child.pid, value);
+      else child.kill(value);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+    }
+  };
+  signal("SIGTERM");
+  const exited = await Promise.race([
+    new Promise<boolean>((resolveExit) => child.once("exit", () => resolveExit(true))),
+    new Promise<boolean>((resolveWait) => setTimeout(() => resolveWait(false), 5_000)),
+  ]);
+  if (!exited) signal("SIGKILL");
 }
 
 export async function startInteractiveSession(options: {
@@ -90,9 +109,9 @@ export async function startInteractiveSession(options: {
   if (existsSync(descriptorPath)) {
     const existing = await readDescriptor(options.sessionRoot, config.id).catch(() => undefined);
     if (existing) {
-      const alive = await request<{ report: ExplorationSessionReport }>(existing, "/status").catch(
-        () => undefined,
-      );
+      const alive = await request<{ report: ExplorationSessionReport }>(existing, "/status", {
+        timeoutMs: 2_000,
+      }).catch(() => undefined);
       if (alive) throw new Error(`Exploration session is already active: ${config.id}`);
     }
     await rm(descriptorPath, { force: true });
@@ -114,10 +133,14 @@ export async function startInteractiveSession(options: {
   });
   closeSync(daemonLog);
   child.unref();
-  const deadline = Date.now() + 30_000;
+  const startupTimeoutMs = 90_000;
+  const deadline = Date.now() + startupTimeoutMs;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
-      await rm(launchConfigPath, { force: true });
+      await Promise.all([
+        rm(launchConfigPath, { force: true }),
+        rm(descriptorPath, { force: true }),
+      ]);
       const daemonError = await readFile(daemonLogPath, "utf8").catch(() => "");
       throw new Error(
         `Exploration daemon exited with code ${child.exitCode}${daemonError.trim() ? `\n${daemonError.trim().slice(-4_000)}` : ""}`,
@@ -125,10 +148,9 @@ export async function startInteractiveSession(options: {
     }
     const descriptor = await readDescriptor(options.sessionRoot, config.id).catch(() => undefined);
     if (descriptor) {
-      const status = await request<{ report: ExplorationSessionReport }>(
-        descriptor,
-        "/status",
-      ).catch(() => undefined);
+      const status = await request<{ report: ExplorationSessionReport }>(descriptor, "/status", {
+        timeoutMs: 2_000,
+      }).catch(() => undefined);
       if (status?.report.latestObservationId) {
         const observationPath = join(
           descriptor.outputDirectory,
@@ -143,10 +165,11 @@ export async function startInteractiveSession(options: {
     }
     await new Promise((resolveWait) => setTimeout(resolveWait, 100));
   }
-  await rm(launchConfigPath, { force: true });
+  await terminateDaemon(child);
+  await Promise.all([rm(launchConfigPath, { force: true }), rm(descriptorPath, { force: true })]);
   const daemonError = await readFile(daemonLogPath, "utf8").catch(() => "");
   throw new Error(
-    `Exploration daemon did not start within 30 seconds${daemonError.trim() ? `\n${daemonError.trim().slice(-4_000)}` : ""}`,
+    `Exploration daemon did not start within ${startupTimeoutMs}ms${daemonError.trim() ? `\n${daemonError.trim().slice(-4_000)}` : ""}`,
   );
 }
 
@@ -216,6 +239,7 @@ export async function verifyInteractiveSession(
   const result = await request<{ verification: unknown }>(descriptor, "/verify", {
     method: "POST",
     body: explorationVerificationRequestSchema.parse(input),
+    timeoutMs: 15 * 60_000,
   });
   return explorationVerificationReportSchema.parse(result.verification);
 }
@@ -228,6 +252,7 @@ export async function finishInteractiveSession(
   const descriptor = await readDescriptor(sessionRoot, id);
   const result = await request<{ report: unknown }>(descriptor, abort ? "/abort" : "/finish", {
     method: "POST",
+    timeoutMs: 3 * 60_000,
   });
   return explorationSessionReportSchema.parse(result.report);
 }
@@ -237,7 +262,7 @@ export async function interactiveSessionStatus(
   id: string,
 ): Promise<ExplorationSessionReport> {
   const descriptor = await readDescriptor(sessionRoot, id);
-  const result = await request<{ report: unknown }>(descriptor, "/status");
+  const result = await request<{ report: unknown }>(descriptor, "/status", { timeoutMs: 5_000 });
   return explorationSessionReportSchema.parse(result.report);
 }
 
@@ -250,7 +275,7 @@ export async function listInteractiveSessions(sessionRoot: string): Promise<stri
     const id = entry.name.slice(0, -5);
     const descriptor = await readDescriptor(sessionRoot, id).catch(() => undefined);
     if (!descriptor) continue;
-    const alive = await request(descriptor, "/status").catch(() => undefined);
+    const alive = await request(descriptor, "/status", { timeoutMs: 2_000 }).catch(() => undefined);
     if (alive) ids.push(id);
     else await rm(join(sessionRoot, entry.name), { force: true });
   }

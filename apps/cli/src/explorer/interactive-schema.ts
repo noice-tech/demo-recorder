@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { locatorMethodSchema } from "../browser/locator.js";
 
 const nonempty = z.string().trim().min(1);
 
@@ -28,17 +29,7 @@ export const explorationLaunchConfigSchema = z.object({
 });
 export type ExplorationLaunchConfig = z.infer<typeof explorationLaunchConfigSchema>;
 
-export const explorationLocatorMethodSchema = z.discriminatedUnion("by", [
-  z.object({
-    by: z.literal("role"),
-    role: nonempty,
-    name: nonempty.optional(),
-    exact: z.boolean().optional(),
-  }),
-  z.object({ by: z.literal("test-id"), testId: nonempty }),
-  z.object({ by: z.literal("text"), text: nonempty, exact: z.boolean().optional() }),
-  z.object({ by: z.literal("css"), selector: nonempty }),
-]);
+export const explorationLocatorMethodSchema = locatorMethodSchema;
 
 export type ExplorationLocatorMethod = z.infer<typeof explorationLocatorMethodSchema>;
 
@@ -289,6 +280,7 @@ export const explorationDraftPlanRequestSchema = z.object({
     .positive()
     .max(30 * 60_000)
     .optional(),
+  includeUrlState: z.boolean().optional(),
 });
 export type ExplorationDraftPlanRequest = z.infer<typeof explorationDraftPlanRequestSchema>;
 

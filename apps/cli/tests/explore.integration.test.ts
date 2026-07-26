@@ -17,7 +17,9 @@ afterEach(async () => {
 describe("browser exploration", () => {
   it("follows bounded same-origin links without submitting forms", async () => {
     let submissions = 0;
+    const visitedUrls: string[] = [];
     const server = createServer((request, response) => {
+      if (request.url) visitedUrls.push(request.url);
       if (request.method === "POST") submissions += 1;
       response.setHeader("content-type", "text/html");
       response.end(
@@ -53,5 +55,6 @@ describe("browser exploration", () => {
     ).resolves.toBeUndefined();
     expect(savedText).not.toMatch(/super-secret|access-key/);
     expect(saved.pages[0]?.links[0]?.href).toMatch(/\/second$/);
+    expect(visitedUrls).toContain("/second?token=super-secret");
   });
 });

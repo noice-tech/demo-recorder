@@ -121,6 +121,44 @@ describe.sequential("interactive exploration", () => {
     }
   }, 30_000);
 
+  it("requires explicit approval before exporting query-based URL state", async () => {
+    const app = await fixture();
+    const outputDirectory = await temporaryDirectory("demo-recorder-interactive-url-state-");
+    const session = new InteractiveExplorationSession(
+      launchConfig("url-state", `${app.baseUrl}/?view=activity`, outputDirectory, "read-only"),
+    );
+    try {
+      await session.start();
+      const transition = await session.act({ type: "wait", durationMs: 10 });
+      const verification = await session.verify({
+        version: 1,
+        transitionIds: [transition.id],
+      });
+      expect(verification.status).toBe("passed");
+      expect(() =>
+        session.exportPlan({
+          version: 1,
+          verificationId: verification.id,
+          name: "query-state",
+          goal: "Reproduce an explicitly approved query state",
+        }),
+      ).toThrow(/includeUrlState/);
+      const plan = session.exportPlan({
+        version: 1,
+        verificationId: verification.id,
+        name: "query-state",
+        goal: "Reproduce an explicitly approved query state",
+        includeUrlState: true,
+      });
+      expect(plan.capture.steps[0]).toMatchObject({
+        type: "navigate",
+        url: "/?view=activity",
+      });
+    } finally {
+      await session.close("finished");
+    }
+  }, 30_000);
+
   it("observes tabs, dialogs, shadow controls, and conservative frame/risk boundaries", async () => {
     const app = await fixture();
     const outputDirectory = await temporaryDirectory("demo-recorder-interactive-states-");
@@ -135,6 +173,13 @@ describe.sequential("interactive exploration", () => {
       expect(
         observation.interactiveElements.some((element) => element.name === "Preview action"),
       ).toBe(false);
+      expect(
+        observation.interactiveElements
+          .find((element) => element.name === "Numeric ID control")
+          ?.target.candidates.some(
+            (candidate) => candidate.by === "css" && candidate.selector === '[id="123"]',
+          ),
+      ).toBe(true);
       expect(
         observation.interactiveElements.find((element) => element.name === "Delete workspace")
           ?.risk,
@@ -273,6 +318,7 @@ describe.sequential("interactive exploration", () => {
         access(join(outputDirectory, verification.artifacts.trace ?? "missing")),
       ).resolves.toBeUndefined();
 
+      const actionsBeforeStaleRequest = session.report().metrics.actions;
       await expect(
         session.act({
           type: "click",
@@ -280,6 +326,7 @@ describe.sequential("interactive exploration", () => {
           ref: createProject?.ref ?? "missing",
         }),
       ).rejects.toThrow("Stale observation reference");
+      expect(session.report().metrics.actions).toBe(actionsBeforeStaleRequest);
     } finally {
       await session.close("finished");
     }

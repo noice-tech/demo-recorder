@@ -16,10 +16,16 @@ import {
 import { sanitizeExplorationUrl } from "./privacy.js";
 
 function locatorMethod(method: ExplorationLocatorMethod): LocatorSpec["primary"] {
-  if (method.by === "role") return { ...method };
-  if (method.by === "test-id") return { ...method };
-  if (method.by === "text") return { ...method };
   return { ...method };
+}
+
+function replayUrl(value: string, baseUrl: string, includeUrlState: boolean): string {
+  const url = new URL(value, baseUrl);
+  if ((url.search || url.hash) && !includeUrlState)
+    throw new Error(
+      `Cannot export URL state from ${url.pathname}; set includeUrlState to true only when its query and fragment are safe to persist`,
+    );
+  return `${url.pathname || "/"}${includeUrlState ? `${url.search}${url.hash}` : ""}`;
 }
 
 function locatorForTransition(
@@ -42,6 +48,8 @@ function locatorForTransition(
 function actionForTransition(
   transition: ExplorationTransition,
   chosen: ExplorationLocatorMethod | undefined,
+  baseUrl: string,
+  includeUrlState: boolean,
 ): DemoAction {
   const action = transition.action;
   const purpose = action.reason ?? `Replay verified transition ${transition.id}`;
@@ -49,7 +57,12 @@ function actionForTransition(
     return { type: "click", locator: locatorForTransition(transition, chosen), purpose };
   if (action.type === "hover")
     return { type: "move", locator: locatorForTransition(transition, chosen), purpose };
-  if (action.type === "goto") return { type: "navigate", url: action.url, purpose };
+  if (action.type === "goto")
+    return {
+      type: "navigate",
+      url: replayUrl(action.url, baseUrl, includeUrlState),
+      purpose,
+    };
   if (action.type === "scroll")
     return {
       type: "scroll",
@@ -82,7 +95,8 @@ export function exportVerifiedPathToDemoPlan(options: {
     options.observations.map((observation) => [observation.id, observation]),
   );
   const base = new URL(options.config.baseUrl);
-  const initialUrl = `${base.pathname || "/"}`;
+  const includeUrlState = input.includeUrlState ?? false;
+  const initialUrl = replayUrl(base.href, base.href, includeUrlState);
   const steps: DemoAction[] = [
     {
       type: "navigate",
@@ -107,7 +121,14 @@ export function exportVerifiedPathToDemoPlan(options: {
         `Missing observation ${verificationStep.expected.observationId} during plan export`,
       );
     modifiesData ||= transition.policy.risk === "reversible";
-    steps.push(actionForTransition(transition, verificationStep.candidateUsed));
+    steps.push(
+      actionForTransition(
+        transition,
+        verificationStep.candidateUsed,
+        options.config.baseUrl,
+        includeUrlState,
+      ),
+    );
 
     if (expected.url !== previousExpectedUrl) {
       steps.push({

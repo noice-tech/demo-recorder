@@ -1,16 +1,15 @@
 import { readFile } from "node:fs/promises";
 import type { z } from "zod";
+import {
+  destructiveActionPattern,
+  formSubmissionPattern,
+  mutationActionPattern,
+} from "../browser/action-risk.js";
 import { demoActionSchema, demoPlanSchema, locatorSchema } from "./schema.js";
 
 export type LocatorSpec = z.infer<typeof locatorSchema>;
 export type DemoAction = z.infer<typeof demoActionSchema>;
 export type DemoPlan = z.infer<typeof demoPlanSchema>;
-
-const destructivePattern =
-  /\b(delete|remove|purchase|buy|pay|publish|send|invite|confirm order|place order|sign out|log out)\b/i;
-const mutationPattern = /\b(create|add|upload|approve|launch|save|edit|rename|subscribe|follow)\b/i;
-const formSubmissionPattern =
-  /\b(submit|sign up|create account|send message|subscribe|checkout|place order)\b/i;
 
 function locatorText(locator: LocatorSpec): string {
   const method = locator.primary;
@@ -36,10 +35,10 @@ export function parseDemoPlan(value: unknown): DemoPlan {
     }
     if (step.type === "click") {
       const description = locatorText(step.locator);
-      if (destructivePattern.test(description)) {
+      if (destructiveActionPattern.test(description)) {
         throw new Error(`Step ${index + 1} appears destructive: ${description}`);
       }
-      if (!plan.brief.constraints.modifyData && mutationPattern.test(description)) {
+      if (!plan.brief.constraints.modifyData && mutationActionPattern.test(description)) {
         throw new Error(
           `Step ${index + 1} may modify data while modifyData is disabled: ${description}`,
         );
