@@ -45,6 +45,23 @@ npx --yes @noice-tech/demo-recorder@0.0.1 explore find product-demo --regex "tem
 npx --yes @noice-tech/demo-recorder@0.0.1 explore observe product-demo --json
 ```
 
+After selecting a connected sequence of successful transitions, verify it in a fresh browser context before using it for planning:
+
+```json
+{
+  "version": 1,
+  "transitionIds": ["transition-0001", "transition-0002"]
+}
+```
+
+```bash
+npx --yes @noice-tech/demo-recorder@0.0.1 explore verify product-demo \
+  --input verification-path.json \
+  --json
+```
+
+Verification never reuses temporary element refs. It resolves the recorded durable locator candidates, requires a unique visible match, checks each expected semantic state and URL, and writes a report, screenshots, and Playwright trace under `verification/`.
+
 Always close the session:
 
 ```bash

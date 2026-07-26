@@ -12,6 +12,7 @@ import {
   observeInteractiveSession,
   startInteractiveSession,
   startManagedApp,
+  verifyInteractiveSession,
   type ExplorationLaunchConfig,
 } from "../src/explorer/index.js";
 import { startFixtureServer, type FixtureServer } from "./support/fixture-server.js";
@@ -19,6 +20,7 @@ import { startFixtureServer, type FixtureServer } from "./support/fixture-server
 const fixtureDirectory = fileURLToPath(new URL("fixtures/example-app", import.meta.url));
 const temporaryDirectories: string[] = [];
 const fixtures: FixtureServer[] = [];
+const httpServers: ReturnType<typeof createServer>[] = [];
 
 async function temporaryDirectory(prefix: string): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), prefix));
@@ -52,6 +54,11 @@ function launchConfig(
 
 afterEach(async () => {
   await Promise.all(fixtures.splice(0).map((value) => value.close().catch(() => undefined)));
+  await Promise.all(
+    httpServers
+      .splice(0)
+      .map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
+  );
   await Promise.all(
     temporaryDirectories
       .splice(0)
@@ -98,7 +105,17 @@ describe.sequential("interactive exploration", () => {
       });
       expect(externalNavigation.status).toBe("blocked");
       expect(externalNavigation.policy.risk).toBe("external-side-effect");
-      expect(session.report().metrics.observations).toBe(1);
+      const failedVerification = await session.verify({
+        version: 1,
+        transitionIds: [transition.id],
+      });
+      expect(failedVerification.status).toBe("failed");
+      expect(failedVerification.error).toMatch(/not a replayable successful transition/);
+      expect(session.report().metrics).toMatchObject({
+        observations: 1,
+        verifications: 1,
+        verifiedPaths: 0,
+      });
     } finally {
       await session.close("finished");
     }
@@ -124,7 +141,42 @@ describe.sequential("interactive exploration", () => {
       expect(transition.outcome.urlChanged).toBe(false);
       expect(transition.outcome.semanticChanged).toBe(true);
       expect(transition.toStateId).not.toBe(transition.fromStateId);
-      expect(session.report().metrics.observations).toBe(2);
+      expect(transition.diff?.controlsAdded.length).toBeGreaterThan(0);
+      const createdObservation = await session.observe("select-next-step");
+      expect(createdObservation.stateId).toBe(transition.toStateId);
+      const approveBrief = createdObservation.interactiveElements.find((element) =>
+        element.name.includes("Approve brief"),
+      );
+      const approvalTransition = await session.act({
+        type: "click",
+        observationId: createdObservation.id,
+        ref: approveBrief?.ref ?? "missing",
+      });
+      expect(approvalTransition.status).toBe("succeeded");
+      expect(session.report().metrics.observations).toBe(4);
+
+      const verification = await session.verify({
+        version: 1,
+        transitionIds: [transition.id, approvalTransition.id],
+      });
+      expect(verification.status).toBe("passed");
+      expect(verification.steps).toHaveLength(2);
+      expect(verification.steps[0]).toMatchObject({
+        transitionId: transition.id,
+        status: "passed",
+        candidateUsed: { by: "role", role: "button", name: "Create project" },
+      });
+      expect(verification.steps[1]).toMatchObject({
+        transitionId: approvalTransition.id,
+        status: "passed",
+        candidateUsed: { by: "role", role: "button" },
+      });
+      await expect(
+        access(join(outputDirectory, verification.artifacts.report)),
+      ).resolves.toBeUndefined();
+      await expect(
+        access(join(outputDirectory, verification.artifacts.trace ?? "missing")),
+      ).resolves.toBeUndefined();
 
       await expect(
         session.act({
@@ -133,6 +185,52 @@ describe.sequential("interactive exploration", () => {
           ref: createProject?.ref ?? "missing",
         }),
       ).rejects.toThrow("Stale observation reference");
+    } finally {
+      await session.close("finished");
+    }
+  }, 30_000);
+
+  it("replays a unique fallback when the primary locator is ambiguous", async () => {
+    const server = createServer((_request, response) => {
+      response.setHeader("content-type", "text/html");
+      response.end(`<!doctype html><html><body>
+        <h1 id="state">Overview</h1>
+        <button id="primary">Open details</button>
+        <button id="duplicate">Open details</button>
+        <script>document.querySelector('#primary').onclick = () => { document.querySelector('#state').textContent = 'Details'; };</script>
+      </body></html>`);
+    });
+    httpServers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("No test address");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const outputDirectory = await temporaryDirectory("demo-recorder-verification-ambiguity-");
+    const session = new InteractiveExplorationSession(
+      launchConfig("ambiguity", baseUrl, outputDirectory, "read-only"),
+    );
+    try {
+      const observation = await session.start();
+      const target = observation.interactiveElements.find((element) =>
+        element.target.candidates.some(
+          (candidate) => candidate.by === "css" && candidate.selector === "#primary",
+        ),
+      );
+      const transition = await session.act({
+        type: "click",
+        observationId: observation.id,
+        ref: target?.ref ?? "missing",
+      });
+      expect(transition.status).toBe("succeeded");
+      const verification = await session.verify({
+        version: 1,
+        transitionIds: [transition.id],
+      });
+      expect(verification.status).toBe("passed");
+      expect(verification.steps[0]?.candidateUsed).toEqual({
+        by: "css",
+        selector: "#primary",
+      });
     } finally {
       await session.close("finished");
     }
@@ -167,6 +265,11 @@ describe.sequential("interactive exploration", () => {
     });
     expect(transition.status).toBe("succeeded");
     expect(transition.toObservationId).toBe("obs-0003");
+    const verification = await verifyInteractiveSession(sessionRoot, "persistent", {
+      version: 1,
+      transitionIds: [transition.id],
+    });
+    expect(verification.status).toBe("passed");
 
     const report = await finishInteractiveSession(sessionRoot, "persistent");
     expect(report.status).toBe("finished");

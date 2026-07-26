@@ -105,6 +105,8 @@ try {
         fixture.baseUrl,
         "--session",
         "package-smoke",
+        "--policy",
+        "reversible",
         "--json",
       ],
       workspace,
@@ -120,10 +122,69 @@ try {
       workspace,
     );
     const explorationObserve = JSON.parse(explorationObserveText) as {
-      observation?: { id?: string };
+      observation?: {
+        id?: string;
+        interactiveElements?: Array<{ ref?: string; name?: string }>;
+      };
     };
     if (explorationObserve.observation?.id !== "obs-0002")
       throw new Error("Packaged interactive exploration did not preserve its browser session");
+    const createProject = explorationObserve.observation.interactiveElements?.find(
+      (element) => element.name === "Create project",
+    );
+    await writeFile(
+      join(workspace, "exploration-action.json"),
+      `${JSON.stringify({
+        type: "click",
+        observationId: explorationObserve.observation.id,
+        ref: createProject?.ref,
+      })}\n`,
+    );
+    const explorationActionText = await runNpm(
+      [
+        "exec",
+        "--",
+        "demo-recorder",
+        "explore",
+        "act",
+        "package-smoke",
+        "--input",
+        "exploration-action.json",
+        "--json",
+      ],
+      workspace,
+    );
+    const explorationAction = JSON.parse(explorationActionText) as {
+      transition?: { id?: string; status?: string };
+    };
+    if (explorationAction.transition?.status !== "succeeded")
+      throw new Error("Packaged interactive exploration action did not succeed");
+    await writeFile(
+      join(workspace, "verification-path.json"),
+      `${JSON.stringify({
+        version: 1,
+        transitionIds: [explorationAction.transition.id],
+      })}\n`,
+    );
+    const verificationText = await runNpm(
+      [
+        "exec",
+        "--",
+        "demo-recorder",
+        "explore",
+        "verify",
+        "package-smoke",
+        "--input",
+        "verification-path.json",
+        "--json",
+      ],
+      workspace,
+    );
+    const verification = JSON.parse(verificationText) as {
+      verification?: { status?: string };
+    };
+    if (verification.verification?.status !== "passed")
+      throw new Error("Packaged exploration path verification did not pass");
     await runNpm(
       ["exec", "--", "demo-recorder", "explore", "finish", "package-smoke", "--json"],
       workspace,

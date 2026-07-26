@@ -1,6 +1,10 @@
-import { createHash } from "node:crypto";
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
+import {
+  diffExplorationObservations,
+  explorationSemanticFingerprint,
+  materializeExplorationGraph,
+} from "./graph.js";
 import {
   classifyExplorationElementRisk,
   decideExplorationActionPolicy,
@@ -21,7 +25,9 @@ import {
   type ExplorationSessionReport,
   type ExplorationTargetRecipe,
   type ExplorationTransition,
+  type ExplorationVerificationReport,
 } from "./interactive-schema.js";
+import { verifyExplorationPath } from "./verification.js";
 
 const viewport = { width: 1440, height: 900 };
 const interactiveSelector = [
@@ -89,11 +95,13 @@ export class InteractiveExplorationSession {
   private transitionSequence = 0;
   private actionCount = 0;
   private stateSequence = 0;
+  private verificationSequence = 0;
   private currentObservation: ExplorationObservation | undefined;
   private refs = new Map<string, RefEntry>();
   private states = new Map<string, string>();
   private observations: ExplorationObservation[] = [];
   private transitions: ExplorationTransition[] = [];
+  private verifications: ExplorationVerificationReport[] = [];
   private errors: string[] = [];
   private popupBlocked = false;
   private downloadBlocked = false;
@@ -390,14 +398,10 @@ export class InteractiveExplorationSession {
       .catch(() => []);
     const scroll = await this.page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
     const currentUrl = this.page.url();
-    const normalizedSnapshot = snapshot
-      .replaceAll(/\[ref=e\d+\]/g, "")
-      .replaceAll(/\[box=[^\]]+\]/g, "")
-      .replaceAll(/\s+/g, " ")
-      .trim();
-    const semanticFingerprint = createHash("sha256")
-      .update(`${new URL(currentUrl).pathname}\n${normalizedSnapshot}`)
-      .digest("hex");
+    const semanticFingerprint = explorationSemanticFingerprint(
+      new URL(currentUrl).pathname,
+      snapshot,
+    );
     let stateId = this.states.get(semanticFingerprint);
     if (!stateId) {
       stateId = `state-${String(++this.stateSequence).padStart(4, "0")}`;
@@ -427,7 +431,10 @@ export class InteractiveExplorationSession {
       semanticFingerprint,
       settled: settled ?? { reason: "explicit", durationMs: 0 },
     });
-    await this.artifacts.writeJson(observationArtifact, observation);
+    await Promise.all([
+      this.artifacts.writeJson(observationArtifact, observation),
+      this.artifacts.appendJsonLine("observations.ndjson", observation),
+    ]);
     this.refs = refs;
     this.currentObservation = observation;
     this.observations.push(observation);
@@ -479,6 +486,21 @@ export class InteractiveExplorationSession {
       observationId: observation.id,
       matches: matches.slice(0, 50),
     });
+  }
+
+  async verify(input: unknown): Promise<ExplorationVerificationReport> {
+    const verification = await verifyExplorationPath({
+      browser: this.browser,
+      config: this.config,
+      observations: this.observations,
+      transitions: this.transitions,
+      artifacts: this.artifacts,
+      sequence: ++this.verificationSequence,
+      input,
+    });
+    this.verifications.push(verification);
+    await this.writeReport("active");
+    return verification;
   }
 
   private async refreshRefEntry(entry: RefEntry): Promise<RefEntry> {
@@ -638,6 +660,7 @@ export class InteractiveExplorationSession {
         toObservationId: after.id,
         toStateId: after.stateId,
         ...(entry ? { target: entry.element.target } : {}),
+        diff: diffExplorationObservations(before, after),
         outcome: {
           urlChanged: before.url !== after.url,
           semanticChanged: before.semanticFingerprint !== after.semanticFingerprint,
@@ -685,22 +708,10 @@ export class InteractiveExplorationSession {
   }
 
   private async writeGraph(): Promise<void> {
-    const states = [...this.states.entries()].map(([fingerprint, id]) => ({ id, fingerprint }));
-    await this.artifacts.writeJson("graph.json", {
-      schemaVersion: 2,
-      states,
-      observations: this.observations.map((observation) => ({
-        id: observation.id,
-        stateId: observation.stateId,
-        sequence: observation.sequence,
-      })),
-      transitions: this.transitions.map((transition) => ({
-        id: transition.id,
-        status: transition.status,
-        fromStateId: transition.fromStateId,
-        ...(transition.toStateId ? { toStateId: transition.toStateId } : {}),
-      })),
-    });
+    await this.artifacts.writeJson(
+      "graph.json",
+      materializeExplorationGraph(this.observations, this.transitions),
+    );
   }
 
   report(status: ExplorationSessionReport["status"] = "active"): ExplorationSessionReport {
@@ -722,8 +733,20 @@ export class InteractiveExplorationSession {
         states: this.states.size,
         transitions: this.transitions.length,
         actions: this.actionCount,
+        verifications: this.verifications.length,
+        verifiedPaths: this.verifications.filter((verification) => verification.status === "passed")
+          .length,
       },
       ...(this.currentObservation ? { latestObservationId: this.currentObservation.id } : {}),
+      ...(this.verifications.length > 0
+        ? {
+            latestVerification: {
+              id: this.verifications.at(-1)!.id,
+              status: this.verifications.at(-1)!.status,
+              report: this.verifications.at(-1)!.artifacts.report,
+            },
+          }
+        : {}),
     });
   }
 
@@ -752,6 +775,22 @@ export class InteractiveExplorationSession {
         `- Interactive elements: ${latest.interactiveElements.length}`,
         `- Snapshot: ${latest.artifacts.snapshot}`,
         `- Screenshot: ${latest.artifacts.screenshot}`,
+        "",
+      );
+    }
+    const latestVerification = this.verifications.at(-1);
+    if (latestVerification) {
+      lines.push(
+        "## Latest verification",
+        "",
+        `- ID: ${latestVerification.id}`,
+        `- Status: ${latestVerification.status}`,
+        `- Steps passed: ${latestVerification.steps.filter((step) => step.status === "passed").length}/${latestVerification.steps.length}`,
+        `- Report: ${latestVerification.artifacts.report}`,
+        ...(latestVerification.artifacts.trace
+          ? [`- Trace: ${latestVerification.artifacts.trace}`]
+          : []),
+        ...(latestVerification.error ? [`- Error: ${latestVerification.error}`] : []),
         "",
       );
     }

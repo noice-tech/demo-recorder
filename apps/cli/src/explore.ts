@@ -6,6 +6,7 @@ import {
   authProfilePaths,
   explorationActionSchema,
   explorationPolicySchema,
+  explorationVerificationRequestSchema,
   exploreSite,
   findInInteractiveSession,
   finishInteractiveSession,
@@ -16,9 +17,11 @@ import {
   observeInteractiveSession,
   startInteractiveSession,
   startManagedApp,
+  verifyInteractiveSession,
   type ExplorationObservation,
   type ExplorationSessionReport,
   type ExplorationTransition,
+  type ExplorationVerificationReport,
 } from "./explorer/index.js";
 import { numberOption, stringOption, type ParsedArguments } from "./arguments.js";
 import { workingDirectory } from "./paths.js";
@@ -61,6 +64,18 @@ function reportLines(report: ExplorationSessionReport): string[] {
   return [
     `[demo-recorder] Exploration ${report.id}: ${report.status}`,
     `[demo-recorder] ${report.metrics.observations} observations, ${report.metrics.states} states, ${report.metrics.transitions} transitions`,
+  ];
+}
+
+function verificationLines(verification: ExplorationVerificationReport): string[] {
+  return [
+    `[demo-recorder] ${verification.id}: ${verification.status}`,
+    `[demo-recorder] ${verification.steps.filter((step) => step.status === "passed").length}/${verification.steps.length} transitions verified in a fresh context`,
+    `[demo-recorder] Report: ${verification.artifacts.report}`,
+    ...(verification.artifacts.trace
+      ? [`[demo-recorder] Trace: ${verification.artifacts.trace}`]
+      : []),
+    ...(verification.error ? [`[demo-recorder] Error: ${verification.error}`] : []),
   ];
 }
 
@@ -173,6 +188,22 @@ async function interactiveExploreCommand(
     );
     return id;
   }
+  if (operation === "verify") {
+    const inputPath = stringOption(arguments_, "input");
+    if (!inputPath) throw new Error("explore verify requires --input <path.json>");
+    const request = explorationVerificationRequestSchema.parse(
+      JSON.parse(await readFile(resolveWorkingPath(inputPath), "utf8")) as unknown,
+    );
+    const verification = await verifyInteractiveSession(interactiveSessionRoot, id, request);
+    printJsonOrHuman(
+      arguments_,
+      { ok: verification.status === "passed", sessionId: id, outputDirectory, verification },
+      verificationLines(verification),
+    );
+    if (verification.status !== "passed")
+      throw new Error(verification.error ?? `Verification failed: ${verification.id}`);
+    return verification.artifacts.report;
+  }
   if (operation === "act") {
     const inputPath = stringOption(arguments_, "input");
     if (!inputPath) throw new Error("explore act requires --input <action.json>");
@@ -214,7 +245,11 @@ async function interactiveExploreCommand(
 
 export async function exploreCommand(arguments_: ParsedArguments): Promise<string> {
   const operation = arguments_.positionals[0];
-  if (["start", "observe", "find", "act", "finish", "abort", "status"].includes(operation ?? ""))
+  if (
+    ["start", "observe", "find", "act", "verify", "finish", "abort", "status"].includes(
+      operation ?? "",
+    )
+  )
     return interactiveExploreCommand(operation!, arguments_);
   const url = stringOption(arguments_, "url");
   if (!url) throw new Error("explore requires --url <http-or-https-url>");

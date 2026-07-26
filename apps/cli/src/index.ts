@@ -20,7 +20,7 @@ function usage(): string {
     "  demo-recorder setup [--json]",
     "  demo-recorder explore --url URL [--repo PATH --start COMMAND] [--auth PROFILE]",
     "  demo-recorder explore start --url URL [--session ID] [--policy read-only|reversible]",
-    "  demo-recorder explore <observe|find|act|finish|abort|status> [SESSION] [options]",
+    "  demo-recorder explore <observe|find|act|verify|finish|abort|status> [SESSION] [options]",
     "  demo-recorder inspect-repo [--repo PATH]",
     "  demo-recorder inspect <video.mp4> [--contact-sheet[=PATH]]",
     "  demo-recorder plan validate <demo-plan.json>",

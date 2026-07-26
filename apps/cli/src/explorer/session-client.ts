@@ -12,6 +12,8 @@ import {
   explorationSessionDescriptorSchema,
   explorationSessionReportSchema,
   explorationTransitionSchema,
+  explorationVerificationReportSchema,
+  explorationVerificationRequestSchema,
   type ExplorationAction,
   type ExplorationFindQuery,
   type ExplorationFindResult,
@@ -20,6 +22,8 @@ import {
   type ExplorationSessionDescriptor,
   type ExplorationSessionReport,
   type ExplorationTransition,
+  type ExplorationVerificationReport,
+  type ExplorationVerificationRequest,
 } from "./interactive-schema.js";
 
 function validateSessionId(id: string): string {
@@ -185,6 +189,19 @@ export async function actInInteractiveSession(
     body: action,
   });
   return explorationTransitionSchema.parse(result.transition);
+}
+
+export async function verifyInteractiveSession(
+  sessionRoot: string,
+  id: string,
+  input: ExplorationVerificationRequest,
+): Promise<ExplorationVerificationReport> {
+  const descriptor = await readDescriptor(sessionRoot, id);
+  const result = await request<{ verification: unknown }>(descriptor, "/verify", {
+    method: "POST",
+    body: explorationVerificationRequestSchema.parse(input),
+  });
+  return explorationVerificationReportSchema.parse(result.verification);
 }
 
 export async function finishInteractiveSession(

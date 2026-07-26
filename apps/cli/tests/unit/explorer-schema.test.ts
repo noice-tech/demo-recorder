@@ -4,6 +4,7 @@ import {
   explorationFindQuerySchema,
   explorationLaunchConfigSchema,
   explorationObservationSchema,
+  explorationVerificationRequestSchema,
 } from "../../src/explorer/interactive-schema.js";
 
 const launchConfig = {
@@ -64,6 +65,24 @@ describe("interactive exploration schemas", () => {
     expect(() => explorationFindQuerySchema.parse({ text: "pricing", regex: "price" })).toThrow(
       /exactly one/,
     );
+  });
+
+  it("requires a nonempty unique verification path", () => {
+    expect(
+      explorationVerificationRequestSchema.parse({
+        version: 1,
+        transitionIds: ["transition-1", "transition-2"],
+      }),
+    ).toEqual({ version: 1, transitionIds: ["transition-1", "transition-2"] });
+    expect(() =>
+      explorationVerificationRequestSchema.parse({ version: 1, transitionIds: [] }),
+    ).toThrow();
+    expect(() =>
+      explorationVerificationRequestSchema.parse({
+        version: 1,
+        transitionIds: ["transition-1", "transition-1"],
+      }),
+    ).toThrow(/unique/);
   });
 
   it("rejects unbounded waits and accepts finite scroll actions", () => {

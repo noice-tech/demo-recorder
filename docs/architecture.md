@@ -24,7 +24,9 @@ User brief → Coding agent + skill
 
 `apps/cli/src/explorer` owns bounded Playwright exploration, persistent agent-directed browser sessions, ARIA snapshots, screenshots, observation-scoped control refs, conservative state/transition graphs, generic repository facts, managed local app processes, and local auth profiles.
 
-The one-shot mapper follows ordinary links. Persistent sessions expose an `observe → one bounded action → observe` protocol so an agent can inspect tabs, menus, dialogs, drawers, and other same-URL state. Every accepted action records policy and before/after evidence. Temporary refs are valid only for their observation; durable role/test-ID/text/CSS target recipes are stored with transitions.
+The one-shot mapper follows ordinary links. Persistent sessions expose an `observe → one bounded action → observe` protocol so an agent can inspect tabs, menus, dialogs, drawers, and other same-URL state. Every accepted action records policy, an explicit semantic diff, and before/after evidence in append-only journals and an atomically materialized graph. Temporary refs are valid only for their observation; durable role/test-ID/text/CSS target recipes are stored with transitions.
+
+An agent can select a connected sequence of successful transition IDs and invoke `explore verify`. Verification starts a fresh authenticated context, reproduces the initial state, resolves each durable candidate only when it uniquely identifies a visible element, replays the bounded action, and checks the expected semantic fingerprint and sanitized URL. Reports, step screenshots, and a separate Playwright trace remain exploration evidence; verification does not improvise or reuse temporary refs.
 
 Exploration is same-origin and uses a conservative `read-only` policy by default. Destructive, external-side-effect, form, and unknown controls are blocked; an explicit `reversible` profile can permit mutation-like controls in disposable environments. These are runtime guardrails rather than a guarantee that arbitrary application code has no server-side effects. Repository reports include environment-variable names but never secret values.
 

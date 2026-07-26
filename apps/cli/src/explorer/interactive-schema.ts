@@ -28,7 +28,7 @@ export const explorationLaunchConfigSchema = z.object({
 });
 export type ExplorationLaunchConfig = z.infer<typeof explorationLaunchConfigSchema>;
 
-const locatorMethodSchema = z.discriminatedUnion("by", [
+export const explorationLocatorMethodSchema = z.discriminatedUnion("by", [
   z.object({
     by: z.literal("role"),
     role: nonempty,
@@ -40,9 +40,11 @@ const locatorMethodSchema = z.discriminatedUnion("by", [
   z.object({ by: z.literal("css"), selector: nonempty }),
 ]);
 
+export type ExplorationLocatorMethod = z.infer<typeof explorationLocatorMethodSchema>;
+
 export const explorationTargetRecipeSchema = z.object({
   description: nonempty,
-  candidates: z.array(locatorMethodSchema).min(1).max(5),
+  candidates: z.array(explorationLocatorMethodSchema).min(1).max(5),
   expected: z.object({
     role: nonempty.optional(),
     accessibleName: nonempty.optional(),
@@ -156,6 +158,18 @@ export const explorationFindResultSchema = z.object({
 });
 export type ExplorationFindResult = z.infer<typeof explorationFindResultSchema>;
 
+export const explorationSemanticDiffSchema = z.object({
+  urlChanged: z.boolean(),
+  titleChanged: z.boolean(),
+  headingsAdded: z.array(z.string()),
+  headingsRemoved: z.array(z.string()),
+  layersAdded: z.array(z.string()),
+  layersRemoved: z.array(z.string()),
+  controlsAdded: z.array(z.string()),
+  controlsRemoved: z.array(z.string()),
+});
+export type ExplorationSemanticDiff = z.infer<typeof explorationSemanticDiffSchema>;
+
 export const explorationTransitionSchema = z.object({
   schemaVersion: z.literal(2),
   id: nonempty,
@@ -173,6 +187,7 @@ export const explorationTransitionSchema = z.object({
   toObservationId: nonempty.optional(),
   toStateId: nonempty.optional(),
   target: explorationTargetRecipeSchema.optional(),
+  diff: explorationSemanticDiffSchema.optional(),
   outcome: z.object({
     urlChanged: z.boolean(),
     semanticChanged: z.boolean(),
@@ -185,6 +200,82 @@ export const explorationTransitionSchema = z.object({
   error: z.string().optional(),
 });
 export type ExplorationTransition = z.infer<typeof explorationTransitionSchema>;
+
+export const explorationGraphSchema = z.object({
+  schemaVersion: z.literal(2),
+  states: z.array(
+    z.object({
+      id: nonempty,
+      fingerprint: nonempty,
+      canonicalObservationId: nonempty,
+      observationIds: z.array(nonempty).min(1),
+    }),
+  ),
+  observations: z.array(
+    z.object({
+      id: nonempty,
+      stateId: nonempty,
+      sequence: z.number().int().positive(),
+    }),
+  ),
+  transitions: z.array(
+    z.object({
+      id: nonempty,
+      status: z.enum(["succeeded", "blocked", "failed"]),
+      fromStateId: nonempty,
+      toStateId: nonempty.optional(),
+    }),
+  ),
+});
+export type ExplorationGraph = z.infer<typeof explorationGraphSchema>;
+
+export const explorationVerificationRequestSchema = z.object({
+  version: z.literal(1),
+  transitionIds: z
+    .array(nonempty)
+    .min(1)
+    .max(100)
+    .refine((ids) => new Set(ids).size === ids.length, "Transition IDs must be unique"),
+});
+export type ExplorationVerificationRequest = z.infer<typeof explorationVerificationRequestSchema>;
+
+const verificationExpectedSchema = z.object({
+  observationId: nonempty,
+  stateId: nonempty,
+  semanticFingerprint: nonempty,
+  url: z.string(),
+});
+
+export const explorationVerificationReportSchema = z.object({
+  schemaVersion: z.literal(1),
+  id: nonempty,
+  createdAt: z.string(),
+  finishedAt: z.string(),
+  status: z.enum(["passed", "failed"]),
+  error: z.string().optional(),
+  request: explorationVerificationRequestSchema,
+  steps: z.array(
+    z.object({
+      sequence: z.number().int().positive(),
+      transitionId: nonempty,
+      action: explorationActionSchema,
+      status: z.enum(["passed", "failed"]),
+      candidateUsed: explorationLocatorMethodSchema.optional(),
+      expected: verificationExpectedSchema,
+      actual: z
+        .object({
+          semanticFingerprint: nonempty,
+          url: z.string(),
+        })
+        .optional(),
+      durationMs: z.number().nonnegative(),
+      screenshot: nonempty.optional(),
+      error: z.string().optional(),
+    }),
+  ),
+  artifacts: z.object({ report: nonempty, trace: nonempty.optional() }),
+});
+export type ExplorationVerificationReport = z.infer<typeof explorationVerificationReportSchema>;
 
 export const explorationSessionReportSchema = z.object({
   schemaVersion: z.literal(2),
@@ -204,8 +295,17 @@ export const explorationSessionReportSchema = z.object({
     states: z.number().int().nonnegative(),
     transitions: z.number().int().nonnegative(),
     actions: z.number().int().nonnegative(),
+    verifications: z.number().int().nonnegative().default(0),
+    verifiedPaths: z.number().int().nonnegative().default(0),
   }),
   latestObservationId: z.string().optional(),
+  latestVerification: z
+    .object({
+      id: nonempty,
+      status: z.enum(["passed", "failed"]),
+      report: nonempty,
+    })
+    .optional(),
 });
 export type ExplorationSessionReport = z.infer<typeof explorationSessionReportSchema>;
 

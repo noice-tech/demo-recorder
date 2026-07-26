@@ -18,13 +18,15 @@ The CLI's `explorer` module provides:
 - persistent browser sessions across separate agent shell calls;
 - AI-oriented ARIA snapshots, viewport screenshots, headings, layers, controls, and errors;
 - observation-scoped element refs and durable locator candidates;
-- runtime action policy and before/after state-transition evidence;
+- runtime action policy, semantic diffs, and before/after state-transition evidence;
+- append-only observation/transition journals and recoverable state graphs;
+- agent-selected transition paths replayed and verified in a fresh browser context;
 - generic repository facts without secret values;
 - agent-selected local process startup, readiness, logs, and cleanup;
 - detached headed authentication sessions;
 - cookies/local-storage and same-origin session-storage profiles.
 
-For ordinary sites, one-shot exploration navigates discovered HTTP links directly. For SPA state, the agent uses `explore start`, inspects an observation, proposes one bounded `explore act`, and repeats before calling `explore finish`. The default policy permits same-origin navigation and clearly presentational controls while blocking forms, destructive actions, external side effects, and unknown controls. Temporary refs expire when a new observation is authoritative.
+For ordinary sites, one-shot exploration navigates discovered HTTP links directly. For SPA state, the agent uses `explore start`, inspects an observation, proposes one bounded `explore act`, and repeats. Once it selects a connected transition path, `explore verify` replays durable locator candidates in a fresh context, rejects ambiguous matches, and checks expected semantic fingerprints and URLs before `explore finish`. The default policy permits same-origin navigation and clearly presentational controls while blocking forms, destructive actions, external side effects, and unknown controls. Temporary refs expire when a new observation is authoritative and never enter verification paths.
 
 ### Planner
 

@@ -78,6 +78,11 @@ try {
         response.end(JSON.stringify({ ok: true, result }));
         return;
       }
+      if (request.method === "POST" && request.url === "/verify") {
+        const verification = await session?.verify(await readJson(request));
+        response.end(JSON.stringify({ ok: true, verification }));
+        return;
+      }
       if (request.method === "POST" && ["/finish", "/abort"].includes(request.url ?? "")) {
         const status = request.url === "/finish" ? "finished" : "aborted";
         const report = session?.report(status);
