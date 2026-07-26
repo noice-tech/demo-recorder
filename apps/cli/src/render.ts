@@ -1,6 +1,6 @@
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { renderDemoVideo, type RenderDemoVideoResult } from "./renderer/index.js";
-import { requireRemotionBundle, workingDirectory } from "./paths.js";
+import { requireFfmpegAssets, workingDirectory } from "./paths.js";
 
 export function resolveRecordingArgument(value: string): string {
   if (isAbsolute(value)) return value;
@@ -14,7 +14,7 @@ export async function renderRecording(value: string): Promise<RenderDemoVideoRes
   const recordingPath = resolveRecordingArgument(value);
   console.log(`[demo-recorder] Loading recording: ${recordingPath}`);
   return renderDemoVideo(recordingPath, {
-    compositionPath: requireRemotionBundle(),
+    assetsDirectory: requireFfmpegAssets(),
     outputDirectory: join(workingDirectory, "output"),
   });
 }

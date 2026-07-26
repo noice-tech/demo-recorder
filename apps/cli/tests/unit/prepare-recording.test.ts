@@ -2,7 +2,7 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
-import { prepareRecording, startAssetServer } from "../../src/renderer/index.js";
+import { prepareRecording } from "../../src/renderer/index.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -82,28 +82,5 @@ describe("prepareRecording", () => {
   it("rejects video paths outside the recording directory", async () => {
     const directory = await createRecording("../outside.webm");
     await expect(prepareRecording(directory)).rejects.toThrow("escapes its directory");
-  });
-});
-
-describe("startAssetServer", () => {
-  it("serves only its registered video and supports byte ranges", async () => {
-    const directory = await createRecording();
-    const videoPath = join(directory, "browser.webm");
-    await writeFile(videoPath, Buffer.from("0123456789"));
-    const server = await startAssetServer(videoPath);
-
-    try {
-      const partial = await fetch(server.videoUrl, { headers: { range: "bytes=2-5" } });
-      expect(partial.status).toBe(206);
-      expect(partial.headers.get("content-range")).toBe("bytes 2-5/10");
-      expect(partial.headers.get("access-control-allow-origin")).toBe("*");
-      expect(await partial.text()).toBe("2345");
-      const preflight = await fetch(server.videoUrl, { method: "OPTIONS" });
-      expect(preflight.status).toBe(204);
-      expect((await fetch(new URL("/unknown", server.videoUrl))).status).toBe(404);
-    } finally {
-      await server.close();
-    }
-    await expect(fetch(server.videoUrl)).rejects.toThrow();
   });
 });

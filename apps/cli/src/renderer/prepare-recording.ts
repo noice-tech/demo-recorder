@@ -1,7 +1,5 @@
-import { createReadStream } from "node:fs";
 import { readFile, realpath, stat } from "node:fs/promises";
-import { createServer } from "node:http";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   defaultConfig,
   generateZoomSegments,
@@ -17,11 +15,6 @@ export type PreparedRecording = {
   videoPath: string;
   manifest: RecordingManifest;
   input: Omit<ProductDemoInput, "videoUrl">;
-};
-
-export type AssetServer = {
-  videoUrl: string;
-  close(): Promise<void>;
 };
 
 function isInside(parent: string, child: string): boolean {
@@ -125,109 +118,6 @@ export async function prepareRecording(recordingPath: string): Promise<PreparedR
           exitDurationMs: defaultConfig.zoom.exitDurationMs,
         },
       },
-    },
-  };
-}
-
-function parseRange(rangeHeader: string, size: number): { start: number; end: number } | null {
-  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
-  if (!match) return null;
-  const [, startText = "", endText = ""] = match;
-  if (!startText && !endText) return null;
-
-  let start: number;
-  let end: number;
-  if (!startText) {
-    const suffixLength = Number(endText);
-    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return null;
-    start = Math.max(0, size - suffixLength);
-    end = size - 1;
-  } else {
-    start = Number(startText);
-    end = endText ? Number(endText) : size - 1;
-  }
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return null;
-  if (start < 0 || start >= size || end < start) return null;
-  return { start, end: Math.min(end, size - 1) };
-}
-
-export async function startAssetServer(videoPath: string): Promise<AssetServer> {
-  const videoStats = await stat(videoPath);
-  const token = encodeURIComponent(basename(videoPath));
-  const pathname = `/assets/${token}`;
-  const server = createServer((request, response) => {
-    const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
-    if (
-      requestUrl.pathname !== pathname ||
-      !["GET", "HEAD", "OPTIONS"].includes(request.method ?? "")
-    ) {
-      response.writeHead(404).end("Not found");
-      return;
-    }
-
-    const commonHeaders = {
-      "accept-ranges": "bytes",
-      "access-control-allow-headers": "range",
-      "access-control-allow-methods": "GET, HEAD, OPTIONS",
-      "access-control-allow-origin": "*",
-      "access-control-expose-headers": "content-length, content-range",
-      "cache-control": "no-store",
-      "content-type": "video/webm",
-    };
-    if (request.method === "OPTIONS") {
-      response.writeHead(204, commonHeaders).end();
-      return;
-    }
-    const rangeHeader = request.headers.range;
-    if (rangeHeader) {
-      const range = parseRange(rangeHeader, videoStats.size);
-      if (!range) {
-        response.writeHead(416, {
-          ...commonHeaders,
-          "content-range": `bytes */${videoStats.size}`,
-        });
-        response.end();
-        return;
-      }
-      response.writeHead(206, {
-        ...commonHeaders,
-        "content-length": range.end - range.start + 1,
-        "content-range": `bytes ${range.start}-${range.end}/${videoStats.size}`,
-      });
-      if (request.method === "HEAD") response.end();
-      else createReadStream(videoPath, range).pipe(response);
-      return;
-    }
-
-    response.writeHead(200, { ...commonHeaders, "content-length": videoStats.size });
-    if (request.method === "HEAD") response.end();
-    else createReadStream(videoPath).pipe(response);
-  });
-
-  await new Promise<void>((resolveListening, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      server.off("error", reject);
-      resolveListening();
-    });
-  });
-
-  const address = server.address();
-  if (!address || typeof address === "string") {
-    server.close();
-    throw new Error("Asset server did not expose a TCP address");
-  }
-
-  let closed = false;
-  return {
-    videoUrl: `http://127.0.0.1:${address.port}${pathname}`,
-    async close() {
-      if (closed) return;
-      closed = true;
-      server.closeAllConnections();
-      await new Promise<void>((resolveClose, reject) => {
-        server.close((error) => (error ? reject(error) : resolveClose()));
-      });
     },
   };
 }

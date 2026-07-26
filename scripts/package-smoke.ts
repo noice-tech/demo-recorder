@@ -28,12 +28,8 @@ const bundle = await readFile(join(cliRoot, "dist/cli.js"), "utf8");
 if (bundle.includes("@noice-tech/demo-recorder-")) {
   throw new Error("Distribution bundle contains unresolved internal workspace imports");
 }
-const remotionIndex = await readFile(join(cliRoot, "assets/remotion/index.html"), "utf8");
-if (
-  remotionIndex.includes(repositoryRoot) ||
-  !remotionIndex.includes('window.remotion_cwd = "";')
-) {
-  throw new Error("Packaged Remotion index exposes or retains a local repository path");
+if (bundle.includes("@remotion/")) {
+  throw new Error("Distribution bundle still contains a Remotion import");
 }
 
 const packOutput = await runNpm(["pack", "--ignore-scripts", "--json"], cliRoot);
@@ -48,7 +44,10 @@ for (const required of [
   "dist/cli.js",
   "dist/auth-daemon.js",
   "dist/exploration-daemon.js",
-  "assets/remotion/index.html",
+  "assets/ffmpeg/background.png",
+  "assets/ffmpeg/browser-underlay.png",
+  "assets/ffmpeg/browser-overlay.png",
+  "assets/ffmpeg/content-mask.png",
 ]) {
   if (!included.has(required)) throw new Error(`Packed package is missing ${required}`);
 }
@@ -58,7 +57,7 @@ const forbiddenPackagePaths = [
   "output/",
   "tests/",
   "fixtures/",
-  "assets/remotion/public/",
+  "assets/remotion/",
 ];
 if ([...included].some((path) => forbiddenPackagePaths.some((prefix) => path.startsWith(prefix)))) {
   throw new Error("Packed package contains generated state, tests, fixtures, or Studio media");

@@ -41,28 +41,16 @@ importers:
 
   apps/cli:
     dependencies:
-      '@remotion/media-parser':
-        specifier: 4.0.493
-        version: 4.0.493
-      '@remotion/renderer':
-        specifier: 4.0.493
-        version: 4.0.493(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
       playwright:
         specifier: 1.61.1
         version: 1.61.1
-      react:
-        specifier: 19.2.0
-        version: 19.2.0
-      react-dom:
-        specifier: 19.2.0
-        version: 19.2.0(react@19.2.0)
     devDependencies:
       '@noice-tech/demo-recorder-core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@noice-tech/demo-recorder-remotion':
+      '@noice-tech/demo-recorder-ffmpeg':
         specifier: workspace:*
-        version: link:../remotion
+        version: link:../../packages/ffmpeg-renderer
       '@types/node':
         specifier: ^22.15.0
         version: 22.20.1

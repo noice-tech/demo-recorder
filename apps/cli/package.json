@@ -9,9 +9,9 @@
     "codex",
     "cursor",
     "demo-video",
+    "ffmpeg",
     "playwright",
-    "product-demo",
-    "remotion"
+    "product-demo"
   ],
   "homepage": "https://github.com/noice-tech/demo-recorder#readme",
   "bugs": {
@@ -45,15 +45,11 @@
     "render": "tsx src/index.ts render"
   },
   "dependencies": {
-    "@remotion/media-parser": "4.0.493",
-    "@remotion/renderer": "4.0.493",
-    "playwright": "1.61.1",
-    "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "playwright": "1.61.1"
   },
   "devDependencies": {
     "@noice-tech/demo-recorder-core": "workspace:*",
-    "@noice-tech/demo-recorder-remotion": "workspace:*",
+    "@noice-tech/demo-recorder-ffmpeg": "workspace:*",
     "@types/node": "^22.15.0",
     "tsx": "^4.20.0",
     "zod": "4.3.6"

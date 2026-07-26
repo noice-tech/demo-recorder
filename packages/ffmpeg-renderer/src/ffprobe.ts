@@ -16,7 +16,10 @@ const streamSchema = z.object({
 
 const probeSchema = z.object({
   streams: z.array(streamSchema).default([]),
-  format: z.object({ duration: z.string().optional() }).passthrough().optional(),
+  format: z
+    .object({ duration: z.string().optional(), format_name: z.string().optional() })
+    .passthrough()
+    .optional(),
 });
 
 export type ProbedVideo = {
@@ -26,6 +29,7 @@ export type ProbedVideo = {
   fps?: number;
   codec?: string;
   pixelFormat?: string;
+  container?: string;
   hasAudio: boolean;
 };
 
@@ -54,6 +58,7 @@ export function parseFfprobeOutput(input: unknown, path = "media"): ProbedVideo 
     ...(fps ? { fps } : {}),
     ...(video.codec_name ? { codec: video.codec_name } : {}),
     ...(video.pix_fmt ? { pixelFormat: video.pix_fmt } : {}),
+    ...(parsed.format?.format_name ? { container: parsed.format.format_name } : {}),
     hasAudio: parsed.streams.some((stream) => stream.codec_type === "audio"),
   };
 }

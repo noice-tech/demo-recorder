@@ -44,11 +44,17 @@ export async function runProcess(
       options.onStderr?.(chunk);
     });
     child.stdio[3]?.on("data", (chunk: Buffer) => options.onProgress?.(chunk));
-    child.once("error", (error) => finish(() => reject(error)));
-    child.once("exit", (code, signal) => {
+    let processError: Error | undefined;
+    child.once("error", (error) => {
+      processError = error;
+    });
+    child.once("close", (code, signal) => {
       finish(() => {
-        if (code === 0) resolve({ stdout, stderr });
-        else {
+        if (processError) {
+          reject(processError);
+        } else if (code === 0) {
+          resolve({ stdout, stderr });
+        } else {
           const reason = signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`;
           reject(new Error(`${executable} failed with ${reason}: ${stderr.slice(-4_000).trim()}`));
         }

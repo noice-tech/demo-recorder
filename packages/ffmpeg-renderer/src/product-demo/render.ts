@@ -91,8 +91,8 @@ export async function renderProductDemo(
       lastProgress = value;
       options.onProgress?.(value);
     };
-    const parseProgress = createProgressParser(({ outTimeMs, progress }) => {
-      reportProgress(progress === "end" ? 1 : Math.min(1, outTimeMs / graph.durationMs));
+    const parseProgress = createProgressParser(({ outTimeMs }) => {
+      reportProgress(Math.min(0.99, outTimeMs / graph.durationMs));
     });
     options.log?.(`Rendering ${graph.frameCount} frames with FFmpeg/libx264`);
     await runProcess(

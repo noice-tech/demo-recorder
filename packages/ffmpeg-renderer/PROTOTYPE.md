@@ -68,7 +68,7 @@ Local ignored artifacts:
 - libass is required; portability still needs Linux and Windows validation.
 - Arial is currently resolved through the host font configuration. A bundled,
   redistributable font is needed for deterministic output.
-- The CLI still uses Remotion and `@remotion/media-parser`; this package is not
-  integrated yet.
+- The CLI now uses this renderer and ffprobe integration; the separate Remotion
+  application remains temporarily as a visual comparison oracle.
 - Hardware encoder presets, render cancellation integration, and packaged-CLI
   asset copying remain future work.
