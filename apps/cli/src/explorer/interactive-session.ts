@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, writeFile } from "node:fs/promises";
-import { join, relative } from "node:path";
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright";
+import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
+import {
+  classifyExplorationElementRisk,
+  decideExplorationActionPolicy,
+} from "./interactive-policy.js";
+import { sanitizeExplorationError, sanitizeExplorationUrl } from "./privacy.js";
 import { installSessionStorage, loadSessionStorage } from "./session-storage.js";
 import {
   explorationActionSchema,
@@ -11,7 +15,6 @@ import {
   explorationSessionReportSchema,
   explorationTransitionSchema,
   type ExploredInteractiveElementV2,
-  type ExplorationAction,
   type ExplorationFindResult,
   type ExplorationLaunchConfig,
   type ExplorationObservation,
@@ -36,39 +39,6 @@ const interactiveSelector = [
   '[role="link"]',
   '[tabindex]:not([tabindex="-1"])',
 ].join(", ");
-
-const destructivePattern =
-  /\b(delete|remove|erase|destroy|purchase|buy|pay|publish|send|invite|deploy|merge|revoke|reset|cancel subscription|place order|sign out|log out)\b/i;
-const mutationPattern =
-  /\b(create|add|upload|approve|launch|save|edit|rename|subscribe|follow|submit|sign up|create account|checkout)\b/i;
-const externalEffectPattern =
-  /\b(oauth|authorize|grant access|download|install|open in|continue to)\b/i;
-const presentationalPattern =
-  /\b(open|close|view|show|hide|expand|collapse|next|previous|back|menu|tab|details|preview|examples?|features?|templates?)\b/i;
-
-function sanitizedUrl(value: string): string {
-  try {
-    const url = new URL(value);
-    url.username = "";
-    url.password = "";
-    url.search = "";
-    url.hash = "";
-    return url.href;
-  } catch {
-    return value.slice(0, 500);
-  }
-}
-
-function sanitizedError(value: string): string {
-  return value
-    .replaceAll(/https?:\/\/[^\s)\]}>'"]+/g, (url) => sanitizedUrl(url))
-    .replaceAll(/\s+/g, " ")
-    .slice(0, 1_000);
-}
-
-function pathForArtifact(outputDirectory: string, absolutePath: string): string {
-  return relative(outputDirectory, absolutePath).replaceAll("\\", "/");
-}
 
 function parseAriaRoot(snapshot: string): { role?: string; name?: string } {
   const firstLine = snapshot
@@ -106,45 +76,6 @@ function implicitRole(tagName: string, inputType?: string): string | undefined {
   return "textbox";
 }
 
-function riskForElement(element: {
-  role?: string;
-  name: string;
-  tagName: string;
-  inputType?: string;
-  href?: string;
-  expanded?: boolean;
-  baseOrigin: string;
-}): { risk: ExploredInteractiveElementV2["risk"]; reasons: string[] } {
-  const description = `${element.role ?? ""} ${element.name}`.trim();
-  if (destructivePattern.test(description))
-    return { risk: "destructive", reasons: ["Target text matches a destructive action"] };
-  if (externalEffectPattern.test(description))
-    return {
-      risk: "external-side-effect",
-      reasons: ["Target text suggests an external side effect"],
-    };
-  if (element.href) {
-    const destination = new URL(element.href);
-    if (destination.origin !== element.baseOrigin)
-      return { risk: "external-side-effect", reasons: ["Link leaves the allowed origin"] };
-    return { risk: "read-only", reasons: ["Same-origin link"] };
-  }
-  if (
-    element.role === "tab" ||
-    element.expanded !== undefined ||
-    presentationalPattern.test(description)
-  )
-    return { risk: "read-only", reasons: ["Control appears presentational"] };
-  if (mutationPattern.test(description))
-    return { risk: "reversible", reasons: ["Target text suggests application data may change"] };
-  if (["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName) || element.inputType === "submit")
-    return { risk: "unknown", reasons: ["Form controls are not safe by default"] };
-  return {
-    risk: "unknown",
-    reasons: ["Runtime could not establish that this control is read-only"],
-  };
-}
-
 type RefEntry = { locator: Locator; element: ExploredInteractiveElementV2 };
 type Settled = ExplorationObservation["settled"];
 
@@ -168,16 +99,14 @@ export class InteractiveExplorationSession {
   private downloadBlocked = false;
   private dialogDismissed = false;
   private closed = false;
+  private readonly artifacts: ExplorationArtifactStore;
 
-  constructor(readonly config: ExplorationLaunchConfig) {}
+  constructor(readonly config: ExplorationLaunchConfig) {
+    this.artifacts = new ExplorationArtifactStore(config.outputDirectory);
+  }
 
   async start(): Promise<ExplorationObservation> {
-    await Promise.all([
-      mkdir(join(this.config.outputDirectory, "observations"), { recursive: true }),
-      mkdir(join(this.config.outputDirectory, "snapshots"), { recursive: true }),
-      mkdir(join(this.config.outputDirectory, "screenshots"), { recursive: true }),
-      mkdir(join(this.config.outputDirectory, "diagnostics"), { recursive: true }),
-    ]);
+    await this.artifacts.initialize(["observations", "snapshots", "screenshots", "diagnostics"]);
     this.browser = await chromium.launch({ headless: this.config.headless });
     this.context = await this.browser.newContext({
       viewport,
@@ -200,7 +129,7 @@ export class InteractiveExplorationSession {
         new URL(request.url()).origin !== allowedOrigin
       ) {
         this.errors.push(
-          `Blocked cross-origin main-frame navigation to ${sanitizedUrl(request.url())}`,
+          `Blocked cross-origin main-frame navigation to ${sanitizeExplorationUrl(request.url())}`,
         );
         await route.abort("blockedbyclient");
         return;
@@ -224,9 +153,11 @@ export class InteractiveExplorationSession {
   private attachPageEvents(page: Page): void {
     page.on("console", (message) => {
       if (message.type() === "error")
-        this.errors.push(sanitizedError(`console: ${message.text()}`));
+        this.errors.push(sanitizeExplorationError(`console: ${message.text()}`));
     });
-    page.on("pageerror", (error) => this.errors.push(sanitizedError(`page: ${error.message}`)));
+    page.on("pageerror", (error) =>
+      this.errors.push(sanitizeExplorationError(`page: ${error.message}`)),
+    );
     page.on("dialog", (dialog) => {
       this.dialogDismissed = true;
       void dialog.dismiss().catch(() => undefined);
@@ -355,7 +286,7 @@ export class InteractiveExplorationSession {
         facts.expanded === null || facts.expanded === undefined
           ? undefined
           : facts.expanded === "true";
-      const risk = riskForElement({
+      const risk = classifyExplorationElementRisk({
         ...(role ? { role } : {}),
         name,
         tagName: facts.tagName,
@@ -379,7 +310,7 @@ export class InteractiveExplorationSession {
         ...(role ? { role } : {}),
         name,
         tagName: facts.tagName,
-        ...(facts.href ? { href: sanitizedUrl(facts.href) } : {}),
+        ...(facts.href ? { href: sanitizeExplorationUrl(facts.href) } : {}),
         ...(facts.inputType ? { inputType: facts.inputType } : {}),
         visible: true,
         enabled: await locator.isEnabled().catch(() => false),
@@ -407,14 +338,23 @@ export class InteractiveExplorationSession {
   async observe(reason = "agent-request", settled?: Settled): Promise<ExplorationObservation> {
     const sequence = ++this.observationSequence;
     const id = `obs-${String(sequence).padStart(4, "0")}`;
-    const snapshotPath = join(this.config.outputDirectory, "snapshots", `${id}.yml`);
-    const screenshotPath = join(this.config.outputDirectory, "screenshots", `${id}.png`);
-    const observationPath = join(this.config.outputDirectory, "observations", `${id}.json`);
+    const snapshotArtifact = `snapshots/${id}.yml`;
+    const screenshotArtifact = `screenshots/${id}.png`;
+    const observationArtifact = `observations/${id}.json`;
+    const screenshotPath = this.artifacts.path(screenshotArtifact);
     const snapshot = await this.page.ariaSnapshot({ mode: "ai", depth: 12, timeout: 5_000 });
     await Promise.all([
-      writeFile(snapshotPath, `${snapshot.trimEnd()}\n`),
+      this.artifacts.writeText(
+        snapshotArtifact,
+        `${snapshot.trimEnd()}\n`,
+        explorationArtifactLimits.snapshotBytes,
+      ),
       this.page.screenshot({ path: screenshotPath, fullPage: false, scale: "css" }),
     ]);
+    await this.artifacts.assertFileLimit(
+      screenshotArtifact,
+      explorationArtifactLimits.screenshotBytes,
+    );
     const { elements, refs } = await this.collectInteractiveElements();
     const headings = await this.page
       .locator("h1, h2, h3, [role=heading]")
@@ -470,7 +410,7 @@ export class InteractiveExplorationSession {
       stateId,
       reason,
       createdAt: new Date().toISOString(),
-      url: sanitizedUrl(currentUrl),
+      url: sanitizeExplorationUrl(currentUrl),
       pathname: new URL(currentUrl).pathname,
       title: await this.page.title(),
       viewport,
@@ -480,14 +420,14 @@ export class InteractiveExplorationSession {
       interactiveElements: elements,
       errors: this.errors.splice(0, 50),
       artifacts: {
-        snapshot: pathForArtifact(this.config.outputDirectory, snapshotPath),
-        screenshot: pathForArtifact(this.config.outputDirectory, screenshotPath),
-        observation: pathForArtifact(this.config.outputDirectory, observationPath),
+        snapshot: snapshotArtifact,
+        screenshot: screenshotArtifact,
+        observation: observationArtifact,
       },
       semanticFingerprint,
       settled: settled ?? { reason: "explicit", durationMs: 0 },
     });
-    await writeFile(observationPath, `${JSON.stringify(observation, null, 2)}\n`);
+    await this.artifacts.writeJson(observationArtifact, observation);
     this.refs = refs;
     this.currentObservation = observation;
     this.observations.push(observation);
@@ -589,7 +529,7 @@ export class InteractiveExplorationSession {
       current.expanded === null || current.expanded === undefined
         ? undefined
         : current.expanded === "true";
-    const risk = riskForElement({
+    const risk = classifyExplorationElementRisk({
       ...(role ? { role } : {}),
       name,
       tagName: current.tagName,
@@ -609,49 +549,6 @@ export class InteractiveExplorationSession {
     };
   }
 
-  private policyFor(action: ExplorationAction, entry?: RefEntry): ExplorationTransition["policy"] {
-    if (action.type === "goto") {
-      let destination: URL;
-      try {
-        destination = new URL(action.url, this.config.baseUrl);
-      } catch {
-        return { allowed: false, risk: "unknown", reasons: ["Navigation URL is invalid"] };
-      }
-      if (destination.origin !== new URL(this.config.baseUrl).origin) {
-        return {
-          allowed: false,
-          risk: "external-side-effect",
-          reasons: ["Navigation leaves the allowed origin"],
-        };
-      }
-    }
-    if (action.type !== "click")
-      return {
-        allowed: true,
-        risk: entry?.element.risk ?? "read-only",
-        reasons: ["Action is allowed by the bounded exploration protocol"],
-      };
-    if (!entry)
-      return {
-        allowed: false,
-        risk: "unknown",
-        reasons: ["Element reference does not exist in the current observation"],
-      };
-    const allowed =
-      entry.element.risk === "read-only" ||
-      (this.config.policy === "reversible" && entry.element.risk === "reversible");
-    return {
-      allowed,
-      risk: entry.element.risk,
-      reasons: allowed
-        ? entry.element.riskReasons
-        : [
-            ...entry.element.riskReasons,
-            `Policy ${this.config.policy} does not allow ${entry.element.risk} actions`,
-          ],
-    };
-  }
-
   async act(input: unknown): Promise<ExplorationTransition> {
     this.ensureWithinLimits();
     const action = explorationActionSchema.parse(input);
@@ -664,7 +561,12 @@ export class InteractiveExplorationSession {
         `Stale observation reference: expected ${before.id}, received ${action.observationId}`,
       );
     if (entry) entry = await this.refreshRefEntry(entry);
-    const policy = this.policyFor(action, entry);
+    const policy = decideExplorationActionPolicy(
+      action,
+      this.config.policy,
+      this.config.baseUrl,
+      entry?.element,
+    );
     const sequence = ++this.transitionSequence;
     const id = `transition-${String(sequence).padStart(4, "0")}`;
     const startedAt = Date.now();
@@ -708,7 +610,9 @@ export class InteractiveExplorationSession {
       } else if (action.type === "goto") {
         const destination = new URL(action.url, this.config.baseUrl);
         if (destination.origin !== new URL(this.config.baseUrl).origin)
-          throw new Error(`Cross-origin navigation is blocked: ${sanitizedUrl(destination.href)}`);
+          throw new Error(
+            `Cross-origin navigation is blocked: ${sanitizeExplorationUrl(destination.href)}`,
+          );
         await this.page.goto(destination.href, { waitUntil: "domcontentloaded", timeout: 30_000 });
       } else if (action.type === "back") {
         await this.page.goBack({ waitUntil: "domcontentloaded", timeout: 30_000 });
@@ -759,14 +663,14 @@ export class InteractiveExplorationSession {
         fromStateId: before.stateId,
         ...(entry ? { target: entry.element.target } : {}),
         outcome: {
-          urlChanged: before.url !== sanitizedUrl(this.page.url()),
+          urlChanged: before.url !== sanitizeExplorationUrl(this.page.url()),
           semanticChanged: false,
           popupBlocked: this.popupBlocked,
           downloadBlocked: this.downloadBlocked,
           dialogDismissed: this.dialogDismissed,
         },
         durationMs: Date.now() - startedAt,
-        error: sanitizedError(error instanceof Error ? error.message : String(error)),
+        error: sanitizeExplorationError(error instanceof Error ? error.message : String(error)),
       });
       await this.persistTransition(transition);
       return transition;
@@ -775,38 +679,28 @@ export class InteractiveExplorationSession {
 
   private async persistTransition(transition: ExplorationTransition): Promise<void> {
     this.transitions.push(transition);
-    await appendFile(
-      join(this.config.outputDirectory, "transitions.ndjson"),
-      `${JSON.stringify(transition)}\n`,
-    );
+    await this.artifacts.appendJsonLine("transitions.ndjson", transition);
     await this.writeGraph();
     await this.writeReport("active");
   }
 
   private async writeGraph(): Promise<void> {
     const states = [...this.states.entries()].map(([fingerprint, id]) => ({ id, fingerprint }));
-    await writeFile(
-      join(this.config.outputDirectory, "graph.json"),
-      `${JSON.stringify(
-        {
-          schemaVersion: 2,
-          states,
-          observations: this.observations.map((observation) => ({
-            id: observation.id,
-            stateId: observation.stateId,
-            sequence: observation.sequence,
-          })),
-          transitions: this.transitions.map((transition) => ({
-            id: transition.id,
-            status: transition.status,
-            fromStateId: transition.fromStateId,
-            ...(transition.toStateId ? { toStateId: transition.toStateId } : {}),
-          })),
-        },
-        null,
-        2,
-      )}\n`,
-    );
+    await this.artifacts.writeJson("graph.json", {
+      schemaVersion: 2,
+      states,
+      observations: this.observations.map((observation) => ({
+        id: observation.id,
+        stateId: observation.stateId,
+        sequence: observation.sequence,
+      })),
+      transitions: this.transitions.map((transition) => ({
+        id: transition.id,
+        status: transition.status,
+        fromStateId: transition.fromStateId,
+        ...(transition.toStateId ? { toStateId: transition.toStateId } : {}),
+      })),
+    });
   }
 
   report(status: ExplorationSessionReport["status"] = "active"): ExplorationSessionReport {
@@ -817,7 +711,7 @@ export class InteractiveExplorationSession {
       ...(status === "active" ? {} : { finishedAt: new Date().toISOString() }),
       status,
       target: {
-        baseUrl: sanitizedUrl(this.config.baseUrl),
+        baseUrl: sanitizeExplorationUrl(this.config.baseUrl),
         ...(this.config.repositoryPath ? { repositoryPath: this.config.repositoryPath } : {}),
       },
       ...(this.config.goal ? { goal: this.config.goal } : {}),
@@ -835,10 +729,7 @@ export class InteractiveExplorationSession {
 
   private async writeReport(status: ExplorationSessionReport["status"]): Promise<void> {
     const report = this.report(status);
-    await writeFile(
-      join(this.config.outputDirectory, "exploration.json"),
-      `${JSON.stringify(report, null, 2)}\n`,
-    );
+    await this.artifacts.writeJson("exploration.json", report);
     const latest = this.currentObservation;
     const lines = [
       `# Exploration: ${report.target.baseUrl}`,
@@ -864,7 +755,7 @@ export class InteractiveExplorationSession {
         "",
       );
     }
-    await writeFile(join(this.config.outputDirectory, "summary.md"), `${lines.join("\n")}\n`);
+    await this.artifacts.writeText("summary.md", `${lines.join("\n")}\n`);
   }
 
   async close(status: "finished" | "aborted" | "failed" = "finished"): Promise<void> {
@@ -872,7 +763,13 @@ export class InteractiveExplorationSession {
     this.closed = true;
     await this.writeReport(status).catch(() => undefined);
     await this.context?.tracing
-      .stop({ path: join(this.config.outputDirectory, "diagnostics", "trace.zip") })
+      .stop({ path: this.artifacts.path("diagnostics/trace.zip") })
+      .then(() =>
+        this.artifacts.assertFileLimit(
+          "diagnostics/trace.zip",
+          explorationArtifactLimits.traceBytes,
+        ),
+      )
       .catch(() => undefined);
     await this.context?.close().catch(() => undefined);
     await this.browser?.close().catch(() => undefined);

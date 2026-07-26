@@ -21,9 +21,9 @@ describe("browser exploration", () => {
       if (request.method === "POST") submissions += 1;
       response.setHeader("content-type", "text/html");
       response.end(
-        request.url === "/second"
+        request.url?.startsWith("/second")
           ? "<h1>Second</h1>"
-          : '<h1>Home</h1><a href="/second">Second page</a><form method="post"><input aria-label="Email"><button type="submit">Send</button></form>',
+          : '<h1>Home</h1><a href="/second?token=super-secret#access-key">Second page</a><form method="post"><input aria-label="Email"><button type="submit">Send</button></form>',
       );
     });
     servers.push(server);
@@ -42,9 +42,10 @@ describe("browser exploration", () => {
       true,
     );
     expect(submissions).toBe(0);
-    const saved = JSON.parse(
-      await readFile(join(outputDirectory, "exploration.json"), "utf8"),
-    ) as ExplorationReport;
+    const savedText = await readFile(join(outputDirectory, "exploration.json"), "utf8");
+    const saved = JSON.parse(savedText) as ExplorationReport;
     expect(saved.pages).toHaveLength(2);
+    expect(savedText).not.toMatch(/super-secret|access-key/);
+    expect(saved.pages[0]?.links[0]?.href).toMatch(/\/second$/);
   });
 });

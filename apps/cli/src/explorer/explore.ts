@@ -1,6 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { chromium } from "playwright";
+import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
+import { sanitizeExplorationError, sanitizeExplorationUrl } from "./privacy.js";
 import { inspectRepository } from "./repository.js";
 import { installSessionStorage, loadSessionStorage } from "./session-storage.js";
 import type {
@@ -41,8 +42,8 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
   const sameOriginOnly = options.sameOriginOnly ?? true;
   const target = new URL(options.baseUrl);
   if (!/^https?:$/.test(target.protocol)) throw new Error("Exploration URL must use HTTP or HTTPS");
-  await mkdir(join(options.outputDirectory, "screenshots"), { recursive: true });
-  await mkdir(join(options.outputDirectory, "diagnostics"), { recursive: true });
+  const artifacts = new ExplorationArtifactStore(options.outputDirectory);
+  await artifacts.initialize(["screenshots", "diagnostics"]);
 
   const browser = await chromium.launch({ headless: options.headless ?? true });
   const context = await browser.newContext({
@@ -145,8 +146,13 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
         const screenshotFilename = `${String(pages.length + 1).padStart(2, "0")}-${safeName(new URL(finalUrl).pathname)}.png`;
         const screenshotAbsolute = join(options.outputDirectory, "screenshots", screenshotFilename);
         await page.screenshot({ path: screenshotAbsolute, fullPage: true });
+        await artifacts.assertFileLimit(
+          `screenshots/${screenshotFilename}`,
+          explorationArtifactLimits.screenshotBytes,
+        );
         const links = rawLinks.map((link) => ({
-          ...link,
+          name: link.name,
+          href: sanitizeExplorationUrl(link.href),
           sameOrigin: new URL(link.href).origin === target.origin,
         }));
         const controls = rawControls.map((control) => ({
@@ -162,7 +168,7 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
           ),
         ];
         pages.push({
-          url: finalUrl,
+          url: sanitizeExplorationUrl(finalUrl),
           title: await page.title(),
           depth: item.depth,
           headings,
@@ -172,7 +178,7 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
           hasForm,
           captchaIndicators,
           screenshotPath: relative(options.outputDirectory, screenshotAbsolute),
-          errors: errors.slice(0, 50),
+          errors: errors.slice(0, 50).map(sanitizeExplorationError),
         });
         if (item.depth < maxDepth) {
           for (const link of links) {
@@ -186,7 +192,9 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
           }
         }
       } catch (error) {
-        errors.push(error instanceof Error ? error.message : String(error));
+        errors.push(
+          sanitizeExplorationError(error instanceof Error ? error.message : String(error)),
+        );
         pages.push({
           url: item.url,
           title: "",
@@ -232,7 +240,7 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
     id: options.outputDirectory.split(/[\\/]/).pop() ?? "exploration",
     createdAt: new Date().toISOString(),
     target: {
-      baseUrl: target.href,
+      baseUrl: sanitizeExplorationUrl(target.href),
       ...(options.repositoryPath ? { repositoryPath: options.repositoryPath } : {}),
     },
     limits: { maxPages, maxDepth, sameOriginOnly },
@@ -256,11 +264,8 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
       ),
     ],
   };
-  await writeFile(
-    join(options.outputDirectory, "exploration.json"),
-    `${JSON.stringify(report, null, 2)}\n`,
-  );
-  await writeFile(join(options.outputDirectory, "summary.md"), explorationSummary(report));
+  await artifacts.writeJson("exploration.json", report);
+  await artifacts.writeText("summary.md", explorationSummary(report));
   return report;
 }
 
