@@ -84,7 +84,11 @@ export async function prepareRecording(recordingPath: string): Promise<PreparedR
     throw new Error("Presentation zoom segment is outside the recording timeline or viewport");
   }
   const zoomSegments = plannedZoomSegments ?? automaticZoomSegments;
-  const trimStartMs = presentationValue?.trimStartMs ?? 0;
+  const firstNavigationMs = manifest.events.find(
+    (event) => event.type === "navigation" && event.timestampMs < manifest.durationMs,
+  )?.timestampMs;
+  const automaticTrimStartMs = firstNavigationMs && firstNavigationMs > 0 ? firstNavigationMs : 0;
+  const trimStartMs = presentationValue?.trimStartMs ?? automaticTrimStartMs;
   const trimEndMs = presentationValue?.trimEndMs ?? manifest.durationMs;
   if (
     typeof trimStartMs !== "number" ||

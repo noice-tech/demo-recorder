@@ -88,7 +88,7 @@ An absolute or repository-relative recording directory or `recording.json` path 
 output/<recording-id>.mp4
 ```
 
-The renderer validates paths, derives zoom segments, probes FFmpeg capabilities, and renders the source plus browser assets and timed overlays as an H.264 MP4. It uses the external `ffmpeg` and `ffprobe` executables reported by `doctor`.
+The renderer validates paths, derives zoom segments, trims Playwright's initial blank frames at the first recorded navigation unless `presentation.json` specifies `trimStartMs`, and renders the source plus browser assets and timed overlays as an H.264 MP4. It uses the external `ffmpeg` and `ffprobe` executables reported by `doctor`.
 
 ## Tests and failure paths
 

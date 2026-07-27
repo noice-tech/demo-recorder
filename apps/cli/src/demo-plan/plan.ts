@@ -5,6 +5,7 @@ import {
   formSubmissionPattern,
   mutationActionPattern,
 } from "../browser/action-risk.js";
+import { scrollDurationMs } from "../browser/smooth-scroll.js";
 import { demoActionSchema, demoPlanSchema, locatorSchema } from "./schema.js";
 
 export type LocatorSpec = z.infer<typeof locatorSchema>;
@@ -76,6 +77,7 @@ export function estimatePlanDurationMs(plan: DemoPlan): number {
     if (step.type === "move") return total + (step.durationMs ?? 700);
     if (step.type === "click") return total + 900;
     if (step.type === "navigate") return total + 1_500;
+    if (step.type === "scroll") return total + scrollDurationMs(step.deltaY, step.deltaX ?? 0);
     if (["wait-for", "wait-for-url", "assert-visible"].includes(step.type)) return total + 300;
     return total + 500;
   }, 0);

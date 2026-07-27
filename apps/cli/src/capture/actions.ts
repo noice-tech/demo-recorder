@@ -1,5 +1,6 @@
 import type { InteractionTarget } from "@noice-tech/demo-recorder-core";
 import type { Locator, Page } from "playwright";
+import { smoothScroll } from "../browser/smooth-scroll.js";
 import type { InteractionTracker } from "./interaction-tracker.js";
 import type {
   ClickOptions,
@@ -167,9 +168,7 @@ async function select(
 }
 
 async function scroll(context: ActionContext, deltaY: number, deltaX = 0): Promise<void> {
-  if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY))
-    throw new Error("Scroll deltas must be finite");
-  await context.page.mouse.wheel(deltaX, deltaY);
+  await smoothScroll(context.page, deltaY, deltaX, { now: () => context.tracker.now() });
 }
 
 async function waitFor(locator: Locator, options: WaitForOptions = {}): Promise<void> {

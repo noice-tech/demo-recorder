@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
+import { smoothScroll } from "./browser/smooth-scroll.js";
 import { resolvePlanLocator } from "./capture/plan.js";
 import { loadDemoPlan, type DemoAction, type DemoPlan } from "./demo-plan/index.js";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./explorer/artifacts.js";
@@ -58,7 +59,7 @@ async function executeRehearsalAction(plan: DemoPlan, page: Page, step: DemoActi
       });
       return;
     case "scroll":
-      await page.mouse.wheel(step.deltaX ?? 0, step.deltaY);
+      await smoothScroll(page, step.deltaY, step.deltaX ?? 0);
       return;
     case "hold":
       await page.waitForTimeout(step.durationMs);

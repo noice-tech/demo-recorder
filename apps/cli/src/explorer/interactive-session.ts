@@ -1,4 +1,5 @@
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import { smoothScroll } from "../browser/smooth-scroll.js";
 import type { DemoPlan } from "../demo-plan/index.js";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
 import {
@@ -417,7 +418,7 @@ export class InteractiveExplorationSession {
         await this.page.goBack({ waitUntil: "domcontentloaded", timeout: 30_000 });
         return;
       case "scroll":
-        await this.page.mouse.wheel(action.deltaX, action.deltaY);
+        await smoothScroll(this.page, action.deltaY, action.deltaX);
         return;
       case "wait":
         await this.page.waitForTimeout(action.durationMs);
