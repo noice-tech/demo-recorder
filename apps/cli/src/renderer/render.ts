@@ -1,14 +1,14 @@
-import { mkdir, rm, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
-import { renderMedia, selectComposition } from "@remotion/renderer";
-import { chromium } from "playwright";
-import type { ProductDemoInput } from "@noice-tech/demo-recorder-core";
-import { prepareRecording, startAssetServer, type AssetServer } from "./prepare-assets.js";
+import { join, resolve } from "node:path";
+import { renderProductDemo } from "@noice-tech/demo-recorder-ffmpeg";
+import { prepareRecording } from "./prepare-recording.js";
 
 export type RenderDemoVideoOptions = {
-  compositionPath: string;
+  assetsDirectory: string;
   outputPath?: string;
   outputDirectory?: string;
+  ffmpegPath?: string;
+  ffprobePath?: string;
+  signal?: AbortSignal;
   log?: (message: string) => void;
 };
 
@@ -31,23 +31,9 @@ export async function renderDemoVideo(
   options: RenderDemoVideoOptions,
 ): Promise<RenderDemoVideoResult> {
   const log = options.log ?? ((message: string) => console.log(`[demo-recorder] ${message}`));
-  let prepared: Awaited<ReturnType<typeof prepareRecording>>;
-  try {
-    prepared = await prepareRecording(recordingPath);
-  } catch (error) {
+  const prepared = await prepareRecording(recordingPath).catch((error: unknown) => {
     throw stageError("Recording preparation", error);
-  }
-
-  const compositionPath = resolve(options.compositionPath);
-  const compositionStats = await stat(join(compositionPath, "index.html")).catch(
-    (error: unknown) => {
-      throw stageError(`Remotion composition not found at ${compositionPath}`, error);
-    },
-  );
-  if (!compositionStats.isFile()) {
-    throw new Error(`Remotion composition index is not a file: ${compositionPath}`);
-  }
-
+  });
   const zoomSegmentCount = prepared.input.timeline.zoomSegments.length;
   log(`Generated ${zoomSegmentCount} zoom segment${zoomSegmentCount === 1 ? "" : "s"}`);
 
@@ -58,64 +44,45 @@ export async function renderDemoVideo(
         `${safeOutputName(prepared.manifest.id)}.mp4`,
       ),
   );
-  await mkdir(dirname(outputPath), { recursive: true });
-
-  let assetServer: AssetServer | undefined;
-  let completed = false;
+  const signalController = options.signal ? undefined : new AbortController();
+  const abortRender = () => signalController?.abort(new Error("Render interrupted"));
+  if (signalController) {
+    process.once("SIGINT", abortRender);
+    process.once("SIGTERM", abortRender);
+  }
+  const renderSignal = options.signal ?? signalController?.signal;
+  let lastReportedPercent = -10;
   try {
-    try {
-      assetServer = await startAssetServer(prepared.videoPath);
-    } catch (error) {
-      throw stageError("Asset server startup", error);
-    }
-
-    const input: ProductDemoInput = {
-      ...prepared.input,
-      videoUrl: assetServer.videoUrl,
-    };
-    const inputProps = input as unknown as Record<string, unknown>;
-
-    const browserExecutable = chromium.executablePath();
-    let composition: Awaited<ReturnType<typeof selectComposition>>;
-    try {
-      log("Selecting ProductDemo composition");
-      composition = await selectComposition({
-        browserExecutable,
-        serveUrl: compositionPath,
-        id: "ProductDemo",
-        inputProps,
-      });
-    } catch (error) {
-      throw stageError("Composition selection", error);
-    }
-
-    try {
-      log(`Rendering H.264 MP4 to ${outputPath}`);
-      let lastReportedPercent = -10;
-      await renderMedia({
-        browserExecutable,
-        serveUrl: compositionPath,
-        composition,
-        codec: "h264",
-        pixelFormat: "yuv420p",
-        outputLocation: outputPath,
-        inputProps,
-        overwrite: true,
-        onProgress: ({ progress }) => {
+    await renderProductDemo(
+      {
+        sourcePath: prepared.videoPath,
+        recording: prepared.input.recording,
+        timeline: prepared.input.timeline,
+        config: prepared.input.config,
+      },
+      {
+        outputPath,
+        assetsDirectory: options.assetsDirectory,
+        ...(options.ffmpegPath ? { ffmpegPath: options.ffmpegPath } : {}),
+        ...(options.ffprobePath ? { ffprobePath: options.ffprobePath } : {}),
+        ...(renderSignal ? { signal: renderSignal } : {}),
+        log,
+        onProgress: (progress) => {
           const percent = Math.floor((progress * 100) / 10) * 10;
           if (percent >= lastReportedPercent + 10 || percent === 100) {
             lastReportedPercent = percent;
             log(`Render progress: ${percent}%`);
           }
         },
-      });
-      completed = true;
-    } catch (error) {
-      throw stageError("MP4 render", error);
-    }
+      },
+    );
+  } catch (error) {
+    throw stageError("FFmpeg MP4 render", error);
   } finally {
-    if (!completed) await rm(outputPath, { force: true }).catch(() => undefined);
-    if (assetServer) await assetServer.close().catch(() => undefined);
+    if (signalController) {
+      process.off("SIGINT", abortRender);
+      process.off("SIGTERM", abortRender);
+    }
   }
 
   log(`Rendered video: ${outputPath}`);

@@ -4,7 +4,7 @@ import { recordDemoPlan } from "./capture/index.js";
 import { loadDemoPlan } from "./demo-plan/index.js";
 import { authProfilePaths, startManagedApp } from "./explorer/index.js";
 import { renderDemoVideo, type RenderDemoVideoResult } from "./renderer/index.js";
-import { requireRemotionBundle, workingDirectory } from "./paths.js";
+import { requireFfmpegAssets, workingDirectory } from "./paths.js";
 
 function recordingId(name: string): string {
   return `${new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-")}-${name}-${randomUUID().slice(0, 8)}`;
@@ -66,7 +66,7 @@ export async function runPlan(
   const recordingDirectory = await recordPlan(planArgument, options);
   const id = basename(recordingDirectory);
   return renderDemoVideo(recordingDirectory, {
-    compositionPath: requireRemotionBundle(),
+    assetsDirectory: requireFfmpegAssets(),
     outputPath: join(workingDirectory, "output", `${id}.mp4`),
   });
 }

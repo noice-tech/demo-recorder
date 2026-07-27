@@ -31,13 +31,11 @@ const workspaces = (
 await Promise.all([
   cleanGeneratedDirectory(join(repositoryRoot, "recordings")),
   cleanGeneratedDirectory(join(repositoryRoot, "output")),
-  rm(join(repositoryRoot, "apps/remotion/build"), { recursive: true, force: true }),
-  rm(join(repositoryRoot, "apps/remotion/public/generated"), { recursive: true, force: true }),
   rm(join(repositoryRoot, "apps/cli/assets"), { recursive: true, force: true }),
   ...workspaces.map((workspace) => rm(join(workspace, "dist"), { recursive: true, force: true })),
   rm(join(repositoryRoot, ".demo-recorder/explorations"), { recursive: true, force: true }),
 ]);
 
 console.log(
-  "[demo-recorder] Removed generated explorations, recordings, outputs, workspace dist directories, bundles, and Studio assets; plans and auth profiles were preserved",
+  "[demo-recorder] Removed generated explorations, recordings, outputs, workspace dist directories, and package assets; plans and auth profiles were preserved",
 );

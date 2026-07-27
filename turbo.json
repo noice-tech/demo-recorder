@@ -3,7 +3,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "build/**"]
+      "outputs": ["dist/**"]
     },
     "typecheck": {
       "dependsOn": ["^typecheck"],
@@ -12,10 +12,6 @@
     "package": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", "assets/**"]
-    },
-    "studio": {
-      "cache": false,
-      "persistent": true
     }
   }
 }

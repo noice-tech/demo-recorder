@@ -15,7 +15,7 @@ export default defineConfig({
   clean: true,
   dts: false,
   deps: {
-    alwaysBundle: ["@noice-tech/demo-recorder-core"],
+    alwaysBundle: ["@noice-tech/demo-recorder-core", "@noice-tech/demo-recorder-ffmpeg"],
     onlyBundle: ["zod"],
   },
 });

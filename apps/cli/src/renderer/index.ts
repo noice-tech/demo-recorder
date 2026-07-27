@@ -1,2 +1,2 @@
-export * from "./prepare-assets.js";
+export * from "./prepare-recording.js";
 export * from "./render.js";

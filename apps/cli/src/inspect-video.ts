@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { basename, dirname, extname, join, resolve } from "node:path";
-import { parseMedia } from "@remotion/media-parser";
+import { probeVideo } from "@noice-tech/demo-recorder-ffmpeg";
 import { stringOption, type ParsedArguments } from "./arguments.js";
 import { workingDirectory } from "./paths.js";
 
 function runFfmpeg(arguments_: string[]): Promise<void> {
+  const executable = process.env.DEMO_RECORDER_FFMPEG ?? "ffmpeg";
   return new Promise((resolveRun, reject) => {
-    const child = spawn("ffmpeg", arguments_, { stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawn(executable, arguments_, { stdio: ["ignore", "ignore", "pipe"] });
     let errors = "";
     child.stderr.on("data", (chunk: Buffer) => {
       errors += chunk.toString();
@@ -32,18 +33,7 @@ export async function inspectVideoCommand(
   arguments_: ParsedArguments,
 ): Promise<void> {
   const path = resolve(workingDirectory, pathArgument);
-  const bytes = await readFile(path);
-  const metadata = await parseMedia({
-    src: new Blob([bytes]),
-    fields: {
-      container: true,
-      dimensions: true,
-      durationInSeconds: true,
-      fps: true,
-      videoCodec: true,
-    },
-    acknowledgeRemotionLicense: true,
-  });
+  const metadata = await probeVideo(path);
   console.log(JSON.stringify(metadata, null, 2));
 
   if (arguments_.options.has("contact-sheet")) {

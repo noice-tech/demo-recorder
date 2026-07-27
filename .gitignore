@@ -9,7 +9,4 @@ recordings/*
 !recordings/.gitkeep
 output/*
 !output/.gitkeep
-apps/remotion/public/generated/
-apps/remotion/public/sample-browser.webm
-apps/remotion/build/
 apps/cli/assets/

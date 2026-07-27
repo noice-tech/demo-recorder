@@ -7,24 +7,31 @@ export const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url)
 export const workingDirectory =
   process.env.DEMO_RECORDER_CWD ?? process.env.INIT_CWD ?? process.cwd();
 
-function existingDirectory(candidates: string[]): string | undefined {
-  return candidates.find((candidate) => existsSync(join(candidate, "index.html")));
+const rendererAssetFiles = [
+  "background.png",
+  "browser-underlay.png",
+  "browser-overlay.png",
+  "content-mask.png",
+  "fonts/Inter-Variable.ttf",
+  "fonts/OFL.txt",
+] as const;
+
+function isRendererAssetsDirectory(path: string): boolean {
+  return rendererAssetFiles.every((name) => existsSync(join(path, name)));
 }
 
-export function findRemotionBundle(): string | undefined {
-  return existingDirectory([
-    ...(process.env.DEMO_RECORDER_REMOTION_BUNDLE
-      ? [process.env.DEMO_RECORDER_REMOTION_BUNDLE]
-      : []),
-    join(packageRoot, "assets/remotion"),
-    join(repositoryRoot, "apps/remotion/build"),
-  ]);
+export function findFfmpegAssets(): string | undefined {
+  return [
+    ...(process.env.DEMO_RECORDER_FFMPEG_ASSETS ? [process.env.DEMO_RECORDER_FFMPEG_ASSETS] : []),
+    join(packageRoot, "assets/ffmpeg"),
+    join(repositoryRoot, "packages/ffmpeg-renderer/assets"),
+  ].find(isRendererAssetsDirectory);
 }
 
-export function requireRemotionBundle(): string {
-  const path = findRemotionBundle();
+export function requireFfmpegAssets(): string {
+  const path = findFfmpegAssets();
   if (path) return path;
   throw new Error(
-    "Remotion composition is missing. Run `pnpm package:cli` in a source checkout or reinstall Demo Recorder.",
+    "FFmpeg renderer assets are missing. Run `pnpm package:cli` in a source checkout or reinstall Demo Recorder.",
   );
 }

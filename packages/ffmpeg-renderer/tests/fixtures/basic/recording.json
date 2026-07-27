@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "id": "ffmpeg-renderer-fixture",
+  "createdAt": "2026-07-26T00:00:00.000Z",
+  "durationMs": 2000,
+  "viewport": { "width": 320, "height": 200 },
+  "video": {
+    "path": "browser.webm",
+    "width": 320,
+    "height": 200,
+    "durationMs": 2000
+  },
+  "events": [
+    { "type": "navigation", "timestampMs": 0, "url": "https://example.test/products" },
+    { "type": "cursor-move", "timestampMs": 0, "x": 30, "y": 40 },
+    { "type": "cursor-move", "timestampMs": 600, "x": 160, "y": 100 },
+    { "type": "click", "timestampMs": 650, "x": 160, "y": 100, "button": "left" },
+    { "type": "cursor-move", "timestampMs": 1200, "x": 280, "y": 160 }
+  ]
+}

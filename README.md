@@ -8,7 +8,7 @@ The intelligence stays in Codex, Claude Code, Cursor, Pi, or any other terminal-
 
 ## Licensing
 
-Noice Demo Recorder's original source code is licensed under the [MIT License](LICENSE). Rendering uses Remotion, which is governed by the separate [Remotion License](https://www.remotion.dev/license) and may require a paid license depending on your organization and use case. Playwright is licensed under Apache-2.0.
+Noice Demo Recorder's original source code is licensed under the [MIT License](LICENSE). Rendering invokes user-installed FFmpeg and ffprobe; their binaries are not bundled or redistributed. The bundled Inter font is licensed under the SIL Open Font License 1.1, and Playwright is licensed under Apache-2.0.
 
 See [Third-Party Notices](THIRD_PARTY_NOTICES.md) for the bundled license texts, attributions, and information about Chromium downloaded during setup.
 
@@ -50,7 +50,7 @@ Ask the agent for a demo. The skill checks Node, asks before downloading and exe
 
 ## Requirements
 
-Node.js 22 or newer is the only prerequisite for the installed workflow. No global CLI or target-project dependency is required.
+The installed workflow requires Node.js 22 or newer plus `ffmpeg` and `ffprobe` with the capabilities reported by `demo-recorder doctor`. No global CLI or target-project dependency is required.
 
 ## Architecture
 
@@ -85,14 +85,7 @@ pnpm package:cli
 pnpm demo-recorder doctor
 ```
 
-`pnpm build` uses Turbo for workspace ordering and caching. `pnpm package:cli` builds the Remotion composition, bundles the standalone CLI and auth daemon with tsdown, and prepares npm package assets.
-
-## Remotion Studio
-
-```bash
-pnpm studio
-pnpm studio:recording <recording-id-or-path>
-```
+`pnpm build` uses Turbo for workspace ordering and caching. `pnpm package:cli` bundles the standalone CLI and auth daemon with tsdown, then prepares the FFmpeg renderer assets and bundled font.
 
 ## Checks and cleanup
 
@@ -104,7 +97,7 @@ pnpm test:package
 pnpm clean
 ```
 
-Cleanup removes generated explorations, recordings, outputs, bundles, and Studio assets. It preserves `.demo-recorder/plans/` and `.demo-recorder/auth/`.
+Cleanup removes generated explorations, recordings, outputs, workspace build output, and package assets. It preserves `.demo-recorder/plans/` and `.demo-recorder/auth/`.
 
 ## Important directories
 
@@ -112,9 +105,9 @@ Cleanup removes generated explorations, recordings, outputs, bundles, and Studio
 - `apps/cli/src/explorer/` — browser/repository exploration, managed apps, and auth profiles
 - `apps/cli/src/demo-plan/` — plan schemas, safety validation, estimation, and storyboards
 - `apps/cli/src/capture/` — plan execution, Playwright capture, and instrumented actions
-- `apps/cli/src/renderer/` — asset preparation and Remotion rendering
+- `apps/cli/src/renderer/` — recording preparation and FFmpeg render orchestration
+- `packages/ffmpeg-renderer/` — FFmpeg capabilities, filter graphs, overlays, and renderer assets
 - `apps/cli/tests/` — unit, integration, fixture, and package pipeline support
-- `apps/remotion/` — React composition and presentation
 - `skills/demo-video/` — portable agent workflow
 - `.demo-recorder/` — ignored explorations, plans, and authentication state
 - `recordings/` and `output/` — generated capture and video artifacts
