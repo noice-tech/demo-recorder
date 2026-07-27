@@ -40,6 +40,7 @@ describe("prepareRecording", () => {
 
     expect(prepared.manifest.id).toBe("renderer-test");
     expect(prepared.input.timeline.zoomSegments).toHaveLength(1);
+    expect(prepared.input.config.fps).toBe(60);
     expect(prepared.videoPath).toBe(await realpath(join(directory, "browser.webm")));
   });
 

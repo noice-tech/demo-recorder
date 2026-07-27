@@ -10,6 +10,12 @@ describe("generateCursorPath", () => {
     expect(first.points.length).toBeGreaterThanOrEqual(14);
   });
 
+  it("samples default movement at approximately 60 FPS", () => {
+    const path = generateCursorPath({ x: 0, y: 0 }, { x: 10, y: 0 });
+    expect(path.durationMs).toBe(280);
+    expect(path.points).toHaveLength(18);
+  });
+
   it("respects explicit step and duration settings", () => {
     const path = generateCursorPath(
       { x: 10, y: 20 },

@@ -6,7 +6,7 @@ separate processes.
 
 ## Version 1 capability contract
 
-- 1920x1080 output at the configured constant frame rate (currently 30 FPS);
+- 1920x1080 output at the configured constant frame rate (60 FPS by default);
 - H.264 MP4 through `libx264`, `yuv420p`, limited-range BT.709;
 - video-only output; the source recordings are muted and no synthetic audio track
   is added;
