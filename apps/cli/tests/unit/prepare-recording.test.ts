@@ -19,6 +19,7 @@ async function createRecording(videoPath = "browser.webm") {
       viewport: { width: 1440, height: 900 },
       video: { path: videoPath, width: 1440, height: 900, durationMs: 1000 },
       events: [
+        { type: "navigation", timestampMs: 80, url: "https://example.com" },
         { type: "cursor-move", timestampMs: 100, x: 20, y: 20 },
         { type: "click", timestampMs: 500, x: 300, y: 250, button: "left" },
       ],
@@ -40,6 +41,8 @@ describe("prepareRecording", () => {
 
     expect(prepared.manifest.id).toBe("renderer-test");
     expect(prepared.input.timeline.zoomSegments).toHaveLength(1);
+    expect(prepared.input.timeline.trimStartMs).toBe(80);
+    expect(prepared.input.config.fps).toBe(60);
     expect(prepared.videoPath).toBe(await realpath(join(directory, "browser.webm")));
   });
 
@@ -61,7 +64,7 @@ describe("prepareRecording", () => {
       trimStartMs: 100,
       trimEndMs: 900,
     });
-    expect(prepared.manifest.events).toHaveLength(2);
+    expect(prepared.manifest.events).toHaveLength(3);
   });
 
   it("rejects presentation trims outside the source duration", async () => {

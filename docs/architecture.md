@@ -46,7 +46,7 @@ A detached loopback auth session opens headed Chromium while returning conversat
 
 ## 6. Recorder
 
-`apps/cli/src/capture` owns Chromium video capture, the shared relative clock, interaction instrumentation, plan locator resolution, plan execution, media inspection, and finalization. Instrumented navigation, movement, click, fill, key, selection, scroll, visibility, URL, and hold actions execute a validated plan.
+`apps/cli/src/capture` owns Chromium video capture, the shared relative clock, interaction instrumentation, plan locator resolution, plan execution, media inspection, and finalization. Instrumented navigation, movement, click, fill, key, selection, scroll, visibility, URL, and hold actions execute a validated plan. Scroll actions use cross-platform, 60 Hz wheel gestures with brief acceleration and a longer momentum decay; rehearsal and exploration share the same implementation.
 
 The recorder executes validated plan actions through instrumented Playwright helpers so cursor and semantic metadata remain synchronized. Locator candidates must resolve to exactly one element; ambiguous matches are errors rather than implicit first-element selection. Incomplete recording directories are removed on failure.
 

@@ -1,5 +1,6 @@
 import type { InteractionTarget } from "@noice-tech/demo-recorder-core";
 import type { Locator, Page } from "playwright";
+import { smoothScroll } from "../browser/smooth-scroll.js";
 import type { InteractionTracker } from "./interaction-tracker.js";
 import type {
   ClickOptions,
@@ -10,6 +11,8 @@ import type {
 } from "./types.js";
 
 export type CursorState = { x: number; y: number };
+
+const CURSOR_SAMPLE_RATE = 60;
 
 type ActionContext = {
   page: Page;
@@ -66,9 +69,10 @@ export function generateCursorPath(
   options: MoveOptions = {},
 ): { points: CursorState[]; durationMs: number } {
   const distance = Math.hypot(to.x - from.x, to.y - from.y);
-  const steps = options.steps ?? Math.max(14, Math.min(52, Math.round(distance / 16)));
   const durationMs =
     options.durationMs ?? Math.max(280, Math.min(950, Math.round(distance * 0.95)));
+  const steps =
+    options.steps ?? Math.max(2, Math.ceil((durationMs / 1000) * CURSOR_SAMPLE_RATE) + 1);
   const points = Array.from({ length: steps }, (_, index) => {
     const progress = (index + 1) / steps;
     const eased = 1 - (1 - progress) * (1 - progress);
@@ -86,11 +90,14 @@ async function moveToPoint(
   options: MoveOptions = {},
 ): Promise<void> {
   const { points, durationMs } = generateCursorPath(context.cursor, point, options);
-  const delayMs = points.length > 1 ? durationMs / points.length : 0;
-  for (const next of points) {
+  const startedAtMs = context.tracker.now();
+  for (const [index, next] of points.entries()) {
+    const scheduledAtMs =
+      startedAtMs + (points.length > 1 ? (durationMs * index) / (points.length - 1) : 0);
+    const delayMs = scheduledAtMs - context.tracker.now();
+    if (delayMs > 0) await context.page.waitForTimeout(delayMs);
     await context.page.mouse.move(next.x, next.y);
     context.tracker.push({ type: "cursor-move", x: next.x, y: next.y });
-    if (delayMs > 0) await context.page.waitForTimeout(delayMs);
   }
   context.cursor.x = point.x;
   context.cursor.y = point.y;
@@ -161,9 +168,7 @@ async function select(
 }
 
 async function scroll(context: ActionContext, deltaY: number, deltaX = 0): Promise<void> {
-  if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY))
-    throw new Error("Scroll deltas must be finite");
-  await context.page.mouse.wheel(deltaX, deltaY);
+  await smoothScroll(context.page, deltaY, deltaX, { now: () => context.tracker.now() });
 }
 
 async function waitFor(locator: Locator, options: WaitForOptions = {}): Promise<void> {
