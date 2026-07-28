@@ -78,9 +78,16 @@ const commandRoutes: Record<string, CommandRoute> = {
     responseKey: "observation",
     run: (activeSession) => activeSession.observe("agent-request"),
   },
+  "/current": {
+    responseKey: "observation",
+    run: async (activeSession) => activeSession.current(),
+  },
   "/act": {
-    responseKey: "transition",
-    run: async (activeSession, request) => activeSession.act(await readJson(request)),
+    responseKey: "result",
+    run: async (activeSession, request) => {
+      const transition = await activeSession.act(await readJson(request));
+      return { transition, observation: activeSession.current() };
+    },
   },
   "/find": {
     responseKey: "result",

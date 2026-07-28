@@ -158,10 +158,23 @@ try {
       workspace,
     );
     const explorationAction = JSON.parse(explorationActionText) as {
-      transition?: { id?: string; status?: string };
+      transition?: { id?: string; status?: string; toObservationId?: string };
+      observation?: { id?: string };
     };
-    if (explorationAction.transition?.status !== "succeeded")
-      throw new Error("Packaged interactive exploration action did not succeed");
+    if (
+      explorationAction.transition?.status !== "succeeded" ||
+      explorationAction.observation?.id !== explorationAction.transition.toObservationId
+    )
+      throw new Error("Packaged interactive exploration action did not return its observation");
+    const explorationCurrentText = await runNpm(
+      ["exec", "--", "demo-recorder", "explore", "current", "package-smoke", "--json"],
+      workspace,
+    );
+    const explorationCurrent = JSON.parse(explorationCurrentText) as {
+      observation?: { id?: string };
+    };
+    if (explorationCurrent.observation?.id !== explorationAction.transition?.toObservationId)
+      throw new Error("Packaged current exploration command recaptured or lost its observation");
     await writeFile(
       join(workspace, "verification-path.json"),
       `${JSON.stringify({

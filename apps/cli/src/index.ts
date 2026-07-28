@@ -27,7 +27,7 @@ function usage(): string {
     "  demo-recorder setup [--json]",
     "  demo-recorder explore --url URL [--repo PATH --start COMMAND] [--auth PROFILE]",
     "  demo-recorder explore start --url URL [--session ID] [--policy read-only|reversible]",
-    "  demo-recorder explore <observe|find|act|verify|export-plan|finish|abort|status> [SESSION] [options]",
+    "  demo-recorder explore <observe|current|find|act|verify|export-plan|finish|abort|status> [SESSION] [options]",
     "  demo-recorder inspect <video.mp4> [--contact-sheet[=PATH]]",
     "  demo-recorder plan validate <demo-plan.json>",
     "  demo-recorder plan show <demo-plan.json>",

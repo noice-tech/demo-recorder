@@ -1,5 +1,4 @@
 import type { Locator, Page } from "playwright";
-import { locatorForMethod } from "../browser/locator.js";
 import {
   type ExploredInteractiveElementV2,
   type ExplorationLocatorMethod,
@@ -26,11 +25,14 @@ const interactiveSelector = [
 
 const maximumTargets = 200;
 const maximumNameLength = 300;
+const accessibleIdentityConcurrency = 8;
 
 type TargetFacts = {
+  index: number;
   tagName: string;
   id: string;
   role: string | undefined;
+  accessibleName: string;
   ariaLabel: string | undefined;
   title: string | undefined;
   placeholder: string | undefined;
@@ -42,6 +44,10 @@ type TargetFacts = {
   checked: string | null;
   pressed: string | null;
   expanded: string | null;
+  visible: boolean;
+  enabled: boolean;
+  inViewport: boolean;
+  bounds: { x: number; y: number; width: number; height: number };
 };
 
 type AccessibleIdentity = { role?: string; name: string };
@@ -97,41 +103,197 @@ function implicitRole(tagName: string, inputType?: string): string | undefined {
 
 // This callback is serialized by Playwright and runs inside the page. Keep its return value
 // deliberately small: observations should describe controls, not copy arbitrary page content.
-function evaluateElementFacts(node: Element): TargetFacts {
+function evaluateElementFacts(node: Element): Omit<TargetFacts, "index"> {
   const element = node as HTMLElement;
+  const bounds = element.getBoundingClientRect();
+  const style = getComputedStyle(element);
   let inputType: string | undefined;
   if (element instanceof HTMLInputElement) inputType = element.type;
   else if (element instanceof HTMLButtonElement && element.form) inputType = element.type;
+
+  const labelledBy = (element.getAttribute("aria-labelledby") ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((id) => document.getElementById(id)?.textContent ?? "")
+    .join(" ")
+    .trim();
+  const labels =
+    element instanceof HTMLInputElement ||
+    element instanceof HTMLTextAreaElement ||
+    element instanceof HTMLSelectElement
+      ? [...(element.labels ?? [])]
+          .map((label) => label.textContent ?? "")
+          .join(" ")
+          .trim()
+      : "";
+  const value =
+    element instanceof HTMLInputElement && ["button", "submit", "reset"].includes(element.type)
+      ? element.value
+      : "";
+  const text = element.textContent?.trim().replace(/\s+/g, " ").slice(0, 300) ?? "";
+  const accessibleName =
+    [
+      element.getAttribute("aria-label"),
+      labelledBy,
+      labels,
+      element.getAttribute("alt"),
+      element.getAttribute("title"),
+      element.getAttribute("placeholder"),
+      value,
+      text,
+    ]
+      .find((candidate) => candidate?.trim())
+      ?.trim()
+      .replace(/\s+/g, " ")
+      .slice(0, 300) ?? "";
+  const visible =
+    style.visibility !== "hidden" &&
+    style.display !== "none" &&
+    element.getClientRects().length > 0 &&
+    bounds.width > 0 &&
+    bounds.height > 0;
+  const inViewport =
+    visible &&
+    bounds.left < window.innerWidth &&
+    bounds.right > 0 &&
+    bounds.top < window.innerHeight &&
+    bounds.bottom > 0;
 
   return {
     tagName: element.tagName,
     id: element.id,
     role: element.getAttribute("role") ?? undefined,
+    accessibleName,
     ariaLabel: element.getAttribute("aria-label") ?? undefined,
     title: element.getAttribute("title") ?? undefined,
     placeholder: element.getAttribute("placeholder") ?? undefined,
-    text: element.textContent?.trim().replace(/\s+/g, " ").slice(0, 300) ?? "",
+    text,
     testId: element.getAttribute("data-testid") ?? undefined,
     href: element instanceof HTMLAnchorElement ? element.href : undefined,
     inputType,
     selected: element.getAttribute("aria-selected"),
-    checked: element.getAttribute("aria-checked"),
+    checked:
+      element.getAttribute("aria-checked") ??
+      (element instanceof HTMLInputElement && ["checkbox", "radio"].includes(element.type)
+        ? String(element.checked)
+        : null),
     pressed: element.getAttribute("aria-pressed"),
     expanded: element.getAttribute("aria-expanded"),
+    visible,
+    enabled: !element.matches(":disabled") && element.getAttribute("aria-disabled") !== "true",
+    inViewport,
+    bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
   };
+}
+
+async function collectTargetFacts(page: Page): Promise<TargetFacts[]> {
+  const all = page.locator(interactiveSelector);
+  return all.evaluateAll(
+    (nodes, limit) =>
+      nodes.slice(0, limit).map((node, index) => {
+        const element = node as HTMLElement;
+        const bounds = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        let inputType: string | undefined;
+        if (element instanceof HTMLInputElement) inputType = element.type;
+        else if (element instanceof HTMLButtonElement && element.form) inputType = element.type;
+
+        const labelledBy = (element.getAttribute("aria-labelledby") ?? "")
+          .split(/\s+/)
+          .filter(Boolean)
+          .map((id) => document.getElementById(id)?.textContent ?? "")
+          .join(" ")
+          .trim();
+        const labels =
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLTextAreaElement ||
+          element instanceof HTMLSelectElement
+            ? [...(element.labels ?? [])]
+                .map((label) => label.textContent ?? "")
+                .join(" ")
+                .trim()
+            : "";
+        const value =
+          element instanceof HTMLInputElement &&
+          ["button", "submit", "reset"].includes(element.type)
+            ? element.value
+            : "";
+        const text = element.textContent?.trim().replace(/\s+/g, " ").slice(0, 300) ?? "";
+        const accessibleName =
+          [
+            element.getAttribute("aria-label"),
+            labelledBy,
+            labels,
+            element.getAttribute("alt"),
+            element.getAttribute("title"),
+            element.getAttribute("placeholder"),
+            value,
+            text,
+          ]
+            .find((candidate) => candidate?.trim())
+            ?.trim()
+            .replace(/\s+/g, " ")
+            .slice(0, 300) ?? "";
+        const visible =
+          style.visibility !== "hidden" &&
+          style.display !== "none" &&
+          element.getClientRects().length > 0 &&
+          bounds.width > 0 &&
+          bounds.height > 0;
+        const inViewport =
+          visible &&
+          bounds.left < window.innerWidth &&
+          bounds.right > 0 &&
+          bounds.top < window.innerHeight &&
+          bounds.bottom > 0;
+
+        return {
+          index,
+          tagName: element.tagName,
+          id: element.id,
+          role: element.getAttribute("role") ?? undefined,
+          accessibleName,
+          ariaLabel: element.getAttribute("aria-label") ?? undefined,
+          title: element.getAttribute("title") ?? undefined,
+          placeholder: element.getAttribute("placeholder") ?? undefined,
+          text,
+          testId: element.getAttribute("data-testid") ?? undefined,
+          href: element instanceof HTMLAnchorElement ? element.href : undefined,
+          inputType,
+          selected: element.getAttribute("aria-selected"),
+          checked:
+            element.getAttribute("aria-checked") ??
+            (element instanceof HTMLInputElement && ["checkbox", "radio"].includes(element.type)
+              ? String(element.checked)
+              : null),
+          pressed: element.getAttribute("aria-pressed"),
+          expanded: element.getAttribute("aria-expanded"),
+          visible,
+          enabled:
+            !element.matches(":disabled") && element.getAttribute("aria-disabled") !== "true",
+          inViewport,
+          bounds: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+        };
+      }),
+    maximumTargets,
+  );
 }
 
 async function readAccessibleIdentity(
   locator: Locator,
-  facts: TargetFacts,
+  facts: Omit<TargetFacts, "index">,
+  useBrowserSnapshot = true,
 ): Promise<AccessibleIdentity> {
-  const aria = await locator
-    .ariaSnapshot({ mode: "default", depth: 1, timeout: 2_000 })
-    .then(parseAriaRoot)
-    .catch((): { role?: string; name?: string } => ({}));
+  const aria = useBrowserSnapshot
+    ? await locator
+        .ariaSnapshot({ mode: "default", depth: 1, timeout: 2_000 })
+        .then(parseAriaRoot)
+        .catch((): { role?: string; name?: string } => ({}))
+    : {};
   const role = aria.role ?? facts.role ?? implicitRole(facts.tagName, facts.inputType);
   const name = (
     aria.name ??
+    facts.accessibleName ??
     facts.ariaLabel ??
     facts.title ??
     facts.placeholder ??
@@ -141,7 +303,7 @@ async function readAccessibleIdentity(
 }
 
 function buildLocatorCandidates(
-  facts: TargetFacts,
+  facts: Omit<TargetFacts, "index">,
   identity: AccessibleIdentity,
 ): ExplorationLocatorMethod[] {
   const candidates: ExplorationLocatorMethod[] = [];
@@ -154,37 +316,21 @@ function buildLocatorCandidates(
   return candidates.slice(0, 5);
 }
 
-async function expectedLocatorCount(
-  page: Page,
-  primary: ExplorationLocatorMethod | undefined,
-): Promise<number | undefined> {
-  if (!primary) return undefined;
-  return locatorForMethod(page, primary)
-    .count()
-    .catch(() => undefined);
-}
-
 function ariaBoolean(value: string | null): boolean | undefined {
   return value === null ? undefined : value === "true";
 }
 
 async function inspectTarget(
-  page: Page,
   locator: Locator,
+  facts: TargetFacts,
   ref: string,
   baseOrigin: string,
 ): Promise<ExplorationRefEntry | undefined> {
-  if (!(await locator.isVisible().catch(() => false))) return undefined;
-  const bounds = await locator.boundingBox().catch(() => null);
-  if (!bounds || bounds.width <= 0 || bounds.height <= 0) return undefined;
-
-  const facts = await locator.evaluate(evaluateElementFacts).catch(() => undefined);
-  if (!facts) return undefined;
-  const identity = await readAccessibleIdentity(locator, facts);
+  if (!facts.visible) return undefined;
+  const identity = await readAccessibleIdentity(locator, facts, facts.inViewport);
   const candidates = buildLocatorCandidates(facts, identity);
   if (candidates.length === 0) return undefined;
 
-  const expectedCount = await expectedLocatorCount(page, candidates[0]);
   const selected = ariaBoolean(facts.selected);
   const checked = ariaBoolean(facts.checked);
   const pressed = ariaBoolean(facts.pressed);
@@ -204,7 +350,6 @@ async function inspectTarget(
     expected: {
       ...(identity.role ? { role: identity.role } : {}),
       ...(identity.name ? { accessibleName: identity.name } : {}),
-      ...(expectedCount === undefined ? {} : { count: expectedCount }),
     },
   };
   const element: ExploredInteractiveElementV2 = {
@@ -215,17 +360,35 @@ async function inspectTarget(
     ...(facts.href ? { href: sanitizeExplorationUrl(facts.href) } : {}),
     ...(facts.inputType ? { inputType: facts.inputType } : {}),
     visible: true,
-    enabled: await locator.isEnabled().catch(() => false),
+    enabled: facts.enabled,
     ...(selected === undefined ? {} : { selected }),
     ...(checked === undefined ? {} : { checked }),
     ...(pressed === undefined ? {} : { pressed }),
     ...(expanded === undefined ? {} : { expanded }),
-    bounds,
+    bounds: facts.bounds,
     risk: risk.risk,
     riskReasons: risk.reasons,
     target,
   };
   return { locator, element };
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  callback: (value: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = Array.from({ length: values.length }, () => undefined as R);
+  let nextIndex = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, async () => {
+      while (nextIndex < values.length) {
+        const index = nextIndex++;
+        results[index] = await callback(values[index]!, index);
+      }
+    }),
+  );
+  return results;
 }
 
 export async function collectInteractiveTargets(
@@ -236,17 +399,23 @@ export async function collectInteractiveTargets(
   refs: Map<string, ExplorationRefEntry>;
 }> {
   const all = page.locator(interactiveSelector);
-  const count = Math.min(await all.count(), maximumTargets);
+  const visibleFacts = (await collectTargetFacts(page)).filter((target) => target.visible);
+  const facts = [
+    ...visibleFacts.filter((target) => target.inViewport),
+    ...visibleFacts.filter((target) => !target.inViewport),
+  ];
+  const baseOrigin = new URL(baseUrl).origin;
+  const inspected = await mapWithConcurrency(
+    facts,
+    accessibleIdentityConcurrency,
+    (target, index) => inspectTarget(all.nth(target.index), target, `e${index + 1}`, baseOrigin),
+  );
   const elements: ExploredInteractiveElementV2[] = [];
   const refs = new Map<string, ExplorationRefEntry>();
-  const baseOrigin = new URL(baseUrl).origin;
-
-  for (let index = 0; index < count; index += 1) {
-    const ref = `e${elements.length + 1}`;
-    const entry = await inspectTarget(page, all.nth(index), ref, baseOrigin);
+  for (const entry of inspected) {
     if (!entry) continue;
     elements.push(entry.element);
-    refs.set(ref, entry);
+    refs.set(entry.element.ref, entry);
   }
   return { elements, refs };
 }
@@ -288,7 +457,7 @@ export async function refreshInteractiveTarget(
     locator: entry.locator,
     element: {
       ...entry.element,
-      enabled: await entry.locator.isEnabled().catch(() => false),
+      enabled: facts.enabled,
       risk: risk.risk,
       riskReasons: risk.reasons,
     },

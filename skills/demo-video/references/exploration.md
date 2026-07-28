@@ -33,17 +33,21 @@ npx --yes @noice-tech/demo-recorder@0.0.1 explore act product-demo \
   --json
 ```
 
+A successful `act` response includes both the transition and the already-captured resulting observation with fresh refs. Continue from that observation instead of issuing a redundant `observe` command.
+
 Supported session actions are `click`, `hover`, `goto`, `back`, `scroll`, and bounded `wait`. The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked. Open shadow-root controls are discoverable through Playwright locators. Child-frame controls do not receive main-frame refs in this version; treat them as unsupported and report the limitation rather than guessing a selector.
 
 Use `--policy reversible` only when the user explicitly requested it and the target is a disposable local or staging environment. It still does not permit destructive or external-side-effect controls. These policies are conservative guardrails, not proof that an application cannot produce a server-side side effect.
 
-Search the current observation without loading the whole snapshot, or request another observation when needed:
+Search the current observation without loading the whole snapshot, or retrieve the existing observation without recapturing it:
 
 ```bash
 npx --yes @noice-tech/demo-recorder@0.0.1 explore find product-demo --text "Templates" --json
 npx --yes @noice-tech/demo-recorder@0.0.1 explore find product-demo --regex "template|gallery" --json
-npx --yes @noice-tech/demo-recorder@0.0.1 explore observe product-demo --json
+npx --yes @noice-tech/demo-recorder@0.0.1 explore current product-demo --json
 ```
+
+Reserve `explore observe` for pages that changed without an explorer action, such as externally updated or time-driven UI.
 
 After selecting a connected sequence of successful transitions, verify it in a fresh browser context before using it for planning:
 

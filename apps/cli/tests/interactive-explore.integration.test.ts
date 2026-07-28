@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  actAndObserveInteractiveSession,
   actInInteractiveSession,
+  currentInteractiveSession,
   findInInteractiveSession,
   finishInteractiveSession,
   InteractiveExplorationSession,
@@ -392,6 +394,8 @@ describe.sequential("interactive exploration", () => {
     const observed = await observeInteractiveSession(sessionRoot, "persistent");
     expect(observed.id).toBe("obs-0002");
     expect(observed.stateId).toBe(started.observation.stateId);
+    const current = await currentInteractiveSession(sessionRoot, "persistent");
+    expect(current.id).toBe(observed.id);
     const found = await findInInteractiveSession(sessionRoot, "persistent", {
       text: "create project",
     });
@@ -400,16 +404,17 @@ describe.sequential("interactive exploration", () => {
     const createProject = observed.interactiveElements.find(
       (element) => element.name === "Create project",
     );
-    const transition = await actInInteractiveSession(sessionRoot, "persistent", {
+    const actionResult = await actAndObserveInteractiveSession(sessionRoot, "persistent", {
       type: "click",
       observationId: observed.id,
       ref: createProject?.ref ?? "missing",
     });
-    expect(transition.status).toBe("succeeded");
-    expect(transition.toObservationId).toBe("obs-0003");
+    expect(actionResult.transition.status).toBe("succeeded");
+    expect(actionResult.transition.toObservationId).toBe("obs-0003");
+    expect(actionResult.observation.id).toBe("obs-0003");
     const verification = await verifyInteractiveSession(sessionRoot, "persistent", {
       version: 1,
-      transitionIds: [transition.id],
+      transitionIds: [actionResult.transition.id],
     });
     expect(verification.status).toBe("passed");
 

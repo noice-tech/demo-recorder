@@ -42,6 +42,16 @@ export async function createGuardedBrowserContext(
   }
 }
 
+export async function performExplorationScroll(
+  page: Page,
+  deltaY: number,
+  deltaX = 0,
+): Promise<void> {
+  await page.mouse.wheel(deltaX, deltaY);
+  // Exploration needs the resulting state, not capture-quality 60 FPS motion.
+  await page.waitForTimeout(50);
+}
+
 export function attachBlockedInteractionHandlers(
   page: Page,
   handlers: {

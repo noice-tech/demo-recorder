@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDemoPlan, type DemoPlan } from "../demo-plan/index.js";
 import {
+  explorationActionResultSchema,
   explorationDraftPlanRequestSchema,
   explorationFindQuerySchema,
   explorationFindResultSchema,
@@ -13,10 +14,10 @@ import {
   explorationObservationSchema,
   explorationSessionDescriptorSchema,
   explorationSessionReportSchema,
-  explorationTransitionSchema,
   explorationVerificationReportSchema,
   explorationVerificationRequestSchema,
   type ExplorationAction,
+  type ExplorationActionResult,
   type ExplorationDraftPlanRequest,
   type ExplorationFindQuery,
   type ExplorationFindResult,
@@ -224,6 +225,17 @@ export async function observeInteractiveSession(
   return explorationObservationSchema.parse(result.observation);
 }
 
+export async function currentInteractiveSession(
+  sessionRoot: string,
+  id: string,
+): Promise<ExplorationObservation> {
+  const descriptor = await readDescriptor(sessionRoot, id);
+  const result = await request<{ observation: unknown }>(descriptor, "/current", {
+    method: "POST",
+  });
+  return explorationObservationSchema.parse(result.observation);
+}
+
 export async function findInInteractiveSession(
   sessionRoot: string,
   id: string,
@@ -237,17 +249,25 @@ export async function findInInteractiveSession(
   return explorationFindResultSchema.parse(result.result);
 }
 
+export async function actAndObserveInteractiveSession(
+  sessionRoot: string,
+  id: string,
+  action: ExplorationAction,
+): Promise<ExplorationActionResult> {
+  const descriptor = await readDescriptor(sessionRoot, id);
+  const result = await request<{ result: unknown }>(descriptor, "/act", {
+    method: "POST",
+    body: action,
+  });
+  return explorationActionResultSchema.parse(result.result);
+}
+
 export async function actInInteractiveSession(
   sessionRoot: string,
   id: string,
   action: ExplorationAction,
 ): Promise<ExplorationTransition> {
-  const descriptor = await readDescriptor(sessionRoot, id);
-  const result = await request<{ transition: unknown }>(descriptor, "/act", {
-    method: "POST",
-    body: action,
-  });
-  return explorationTransitionSchema.parse(result.transition);
+  return (await actAndObserveInteractiveSession(sessionRoot, id, action)).transition;
 }
 
 export async function exportInteractiveSessionPlan(

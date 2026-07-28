@@ -196,6 +196,12 @@ export const explorationTransitionSchema = z.object({
 });
 export type ExplorationTransition = z.infer<typeof explorationTransitionSchema>;
 
+export const explorationActionResultSchema = z.object({
+  transition: explorationTransitionSchema,
+  observation: explorationObservationSchema,
+});
+export type ExplorationActionResult = z.infer<typeof explorationActionResultSchema>;
+
 export const explorationGraphSchema = z.object({
   schemaVersion: z.literal(2),
   states: z.array(

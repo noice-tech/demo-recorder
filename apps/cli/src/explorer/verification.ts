@@ -1,10 +1,10 @@
 import type { Browser, BrowserContext, Locator, Page } from "playwright";
 import { resolveUniqueLocator } from "../browser/locator.js";
-import { smoothScroll } from "../browser/smooth-scroll.js";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
 import {
   attachBlockedInteractionHandlers,
   createGuardedBrowserContext,
+  performExplorationScroll,
   waitForSemanticQuiet,
 } from "./browser-runtime.js";
 import { explorationSemanticFingerprint } from "./graph.js";
@@ -59,7 +59,7 @@ async function executeReplayAction(
       await page.goBack({ waitUntil: "domcontentloaded", timeout: 30_000 });
       return undefined;
     case "scroll":
-      await smoothScroll(page, action.deltaY, action.deltaX);
+      await performExplorationScroll(page, action.deltaY, action.deltaX);
       return undefined;
     case "wait":
       await page.waitForTimeout(action.durationMs);

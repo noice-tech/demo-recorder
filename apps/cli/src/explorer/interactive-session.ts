@@ -1,11 +1,11 @@
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
-import { smoothScroll } from "../browser/smooth-scroll.js";
 import type { DemoPlan } from "../demo-plan/index.js";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
 import {
   attachBlockedInteractionHandlers,
   createGuardedBrowserContext,
   explorationViewport,
+  performExplorationScroll,
   waitForSemanticQuiet,
 } from "./browser-runtime.js";
 import {
@@ -121,14 +121,11 @@ export class InteractiveExplorationSession {
           `Blocked cross-origin main-frame navigation to ${sanitizeExplorationUrl(url)}`,
         ),
     });
-    await this.context.tracing.start({ screenshots: true, snapshots: true, sources: false });
     this.page = await this.context.newPage();
     this.attachPageEvents(this.page);
     await this.page.goto(this.config.baseUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
     const settled = await waitForSemanticQuiet(this.page, { initial: true });
-    const observation = await this.observe("initial", settled);
-    await this.writeReport("active");
-    return observation;
+    return this.observe("initial", settled);
   }
 
   private attachPageEvents(page: Page): void {
@@ -160,6 +157,18 @@ export class InteractiveExplorationSession {
   }
 
   async observe(reason = "agent-request", settled?: Settled): Promise<ExplorationObservation> {
+    return this.captureObservation(reason, settled, true);
+  }
+
+  current(): ExplorationObservation {
+    return this.requireCurrentObservation();
+  }
+
+  private async captureObservation(
+    reason: string,
+    settled: Settled | undefined,
+    materialize: boolean,
+  ): Promise<ExplorationObservation> {
     const sequence = ++this.observationSequence;
     const id = `obs-${String(sequence).padStart(4, "0")}`;
     const snapshotArtifact = `snapshots/${id}.yml`;
@@ -217,8 +226,10 @@ export class InteractiveExplorationSession {
     this.refs = refs;
     this.currentObservation = observation;
     this.observations.push(observation);
-    await this.writeGraph();
-    await this.writeReport("active");
+    if (materialize) {
+      await this.writeGraph();
+      await this.writeReport("active");
+    }
     return observation;
   }
 
@@ -338,7 +349,7 @@ export class InteractiveExplorationSession {
       const settled = await waitForSemanticQuiet(this.page, {
         explicit: action.type === "wait",
       });
-      const after = await this.observe(`after-${action.type}`, settled);
+      const after = await this.captureObservation(`after-${action.type}`, settled, false);
       const transition = explorationTransitionSchema.parse({
         ...transitionBase,
         status: "succeeded",
@@ -418,7 +429,7 @@ export class InteractiveExplorationSession {
         await this.page.goBack({ waitUntil: "domcontentloaded", timeout: 30_000 });
         return;
       case "scroll":
-        await smoothScroll(this.page, action.deltaY, action.deltaX);
+        await performExplorationScroll(this.page, action.deltaY, action.deltaX);
         return;
       case "wait":
         await this.page.waitForTimeout(action.durationMs);
@@ -471,12 +482,6 @@ export class InteractiveExplorationSession {
     if (this.closed) return;
     this.closed = true;
     await this.writeReport(status).catch(() => undefined);
-    if (this.context)
-      await this.artifacts
-        .writeExternalFile("diagnostics/trace.zip", explorationArtifactLimits.traceBytes, (path) =>
-          this.context.tracing.stop({ path }),
-        )
-        .catch(() => undefined);
     await this.context?.close().catch(() => undefined);
     await this.browser?.close().catch(() => undefined);
   }
