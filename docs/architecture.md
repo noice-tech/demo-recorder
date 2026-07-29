@@ -32,7 +32,7 @@ Exploration is same-origin and uses a conservative `read-only` policy by default
 
 ## 3. Planner protocol
 
-`apps/cli/src/demo-plan` owns the versioned `DemoBrief`, locator, action, presentation, and `DemoPlan` schemas. It validates origin and safety constraints, estimates duration, and renders storyboards. A passing verified path can be exported as a draft plan using the locator candidate proven during replay and ordinary URL/visibility assertions as postconditions. It contains no semantic model: the coding agent remains responsible for editorial planning.
+`apps/cli/src/demo-plan` owns the versioned `DemoBrief`, locator, action, presentation, and `DemoPlan` schemas. It validates origin and safety constraints, estimates duration, and renders storyboards. A passing verified interactive path is the default planner handoff: export preserves the locator candidate proven during replay and adds ordinary URL/visibility assertions as postconditions. The exported interactions form the verified core instead of being manually reconstructed. It contains no semantic model: the coding agent remains responsible for editorial planning and narrowly scoped unsupported interactions.
 
 `plan rehearse` executes the deterministic plan without video capture and produces bounded failure evidence for up to three agent-directed repair attempts. Final recording contains no explorer or repair fallback. Declarative JSON is the default execution format because it is inspectable, schema validated, portable, and safer than arbitrary generated code.
 

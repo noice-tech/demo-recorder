@@ -31,7 +31,7 @@ For ordinary sites, one-shot exploration navigates discovered HTTP links directl
 
 The CLI's `demo-plan` module is a protocol rather than an AI. It validates agent-authored `DemoPlan` documents, rejects default cross-origin and destructive steps, enforces read-only constraints, estimates duration, and produces a storyboard.
 
-A passing verified exploration path can be exported into a draft plan. The exporter uses the locator candidate actually proven in the clean replay, retains bounded fallbacks, and compiles observed URL and heading changes into ordinary assertions. The coding agent remains the director and can shorten, reorder, or annotate the draft.
+A passing verified interactive path is exported as the default planner handoff. The exporter uses the locator candidate actually proven in the clean replay, retains bounded fallbacks, and compiles observed URL and heading changes into ordinary assertions. Representable navigation, interaction, locator, scroll, and postcondition steps remain the verified core rather than being manually reconstructed. The coding agent remains the director for the brief, purposes, timing, beats, presentation, and any narrowly scoped interaction the exporter cannot represent. Manual plan authoring remains available when no verified interactive path exists.
 
 Plans use accessible locator specifications with controlled fallbacks. Locator resolution requires exactly one visible match and never silently selects `.first()`. Generated TypeScript is unnecessary; the recorder executes validated JSON directly.
 

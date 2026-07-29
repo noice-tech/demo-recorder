@@ -70,7 +70,7 @@ npx --yes @noice-tech/demo-recorder@0.0.1 explore verify product-demo \
 
 Verification never reuses temporary element refs. It resolves the recorded durable locator candidates, requires a unique visible match, checks each expected semantic state and URL, and writes a report, screenshots, and Playwright trace under `verification/`. If verification fails, inspect the report and make at most one focused clean retry. Do not fan out into several exploratory sessions or locator strategies.
 
-A passing verification can be exported to a validating draft plan while the session is active:
+A passing verification must be exported as the default planner handoff while the session is active whenever the requested story is representable by the verified path:
 
 ```json
 {
@@ -94,7 +94,7 @@ npx --yes @noice-tech/demo-recorder@0.0.1 explore export-plan product-demo \
   --json
 ```
 
-The exporter uses the locator candidate actually proven during replay, retains bounded fallbacks, and compiles observed URL/heading changes into ordinary plan assertions. Review and edit the draft as a director; it is not semantic story generation.
+The exporter uses the locator candidate actually proven during replay, retains bounded fallbacks, and compiles observed URL/heading changes into ordinary plan assertions. Treat its navigation, click, move, scroll, locator, URL, and generated assertion steps as the verified interaction core. Do not manually reconstruct those steps. Editorial edits may change the brief, purposes, timing holds, beats, and presentation. If the story needs an interaction export cannot represent, change only that unsupported portion and require rehearsal to prove it. Write a plan from scratch only when there is no verified interactive path. The exporter is a deterministic handoff, not semantic story generation.
 
 Always close the session:
 

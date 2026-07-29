@@ -1,6 +1,6 @@
 # Planning
 
-Write a version 1 `demo-plan.json`. The agent supplies the reasoning; Demo Recorder supplies validation and deterministic execution.
+Use a version 1 `demo-plan.json`. When a persistent exploration path passed verification, start from `explore export-plan` and preserve its representable interaction core instead of writing the plan from scratch. Manual authoring is the fallback for stories without a verified interactive path or for the specific portion export cannot represent. The agent supplies editorial reasoning; Demo Recorder supplies deterministic handoff, validation, and execution.
 
 ```json
 {
@@ -38,7 +38,7 @@ Write a version 1 `demo-plan.json`. The agent supplies the reasoning; Demo Recor
 
 Locator methods are `role`, `text`, `label`, `placeholder`, `test-id`, and `css`. Prefer role and accessible name. A locator may contain up to three `fallbacks` observed during exploration.
 
-Actions are `navigate`, `move`, `click`, `fill`, `press`, `select`, `scroll`, `wait-for`, `assert-visible`, `wait-for-url`, and `hold`. Read-only plans should not use fill, press, or select. Keep holds purposeful and usually between 800–2000ms. A simple directed demo should usually need roughly 8–18 capture steps. Collapse adjacent exploratory scrolls in the same direction into one directed scroll where that preserves the intended visible beat; the final plan is a story, not an exploration transcript.
+Actions are `navigate`, `move`, `click`, `fill`, `press`, `select`, `scroll`, `wait-for`, `assert-visible`, `wait-for-url`, and `hold`. Read-only plans should not use fill, press, or select. Keep holds purposeful and usually between 800–2000ms. A simple directed demo should usually need roughly 8–18 capture steps. Collapse adjacent exploratory scrolls in the same direction before verifying the selected path; after export, preserve the verified navigation, interaction, locator, scroll, URL, and generated assertion steps. The final plan is a directed story, not an exploration transcript.
 
 If the target must be managed, add `repositoryPath`, `startCommand`, and optionally `readinessUrl`. If authenticated, add `authProfile`.
 

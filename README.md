@@ -30,7 +30,7 @@ The [`demo-video` skill](skills/demo-video/SKILL.md) guides the agent through th
    The agent chooses a short narrative, deciding what viewers should see, which interactions matter, how long each moment should breathe, and where the demo should end.
 
 4. **Validate and rehearse the walkthrough**
-   Before recording, it verifies selected exploration transitions in a fresh context, can export them into a draft plan, and rehearses the final plan without video capture. Ambiguous locators and failed postconditions produce targeted diagnostics instead of being hidden.
+   Before recording, it verifies selected exploration transitions in a fresh context, exports a passing interactive path as the default draft-plan handoff, and rehearses the final plan without video capture. Ambiguous locators and failed postconditions produce targeted diagnostics instead of being hidden.
 
 5. **Record the interactions**  
    Demo Recorder executes the approved walkthrough consistently in the browser while capturing navigation, cursor movement, clicks, and interface states.
