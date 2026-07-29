@@ -6,6 +6,7 @@ import {
   createGuardedBrowserContext,
   explorationViewport,
   performExplorationScroll,
+  performExplorationScrollUntil,
   waitForSemanticQuiet,
 } from "./browser-runtime.js";
 import {
@@ -75,6 +76,64 @@ function emptyInteractionEffects(): InteractionEffects {
   return { popupBlocked: false, downloadBlocked: false, dialogDismissed: false };
 }
 
+function cleanSemanticSearchLine(line: string): string | undefined {
+  const trimmed = line.trim();
+  if (!trimmed || /^-?\s*\/url:/.test(trimmed)) return undefined;
+  const cleaned = trimmed
+    .replace(/^-\s+/, "")
+    .replaceAll(/\s*\[ref=e\d+\]/g, "")
+    .replaceAll(/\s*\[(?:cursor|box)=[^\]]+\]/g, "")
+    .replaceAll(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+  return cleaned || undefined;
+}
+
+function semanticSearchContext(
+  lines: Array<string | undefined>,
+  index: number,
+  matchedText: string,
+): string[] {
+  const context: string[] = [];
+  const isUseful = (value: string | undefined): value is string =>
+    Boolean(
+      value &&
+      value !== matchedText &&
+      !/^(?:generic|img|list|listitem|main|banner|navigation|region|group|paragraph):?$/.test(
+        value,
+      ),
+    );
+  for (const direction of [-1, 1]) {
+    for (let offset = 1; offset <= 4 && context.length < 4; offset += 1) {
+      const candidate = lines[index + direction * offset];
+      if (isUseful(candidate)) {
+        context.push(candidate);
+        break;
+      }
+    }
+  }
+  return context;
+}
+
+function semanticTextMatches(
+  snapshot: string,
+  matchesText: (value: string) => boolean,
+  existing: Set<string>,
+): ExplorationFindResult["matches"] {
+  const lines = snapshot.split("\n").map(cleanSemanticSearchLine);
+  const matches: ExplorationFindResult["matches"] = [];
+  for (const [index, text] of lines.entries()) {
+    if (!text || !matchesText(text)) continue;
+    const key = text.toLocaleLowerCase();
+    if (existing.has(key)) continue;
+    existing.add(key);
+    const context = semanticSearchContext(lines, index, text);
+    matches.push({ kind: "text", text, ...(context.length > 0 ? { context } : {}) });
+    if (matches.length >= 50) break;
+  }
+  return matches;
+}
+
 /**
  * Owns the long-lived browser used by an interactive exploration.
  *
@@ -93,6 +152,7 @@ export class InteractiveExplorationSession {
   private stateSequence = 0;
   private verificationSequence = 0;
   private currentObservation: ExplorationObservation | undefined;
+  private currentSnapshot = "";
   private refs = new Map<string, ExplorationRefEntry>();
   private states = new Map<string, string>();
   private observations: ExplorationObservation[] = [];
@@ -224,6 +284,7 @@ export class InteractiveExplorationSession {
       this.artifacts.appendJsonLine("observations.ndjson", observation),
     ]);
     this.refs = refs;
+    this.currentSnapshot = snapshot;
     this.currentObservation = observation;
     this.observations.push(observation);
     if (materialize) {
@@ -238,6 +299,7 @@ export class InteractiveExplorationSession {
     const observation = this.requireCurrentObservation();
     const matchesText = createFindMatcher(query);
     const matches: ExplorationFindResult["matches"] = [];
+    const existing = new Set<string>();
     for (const element of observation.interactiveElements) {
       if (!matchesText(`${element.role ?? ""} ${element.name}`)) continue;
       matches.push({
@@ -247,17 +309,30 @@ export class InteractiveExplorationSession {
         text: element.name,
         risk: element.risk,
       });
+      existing.add(element.name.toLocaleLowerCase());
     }
     for (const heading of observation.headings) {
-      if (matchesText(heading)) matches.push({ kind: "heading", role: "heading", text: heading });
+      if (matchesText(heading)) {
+        matches.push({ kind: "heading", role: "heading", text: heading });
+        existing.add(heading.toLocaleLowerCase());
+      }
     }
     for (const layer of observation.layers) {
-      if (matchesText(`${layer.role} ${layer.name}`))
+      if (matchesText(`${layer.role} ${layer.name}`)) {
         matches.push({ kind: "layer", role: layer.role, text: layer.name });
+        existing.add(layer.name.toLocaleLowerCase());
+      }
     }
+    if (matches.length < 50)
+      matches.push(
+        ...semanticTextMatches(this.currentSnapshot, matchesText, existing).slice(
+          0,
+          50 - matches.length,
+        ),
+      );
     return explorationFindResultSchema.parse({
       observationId: observation.id,
-      matches: matches.slice(0, 50),
+      matches,
     });
   }
 
@@ -430,6 +505,22 @@ export class InteractiveExplorationSession {
         return;
       case "scroll":
         await performExplorationScroll(this.page, action.deltaY, action.deltaX);
+        return;
+      case "scroll-until-text":
+        await performExplorationScrollUntil(this.page, {
+          text: action.text,
+          direction: action.direction,
+          stepPx: action.stepPx,
+          maxSteps: action.maxSteps,
+        });
+        return;
+      case "scroll-until-regex":
+        await performExplorationScrollUntil(this.page, {
+          regex: action.regex,
+          direction: action.direction,
+          stepPx: action.stepPx,
+          maxSteps: action.maxSteps,
+        });
         return;
       case "wait":
         await this.page.waitForTimeout(action.durationMs);

@@ -12,7 +12,7 @@ npx --yes @noice-tech/demo-recorder@0.0.1 explore start \
   --json
 ```
 
-The response contains the current observation, temporary control refs, risk classifications, and paths to an ARIA snapshot and viewport screenshot. Refs are valid only for that observation.
+The response contains a compact observation summary with viewport control refs, risk classifications, total/returned control counts, and paths to the complete observation, ARIA snapshot, and viewport screenshot. Refs are valid only for that observation. Use `find` or read the full observation artifact when an offscreen control is omitted from the summary.
 
 Propose one bounded action at a time in a JSON file:
 
@@ -35,17 +35,28 @@ npx --yes @noice-tech/demo-recorder@0.0.1 explore act product-demo \
 
 A successful `act` response includes both the transition and the already-captured resulting observation with fresh refs. Continue from that observation instead of issuing a redundant `observe` command.
 
-Supported session actions are `click`, `hover`, `goto`, `back`, `scroll`, and bounded `wait`. The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked. Open shadow-root controls are discoverable through Playwright locators. Child-frame controls do not receive main-frame refs in this version; treat them as unsupported and report the limitation rather than guessing a selector.
+Supported session actions are `click`, `hover`, `goto`, `back`, `scroll`, `scroll-until-text`, `scroll-until-regex`, and bounded `wait`. Prefer a bounded semantic scroll over repeated manual scroll/read turns:
+
+````json
+{
+  "type": "scroll-until-text",
+  "text": "December 2025",
+  "direction": "down",
+  "stepPx": 700,
+  "maxSteps": 10,
+  "reason": "Bring the requested release section into view"
+}
+``` The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked. Open shadow-root controls are discoverable through Playwright locators. Child-frame controls do not receive main-frame refs in this version; treat them as unsupported and report the limitation rather than guessing a selector.
 
 Use `--policy reversible` only when the user explicitly requested it and the target is a disposable local or staging environment. It still does not permit destructive or external-side-effect controls. These policies are conservative guardrails, not proof that an application cannot produce a server-side side effect.
 
-Search the current observation without loading the whole snapshot, or retrieve the existing observation without recapturing it:
+Search controls, headings, layers, and accessible page text without loading the whole snapshot, or retrieve the existing compact observation without recapturing it:
 
 ```bash
 npx --yes @noice-tech/demo-recorder@0.0.1 explore find product-demo --text "Templates" --json
 npx --yes @noice-tech/demo-recorder@0.0.1 explore find product-demo --regex "template|gallery" --json
 npx --yes @noice-tech/demo-recorder@0.0.1 explore current product-demo --json
-```
+````
 
 Reserve `explore observe` for pages that changed without an explorer action, such as externally updated or time-driven UI.
 

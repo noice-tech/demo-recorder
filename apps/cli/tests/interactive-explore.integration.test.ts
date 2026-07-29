@@ -334,6 +334,52 @@ describe.sequential("interactive exploration", () => {
     }
   }, 30_000);
 
+  it("finds a semantic target with bounded scrolling and exports the observed delta", async () => {
+    const server = createServer((_request, response) => {
+      response.setHeader("content-type", "text/html");
+      response.end(`<!doctype html><html><body style="margin:0">
+        <h1>Updates</h1>
+        <div style="height:1800px"></div>
+        <h2>December 2025 release notes</h2>
+        <p>New visualizer presets are available.</p>
+      </body></html>`);
+    });
+    httpServers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("No test address");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const outputDirectory = await temporaryDirectory("demo-recorder-semantic-scroll-");
+    const session = new InteractiveExplorationSession(
+      launchConfig("semantic-scroll", baseUrl, outputDirectory, "read-only"),
+    );
+    try {
+      const initial = await session.start();
+      const transition = await session.act({
+        type: "scroll-until-text",
+        text: "December 2025 release notes",
+        stepPx: 500,
+        maxSteps: 5,
+      });
+      expect(transition.status).toBe("succeeded");
+      expect(session.current().scroll.y).toBeGreaterThan(initial.scroll.y);
+      const verification = await session.verify({
+        version: 1,
+        transitionIds: [transition.id],
+      });
+      expect(verification.status).toBe("passed");
+      const plan = session.exportPlan({
+        version: 1,
+        verificationId: verification.id,
+        name: "semantic-scroll",
+        goal: "Show the December release notes",
+      });
+      expect(plan.capture.steps.some((step) => step.type === "scroll")).toBe(true);
+    } finally {
+      await session.close("finished");
+    }
+  }, 30_000);
+
   it("replays a unique fallback when the primary locator is ambiguous", async () => {
     const server = createServer((_request, response) => {
       response.setHeader("content-type", "text/html");
@@ -401,6 +447,12 @@ describe.sequential("interactive exploration", () => {
     });
     expect(found.observationId).toBe(observed.id);
     expect(found.matches[0]?.ref).toBeDefined();
+    const semanticText = await findInInteractiveSession(sessionRoot, "persistent", {
+      text: "Three projects are ready for review",
+    });
+    expect(semanticText.matches).toContainEqual(
+      expect.objectContaining({ kind: "text", text: expect.stringContaining("Three projects") }),
+    );
     const createProject = observed.interactiveElements.find(
       (element) => element.name === "Create project",
     );

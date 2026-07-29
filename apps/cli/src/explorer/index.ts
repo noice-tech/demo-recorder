@@ -3,6 +3,7 @@ export * from "./explore.js";
 export * from "./interactive-schema.js";
 export * from "./interactive-session.js";
 export * from "./managed-app.js";
+export * from "./observation-summary.js";
 export * from "./session-client.js";
 export * from "./session-storage.js";
 export * from "./types.js";

@@ -52,6 +52,80 @@ export async function performExplorationScroll(
   await page.waitForTimeout(50);
 }
 
+type ExplorationTextQuery = { text: string } | { regex: string };
+
+export async function isExplorationTextVisible(
+  page: Page,
+  query: ExplorationTextQuery,
+): Promise<boolean> {
+  return page.evaluate((input) => {
+    const regex = "regex" in input ? new RegExp(input.regex) : undefined;
+    const expected = "text" in input ? input.text.toLocaleLowerCase() : undefined;
+    const matches = (value: string): boolean => {
+      const normalized = value.trim().replace(/\s+/g, " ");
+      return regex ? regex.test(normalized) : normalized.toLocaleLowerCase().includes(expected!);
+    };
+    // This helper must remain inside the serialized browser callback.
+    // oxlint-disable-next-line unicorn/consistent-function-scoping
+    const intersectsViewport = (bounds: DOMRect): boolean =>
+      bounds.width > 0 &&
+      bounds.height > 0 &&
+      bounds.left < window.innerWidth &&
+      bounds.right > 0 &&
+      bounds.top < window.innerHeight &&
+      bounds.bottom > 0;
+
+    for (const element of document.querySelectorAll<HTMLElement>("[aria-label]")) {
+      const style = getComputedStyle(element);
+      if (
+        style.visibility !== "hidden" &&
+        style.display !== "none" &&
+        matches(element.getAttribute("aria-label") ?? "") &&
+        intersectsViewport(element.getBoundingClientRect())
+      )
+        return true;
+    }
+
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode;
+      if (!matches(node.textContent ?? "")) continue;
+      const parent = node.parentElement;
+      if (!parent) continue;
+      const style = getComputedStyle(parent);
+      if (style.visibility === "hidden" || style.display === "none") continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      if (intersectsViewport(range.getBoundingClientRect())) return true;
+    }
+    return false;
+  }, query);
+}
+
+export async function performExplorationScrollUntil(
+  page: Page,
+  options: ExplorationTextQuery & {
+    direction: "up" | "down";
+    stepPx: number;
+    maxSteps: number;
+  },
+): Promise<void> {
+  let previousScrollY = await page.evaluate(() => window.scrollY);
+  for (let step = 0; step <= options.maxSteps; step += 1) {
+    if (await isExplorationTextVisible(page, options)) return;
+    if (step === options.maxSteps) break;
+    const deltaY = options.direction === "down" ? options.stepPx : -options.stepPx;
+    await performExplorationScroll(page, deltaY);
+    const scrollY = await page.evaluate(() => window.scrollY);
+    if (scrollY === previousScrollY) break;
+    previousScrollY = scrollY;
+  }
+  const description = "text" in options ? JSON.stringify(options.text) : `/${options.regex}/`;
+  throw new Error(
+    `Could not bring ${description} into the viewport within ${options.maxSteps} scroll steps`,
+  );
+}
+
 export function attachBlockedInteractionHandlers(
   page: Page,
   handlers: {

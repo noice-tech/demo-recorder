@@ -18,6 +18,7 @@ import {
   listInteractiveSessions,
   observeInteractiveSession,
   startInteractiveSession,
+  summarizeExplorationObservation,
   verifyInteractiveSession,
   type ExplorationObservation,
   type ExplorationSessionReport,
@@ -151,11 +152,20 @@ async function startCommand(arguments_: ParsedArguments): Promise<string> {
       ...(goal ? { goal } : {}),
     },
   });
-  printJsonOrHuman(arguments_, { ok: true, sessionId: id, outputDirectory, observation }, [
-    `[demo-recorder] Exploration session started: ${id}`,
-    `[demo-recorder] Output: ${outputDirectory}`,
-    ...observationLines(observation),
-  ]);
+  printJsonOrHuman(
+    arguments_,
+    {
+      ok: true,
+      sessionId: id,
+      outputDirectory,
+      observation: summarizeExplorationObservation(observation),
+    },
+    [
+      `[demo-recorder] Exploration session started: ${id}`,
+      `[demo-recorder] Output: ${outputDirectory}`,
+      ...observationLines(observation),
+    ],
+  );
   return outputDirectory;
 }
 
@@ -187,7 +197,7 @@ async function observeCommand(context: SessionCommandContext): Promise<string> {
       ok: true,
       sessionId: context.id,
       outputDirectory: context.outputDirectory,
-      observation,
+      observation: summarizeExplorationObservation(observation),
     },
     [`[demo-recorder] Output: ${context.outputDirectory}`, ...observationLines(observation)],
   );
@@ -202,7 +212,7 @@ async function currentCommand(context: SessionCommandContext): Promise<string> {
       ok: true,
       sessionId: context.id,
       outputDirectory: context.outputDirectory,
-      observation,
+      observation: summarizeExplorationObservation(observation),
     },
     [`[demo-recorder] Output: ${context.outputDirectory}`, ...observationLines(observation)],
   );
@@ -286,7 +296,7 @@ async function actCommand(context: SessionCommandContext): Promise<string> {
       sessionId: context.id,
       outputDirectory: context.outputDirectory,
       transition,
-      observation,
+      observation: summarizeExplorationObservation(observation),
     },
     [...transitionLines(transition), ...observationLines(observation)],
   );

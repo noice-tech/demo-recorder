@@ -91,7 +91,19 @@ describe("interactive exploration schemas", () => {
       deltaX: 0,
       deltaY: 500,
     });
+    expect(
+      explorationActionSchema.parse({ type: "scroll-until-text", text: "December 2025" }),
+    ).toEqual({
+      type: "scroll-until-text",
+      text: "December 2025",
+      direction: "down",
+      stepPx: 700,
+      maxSteps: 10,
+    });
     expect(() => explorationActionSchema.parse({ type: "wait", durationMs: 10_001 })).toThrow();
     expect(() => explorationActionSchema.parse({ type: "scroll", deltaY: Number.NaN })).toThrow();
+    expect(() => explorationActionSchema.parse({ type: "scroll-until-regex", regex: "[" })).toThrow(
+      /regular expression/,
+    );
   });
 });
