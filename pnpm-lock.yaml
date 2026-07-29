@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  playwright-core@1.61.1:
+    hash: e662311a6c069f1fbda8eee3b61191c08d8230d773452b2dde1fd0a59ac898c0
+    path: patches/playwright-core@1.61.1.patch
+
 importers:
 
   .:
@@ -2075,11 +2080,11 @@ snapshots:
 
   picomatch@4.0.5: {}
 
-  playwright-core@1.61.1: {}
+  playwright-core@1.61.1(patch_hash=e662311a6c069f1fbda8eee3b61191c08d8230d773452b2dde1fd0a59ac898c0): {}
 
   playwright@1.61.1:
     dependencies:
-      playwright-core: 1.61.1
+      playwright-core: 1.61.1(patch_hash=e662311a6c069f1fbda8eee3b61191c08d8230d773452b2dde1fd0a59ac898c0)
     optionalDependencies:
       fsevents: 2.3.2
 

@@ -1,0 +1,22 @@
+diff --git a/lib/coreBundle.js b/lib/coreBundle.js
+index 7d8468fd89fd4d292eade471c36e757c23cbec44..470f5e3ec12d378f5228492dbd6ceb03c41b753a 100644
+--- a/lib/coreBundle.js
++++ b/lib/coreBundle.js
+@@ -36458,7 +36458,7 @@ var init_videoRecorder = __esm({
+     init_artifact();
+     init_registry();
+     jpegjs2 = require("./utilsBundle").jpegjs;
+-    fps = 25;
++    fps = 60;
+     VideoRecorder = class {
+       constructor(screencast) {
+         this._screencast = screencast;
+@@ -36514,7 +36514,7 @@ var init_videoRecorder = __esm({
+         await mkdirIfNeeded(this._outputFile);
+         const w = this._size.width;
+         const h = this._size.height;
+-        const args = `-loglevel error -f image2pipe -avioflags direct -fpsprobesize 0 -probesize 32 -analyzeduration 0 -c:v mjpeg -i pipe:0 -y -an -r ${fps} -c:v vp8 -qmin 0 -qmax 50 -crf 8 -deadline realtime -speed 8 -b:v 1M -threads 1 -vf pad=${w}:${h}:0:0:gray,crop=${w}:${h}:0:0`.split(" ");
++        const args = `-loglevel error -f image2pipe -avioflags direct -fpsprobesize 0 -probesize 32 -analyzeduration 0 -c:v mjpeg -framerate ${fps} -i pipe:0 -y -an -r ${fps} -c:v vp8 -qmin 0 -qmax 50 -crf 8 -deadline realtime -speed 8 -b:v 1M -threads 1 -vf pad=${w}:${h}:0:0:gray,crop=${w}:${h}:0:0`.split(" ");
+         args.push(this._outputFile);
+         const { launchedProcess, gracefullyClose } = await launchProcess({
+           command: this._ffmpegPath,
