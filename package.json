@@ -36,5 +36,10 @@
   "engines": {
     "node": ">=22.18.0"
   },
-  "packageManager": "pnpm@10.2.1"
+  "packageManager": "pnpm@10.2.1",
+  "pnpm": {
+    "patchedDependencies": {
+      "playwright-core@1.61.1": "patches/playwright-core@1.61.1.patch"
+    }
+  }
 }
