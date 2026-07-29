@@ -154,8 +154,6 @@ export function decideExplorationActionPolicy(
     case "hover":
     case "back":
     case "scroll":
-    case "scroll-until-text":
-    case "scroll-until-regex":
     case "wait":
       return protocolActionPolicy(element);
   }

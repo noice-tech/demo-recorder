@@ -334,14 +334,16 @@ describe.sequential("interactive exploration", () => {
     }
   }, 30_000);
 
-  it("finds a semantic target with bounded scrolling and exports the observed delta", async () => {
-    const server = createServer((_request, response) => {
+  it("waits for delayed client navigation before recording a click postcondition", async () => {
+    const server = createServer((request, response) => {
       response.setHeader("content-type", "text/html");
-      response.end(`<!doctype html><html><body style="margin:0">
-        <h1>Updates</h1>
-        <div style="height:1800px"></div>
-        <h2>December 2025 release notes</h2>
-        <p>New visualizer presets are available.</p>
+      if (request.url === "/updates") {
+        response.end("<!doctype html><html><body><h1>Updates</h1></body></html>");
+        return;
+      }
+      response.end(`<!doctype html><html><body>
+        <h1>Home</h1>
+        <a href="/updates" onclick="event.preventDefault(); setTimeout(() => location.href = '/updates', 500)">Updates</a>
       </body></html>`);
     });
     httpServers.push(server);
@@ -349,32 +351,26 @@ describe.sequential("interactive exploration", () => {
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("No test address");
     const baseUrl = `http://127.0.0.1:${address.port}`;
-    const outputDirectory = await temporaryDirectory("demo-recorder-semantic-scroll-");
+    const outputDirectory = await temporaryDirectory("demo-recorder-delayed-navigation-");
     const session = new InteractiveExplorationSession(
-      launchConfig("semantic-scroll", baseUrl, outputDirectory, "read-only"),
+      launchConfig("delayed-navigation", baseUrl, outputDirectory, "read-only"),
     );
     try {
-      const initial = await session.start();
+      const observation = await session.start();
+      const updates = observation.interactiveElements.find((element) => element.name === "Updates");
+      expect(updates).toBeDefined();
       const transition = await session.act({
-        type: "scroll-until-text",
-        text: "December 2025 release notes",
-        stepPx: 500,
-        maxSteps: 5,
+        type: "click",
+        observationId: observation.id,
+        ref: updates?.ref ?? "missing",
       });
       expect(transition.status).toBe("succeeded");
-      expect(session.current().scroll.y).toBeGreaterThan(initial.scroll.y);
+      expect(session.current().pathname).toBe("/updates");
       const verification = await session.verify({
         version: 1,
         transitionIds: [transition.id],
       });
       expect(verification.status).toBe("passed");
-      const plan = session.exportPlan({
-        version: 1,
-        verificationId: verification.id,
-        name: "semantic-scroll",
-        goal: "Show the December release notes",
-      });
-      expect(plan.capture.steps.some((step) => step.type === "scroll")).toBe(true);
     } finally {
       await session.close("finished");
     }

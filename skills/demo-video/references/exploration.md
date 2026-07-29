@@ -35,18 +35,9 @@ npx --yes @noice-tech/demo-recorder@0.0.1 explore act product-demo \
 
 A successful `act` response includes both the transition and the already-captured resulting observation with fresh refs. Continue from that observation instead of issuing a redundant `observe` command.
 
-Supported session actions are `click`, `hover`, `goto`, `back`, `scroll`, `scroll-until-text`, `scroll-until-regex`, and bounded `wait`. Prefer a bounded semantic scroll over repeated manual scroll/read turns:
+Supported session actions are `click`, `hover`, `goto`, `back`, finite `scroll`, and bounded `wait`. Use `find` to identify content and a small number of direct exploration scrolls to inspect it. Do not copy incremental exploratory scrolls into the final plan; combine them into the fewest directed capture scrolls that preserve the intended story.
 
-````json
-{
-  "type": "scroll-until-text",
-  "text": "December 2025",
-  "direction": "down",
-  "stepPx": 700,
-  "maxSteps": 10,
-  "reason": "Bring the requested release section into view"
-}
-``` The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked. Open shadow-root controls are discoverable through Playwright locators. Child-frame controls do not receive main-frame refs in this version; treat them as unsupported and report the limitation rather than guessing a selector.
+The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked. Open shadow-root controls are discoverable through Playwright locators. Child-frame controls do not receive main-frame refs in this version; treat them as unsupported and report the limitation rather than guessing a selector.
 
 Use `--policy reversible` only when the user explicitly requested it and the target is a disposable local or staging environment. It still does not permit destructive or external-side-effect controls. These policies are conservative guardrails, not proof that an application cannot produce a server-side side effect.
 
@@ -56,11 +47,13 @@ Search controls, headings, layers, and accessible page text without loading the 
 npx --yes @noice-tech/demo-recorder@0.0.1 explore find product-demo --text "Templates" --json
 npx --yes @noice-tech/demo-recorder@0.0.1 explore find product-demo --regex "template|gallery" --json
 npx --yes @noice-tech/demo-recorder@0.0.1 explore current product-demo --json
-````
+```
 
 Reserve `explore observe` for pages that changed without an explorer action, such as externally updated or time-driven UI.
 
-After selecting a connected sequence of successful transitions, verify it in a fresh browser context before using it for planning:
+For an ordinary directed request, use one persistent session and usually no more than 6–10 actions. Stop when the requested targets, routes, and approximate scroll deltas are known. Do not restart merely to create a cleaner journal.
+
+After selecting a connected sequence of successful transitions, verify it once in a fresh browser context before using it for planning:
 
 ```json
 {
@@ -75,7 +68,7 @@ npx --yes @noice-tech/demo-recorder@0.0.1 explore verify product-demo \
   --json
 ```
 
-Verification never reuses temporary element refs. It resolves the recorded durable locator candidates, requires a unique visible match, checks each expected semantic state and URL, and writes a report, screenshots, and Playwright trace under `verification/`.
+Verification never reuses temporary element refs. It resolves the recorded durable locator candidates, requires a unique visible match, checks each expected semantic state and URL, and writes a report, screenshots, and Playwright trace under `verification/`. If verification fails, inspect the report and make at most one focused clean retry. Do not fan out into several exploratory sessions or locator strategies.
 
 A passing verification can be exported to a validating draft plan while the session is active:
 

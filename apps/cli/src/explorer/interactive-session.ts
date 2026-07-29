@@ -6,7 +6,6 @@ import {
   createGuardedBrowserContext,
   explorationViewport,
   performExplorationScroll,
-  performExplorationScrollUntil,
   waitForSemanticQuiet,
 } from "./browser-runtime.js";
 import {
@@ -423,6 +422,8 @@ export class InteractiveExplorationSession {
       await this.performAction(action, entry);
       const settled = await waitForSemanticQuiet(this.page, {
         explicit: action.type === "wait",
+        minimumMs:
+          action.type === "click" || action.type === "goto" || action.type === "back" ? 750 : 0,
       });
       const after = await this.captureObservation(`after-${action.type}`, settled, false);
       const transition = explorationTransitionSchema.parse({
@@ -505,22 +506,6 @@ export class InteractiveExplorationSession {
         return;
       case "scroll":
         await performExplorationScroll(this.page, action.deltaY, action.deltaX);
-        return;
-      case "scroll-until-text":
-        await performExplorationScrollUntil(this.page, {
-          text: action.text,
-          direction: action.direction,
-          stepPx: action.stepPx,
-          maxSteps: action.maxSteps,
-        });
-        return;
-      case "scroll-until-regex":
-        await performExplorationScrollUntil(this.page, {
-          regex: action.regex,
-          direction: action.direction,
-          stepPx: action.stepPx,
-          maxSteps: action.maxSteps,
-        });
         return;
       case "wait":
         await this.page.waitForTimeout(action.durationMs);

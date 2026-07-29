@@ -38,7 +38,7 @@ Write a version 1 `demo-plan.json`. The agent supplies the reasoning; Demo Recor
 
 Locator methods are `role`, `text`, `label`, `placeholder`, `test-id`, and `css`. Prefer role and accessible name. A locator may contain up to three `fallbacks` observed during exploration.
 
-Actions are `navigate`, `move`, `click`, `fill`, `press`, `select`, `scroll`, `wait-for`, `assert-visible`, `wait-for-url`, and `hold`. Read-only plans should not use fill, press, or select. Keep holds purposeful and usually between 800–2000ms.
+Actions are `navigate`, `move`, `click`, `fill`, `press`, `select`, `scroll`, `wait-for`, `assert-visible`, `wait-for-url`, and `hold`. Read-only plans should not use fill, press, or select. Keep holds purposeful and usually between 800–2000ms. A simple directed demo should usually need roughly 8–18 capture steps. Collapse adjacent exploratory scrolls in the same direction into one directed scroll where that preserves the intended visible beat; the final plan is a story, not an exploration transcript.
 
 If the target must be managed, add `repositoryPath`, `startCommand`, and optionally `readinessUrl`. If authenticated, add `authProfile`.
 
@@ -51,6 +51,6 @@ npx --yes @noice-tech/demo-recorder@0.0.1 plan rehearse \
   --json
 ```
 
-A failed rehearsal writes the failing step, sanitized current URL, ARIA snapshot, screenshot, trace, and focused repair hints. The host agent may revise only the failing plan area and rerun with `--attempt 2` or `--attempt 3`; attempts outside 1–3 are rejected. Require a passing rehearsal before final capture. The final `run` command remains deterministic and never invokes repair logic.
+A failed rehearsal writes the failing step, sanitized current URL, ARIA snapshot, screenshot, trace, and focused repair hints. The host agent may revise only the failing plan area and rerun with `--attempt 2` or `--attempt 3`; attempts outside 1–3 are rejected. Require a passing rehearsal before final capture. Once rehearsal passes, proceed to capture; do not run another attempt for optional polish unless the plan receives a functional change. The final `run` command remains deterministic and never invokes repair logic.
 
 Presentation may include absolute source-timeline `trimStartMs`, `trimEndMs`, and explicit `zoomSegments`. Prefer capture `hold` steps for deliberate pacing. Add trims only after inspecting a recording; the renderer validates them against source duration without changing the manifest or WebM.

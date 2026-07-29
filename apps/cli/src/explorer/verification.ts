@@ -5,7 +5,6 @@ import {
   attachBlockedInteractionHandlers,
   createGuardedBrowserContext,
   performExplorationScroll,
-  performExplorationScrollUntil,
   waitForSemanticQuiet,
 } from "./browser-runtime.js";
 import { explorationSemanticFingerprint } from "./graph.js";
@@ -61,22 +60,6 @@ async function executeReplayAction(
       return undefined;
     case "scroll":
       await performExplorationScroll(page, action.deltaY, action.deltaX);
-      return undefined;
-    case "scroll-until-text":
-      await performExplorationScrollUntil(page, {
-        text: action.text,
-        direction: action.direction,
-        stepPx: action.stepPx,
-        maxSteps: action.maxSteps,
-      });
-      return undefined;
-    case "scroll-until-regex":
-      await performExplorationScrollUntil(page, {
-        regex: action.regex,
-        direction: action.direction,
-        stepPx: action.stepPx,
-        maxSteps: action.maxSteps,
-      });
       return undefined;
     case "wait":
       await page.waitForTimeout(action.durationMs);
@@ -149,7 +132,11 @@ async function verifyTransitionStep(options: {
 
   try {
     candidateUsed = await executeReplayAction(options.page, options.transition, options.baseUrl);
-    await waitForSemanticQuiet(options.page);
+    const action = options.transition.action;
+    await waitForSemanticQuiet(options.page, {
+      minimumMs:
+        action.type === "click" || action.type === "goto" || action.type === "back" ? 750 : 0,
+    });
     const actual = await captureActualState(options.page);
     await options.artifacts.writeExternalFile(
       options.screenshot,

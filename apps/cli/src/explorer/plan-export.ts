@@ -50,7 +50,6 @@ function actionForTransition(
   chosen: ExplorationLocatorMethod | undefined,
   baseUrl: string,
   includeUrlState: boolean,
-  observedScrollDelta?: { deltaX: number; deltaY: number },
 ): DemoAction {
   const action = transition.action;
   const purpose = action.reason ?? `Replay verified transition ${transition.id}`;
@@ -67,13 +66,6 @@ function actionForTransition(
       };
     case "scroll":
       return { type: "scroll", deltaX: action.deltaX, deltaY: action.deltaY, purpose };
-    case "scroll-until-text":
-    case "scroll-until-regex":
-      if (!observedScrollDelta)
-        throw new Error(`Verified transition ${transition.id} has no observed scroll delta`);
-      if (observedScrollDelta.deltaX === 0 && observedScrollDelta.deltaY === 0)
-        return { type: "hold", durationMs: 200, purpose };
-      return { type: "scroll", ...observedScrollDelta, purpose };
     case "wait":
       return { type: "hold", durationMs: action.durationMs, purpose };
     case "back":
@@ -128,20 +120,12 @@ export function exportVerifiedPathToDemoPlan(options: {
         `Missing observation ${verificationStep.expected.observationId} during plan export`,
       );
     modifiesData ||= transition.policy.risk === "reversible";
-    const before = observations.get(transition.fromObservationId);
-    const observedScrollDelta = before
-      ? {
-          deltaX: expected.scroll.x - before.scroll.x,
-          deltaY: expected.scroll.y - before.scroll.y,
-        }
-      : undefined;
     steps.push(
       actionForTransition(
         transition,
         verificationStep.candidateUsed,
         options.config.baseUrl,
         includeUrlState,
-        observedScrollDelta,
       ),
     );
 

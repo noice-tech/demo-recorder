@@ -171,22 +171,6 @@ export const explorationActionSchema = z.discriminatedUnion("type", [
     reason: nonempty.max(500).optional(),
   }),
   z.object({
-    type: z.literal("scroll-until-text"),
-    text: nonempty.max(500),
-    direction: z.enum(["up", "down"]).default("down"),
-    stepPx: z.number().int().min(100).max(2_000).default(700),
-    maxSteps: z.number().int().min(1).max(20).default(10),
-    reason: nonempty.max(500).optional(),
-  }),
-  z.object({
-    type: z.literal("scroll-until-regex"),
-    regex: boundedRegex,
-    direction: z.enum(["up", "down"]).default("down"),
-    stepPx: z.number().int().min(100).max(2_000).default(700),
-    maxSteps: z.number().int().min(1).max(20).default(10),
-    reason: nonempty.max(500).optional(),
-  }),
-  z.object({
     type: z.literal("wait"),
     durationMs: z.number().int().positive().max(10_000),
     reason: nonempty.max(500).optional(),
