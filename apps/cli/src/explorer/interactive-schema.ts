@@ -2,6 +2,17 @@ import { z } from "zod";
 import { locatorMethodSchema } from "../browser/locator.js";
 
 const nonempty = z.string().trim().min(1);
+const boundedRegex = nonempty.max(200).refine(
+  (value) => {
+    try {
+      const pattern = new RegExp(value);
+      return pattern.source.length >= 0;
+    } catch {
+      return false;
+    }
+  },
+  { message: "Invalid regular expression" },
+);
 
 // Launch-time configuration shared by the CLI client and detached session daemon.
 export const explorationPolicySchema = z.enum(["read-only", "reversible"]);
@@ -97,6 +108,46 @@ export const explorationObservationSchema = z.object({
 });
 export type ExplorationObservation = z.infer<typeof explorationObservationSchema>;
 
+export const explorationSummaryElementSchema = z.object({
+  ref: nonempty,
+  role: nonempty.optional(),
+  name: z.string(),
+  href: z.string().optional(),
+  enabled: z.boolean(),
+  selected: z.boolean().optional(),
+  checked: z.boolean().optional(),
+  pressed: z.boolean().optional(),
+  expanded: z.boolean().optional(),
+  bounds: exploredInteractiveElementSchema.shape.bounds,
+  risk: exploredInteractiveElementSchema.shape.risk,
+  riskReasons: z.array(z.string()).max(3),
+});
+export type ExplorationSummaryElement = z.infer<typeof explorationSummaryElementSchema>;
+
+export const explorationObservationSummarySchema = z.object({
+  summaryVersion: z.literal(1),
+  id: nonempty,
+  stateId: nonempty,
+  url: z.string(),
+  pathname: z.string(),
+  title: z.string(),
+  viewport: explorationObservationSchema.shape.viewport,
+  scroll: explorationObservationSchema.shape.scroll,
+  headings: z.array(z.string()).max(20),
+  layers: z.array(z.object({ role: z.string(), name: z.string() })).max(20),
+  interactiveElements: z.array(explorationSummaryElementSchema).max(20),
+  interactiveElementCounts: z.object({
+    total: z.number().int().nonnegative(),
+    viewport: z.number().int().nonnegative(),
+    returned: z.number().int().nonnegative(),
+  }),
+  errors: z.array(z.string()).max(10),
+  artifacts: explorationObservationSchema.shape.artifacts,
+  semanticFingerprint: nonempty,
+  settled: explorationObservationSchema.shape.settled,
+});
+export type ExplorationObservationSummary = z.infer<typeof explorationObservationSummarySchema>;
+
 // Commands accepted by the interactive session API.
 export const explorationActionSchema = z.discriminatedUnion("type", [
   z.object({
@@ -130,7 +181,7 @@ export type ExplorationAction = z.infer<typeof explorationActionSchema>;
 export const explorationFindQuerySchema = z
   .object({
     text: z.string().trim().min(1).max(500).optional(),
-    regex: z.string().trim().min(1).max(200).optional(),
+    regex: boundedRegex.optional(),
   })
   .refine((query) => Boolean(query.text) !== Boolean(query.regex), {
     message: "Provide exactly one of text or regex",
@@ -142,10 +193,11 @@ export const explorationFindResultSchema = z.object({
   matches: z
     .array(
       z.object({
-        kind: z.enum(["element", "heading", "layer"]),
+        kind: z.enum(["element", "heading", "layer", "text"]),
         ref: z.string().optional(),
         role: z.string().optional(),
         text: z.string(),
+        context: z.array(z.string()).max(4).optional(),
         risk: exploredInteractiveElementSchema.shape.risk.optional(),
       }),
     )
@@ -195,6 +247,12 @@ export const explorationTransitionSchema = z.object({
   error: z.string().optional(),
 });
 export type ExplorationTransition = z.infer<typeof explorationTransitionSchema>;
+
+export const explorationActionResultSchema = z.object({
+  transition: explorationTransitionSchema,
+  observation: explorationObservationSchema,
+});
+export type ExplorationActionResult = z.infer<typeof explorationActionResultSchema>;
 
 export const explorationGraphSchema = z.object({
   schemaVersion: z.literal(2),

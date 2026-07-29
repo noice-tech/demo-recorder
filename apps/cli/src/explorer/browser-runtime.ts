@@ -42,6 +42,16 @@ export async function createGuardedBrowserContext(
   }
 }
 
+export async function performExplorationScroll(
+  page: Page,
+  deltaY: number,
+  deltaX = 0,
+): Promise<void> {
+  await page.mouse.wheel(deltaX, deltaY);
+  // Exploration needs the resulting state, not capture-quality 60 FPS motion.
+  await page.waitForTimeout(50);
+}
+
 export function attachBlockedInteractionHandlers(
   page: Page,
   handlers: {
@@ -68,7 +78,7 @@ export function attachBlockedInteractionHandlers(
 // analytics requests open even when the user-visible state has settled.
 export async function waitForSemanticQuiet(
   page: Page,
-  options: { initial?: boolean; explicit?: boolean } = {},
+  options: { initial?: boolean; explicit?: boolean; minimumMs?: number } = {},
 ): Promise<{ reason: "initial" | "quiet" | "timed-out" | "explicit"; durationMs: number }> {
   if (options.explicit) return { reason: "explicit", durationMs: 0 };
   const startedAt = Date.now();
@@ -80,7 +90,7 @@ export async function waitForSemanticQuiet(
     const snapshot = await page.ariaSnapshot({ mode: "default", depth: 8, timeout: 2_000 });
     const normalized = snapshot.replaceAll(/\s+/g, " ").trim();
     if (normalized === previous) {
-      if (Date.now() - stableSince >= 250)
+      if (Date.now() - stableSince >= 250 && Date.now() - startedAt >= (options.minimumMs ?? 0))
         return {
           reason: options.initial ? "initial" : "quiet",
           durationMs: Date.now() - startedAt,

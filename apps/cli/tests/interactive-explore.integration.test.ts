@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  actAndObserveInteractiveSession,
   actInInteractiveSession,
+  currentInteractiveSession,
   findInInteractiveSession,
   finishInteractiveSession,
   InteractiveExplorationSession,
@@ -332,6 +334,48 @@ describe.sequential("interactive exploration", () => {
     }
   }, 30_000);
 
+  it("waits for delayed client navigation before recording a click postcondition", async () => {
+    const server = createServer((request, response) => {
+      response.setHeader("content-type", "text/html");
+      if (request.url === "/updates") {
+        response.end("<!doctype html><html><body><h1>Updates</h1></body></html>");
+        return;
+      }
+      response.end(`<!doctype html><html><body>
+        <h1>Home</h1>
+        <a href="/updates" onclick="event.preventDefault(); setTimeout(() => location.href = '/updates', 500)">Updates</a>
+      </body></html>`);
+    });
+    httpServers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("No test address");
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const outputDirectory = await temporaryDirectory("demo-recorder-delayed-navigation-");
+    const session = new InteractiveExplorationSession(
+      launchConfig("delayed-navigation", baseUrl, outputDirectory, "read-only"),
+    );
+    try {
+      const observation = await session.start();
+      const updates = observation.interactiveElements.find((element) => element.name === "Updates");
+      expect(updates).toBeDefined();
+      const transition = await session.act({
+        type: "click",
+        observationId: observation.id,
+        ref: updates?.ref ?? "missing",
+      });
+      expect(transition.status).toBe("succeeded");
+      expect(session.current().pathname).toBe("/updates");
+      const verification = await session.verify({
+        version: 1,
+        transitionIds: [transition.id],
+      });
+      expect(verification.status).toBe("passed");
+    } finally {
+      await session.close("finished");
+    }
+  }, 30_000);
+
   it("replays a unique fallback when the primary locator is ambiguous", async () => {
     const server = createServer((_request, response) => {
       response.setHeader("content-type", "text/html");
@@ -392,24 +436,33 @@ describe.sequential("interactive exploration", () => {
     const observed = await observeInteractiveSession(sessionRoot, "persistent");
     expect(observed.id).toBe("obs-0002");
     expect(observed.stateId).toBe(started.observation.stateId);
+    const current = await currentInteractiveSession(sessionRoot, "persistent");
+    expect(current.id).toBe(observed.id);
     const found = await findInInteractiveSession(sessionRoot, "persistent", {
       text: "create project",
     });
     expect(found.observationId).toBe(observed.id);
     expect(found.matches[0]?.ref).toBeDefined();
+    const semanticText = await findInInteractiveSession(sessionRoot, "persistent", {
+      text: "Three projects are ready for review",
+    });
+    expect(semanticText.matches).toContainEqual(
+      expect.objectContaining({ kind: "text", text: expect.stringContaining("Three projects") }),
+    );
     const createProject = observed.interactiveElements.find(
       (element) => element.name === "Create project",
     );
-    const transition = await actInInteractiveSession(sessionRoot, "persistent", {
+    const actionResult = await actAndObserveInteractiveSession(sessionRoot, "persistent", {
       type: "click",
       observationId: observed.id,
       ref: createProject?.ref ?? "missing",
     });
-    expect(transition.status).toBe("succeeded");
-    expect(transition.toObservationId).toBe("obs-0003");
+    expect(actionResult.transition.status).toBe("succeeded");
+    expect(actionResult.transition.toObservationId).toBe("obs-0003");
+    expect(actionResult.observation.id).toBe("obs-0003");
     const verification = await verifyInteractiveSession(sessionRoot, "persistent", {
       version: 1,
-      transitionIds: [transition.id],
+      transitionIds: [actionResult.transition.id],
     });
     expect(verification.status).toBe("passed");
 

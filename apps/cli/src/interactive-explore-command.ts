@@ -3,8 +3,9 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { numberOption, stringOption, type ParsedArguments } from "./arguments.js";
 import {
-  actInInteractiveSession,
+  actAndObserveInteractiveSession,
   authProfilePaths,
+  currentInteractiveSession,
   explorationActionSchema,
   explorationDraftPlanRequestSchema,
   explorationPolicySchema,
@@ -17,6 +18,7 @@ import {
   listInteractiveSessions,
   observeInteractiveSession,
   startInteractiveSession,
+  summarizeExplorationObservation,
   verifyInteractiveSession,
   type ExplorationObservation,
   type ExplorationSessionReport,
@@ -28,6 +30,7 @@ import { workingDirectory } from "./paths.js";
 const operations = [
   "start",
   "observe",
+  "current",
   "find",
   "act",
   "verify",
@@ -149,11 +152,20 @@ async function startCommand(arguments_: ParsedArguments): Promise<string> {
       ...(goal ? { goal } : {}),
     },
   });
-  printJsonOrHuman(arguments_, { ok: true, sessionId: id, outputDirectory, observation }, [
-    `[demo-recorder] Exploration session started: ${id}`,
-    `[demo-recorder] Output: ${outputDirectory}`,
-    ...observationLines(observation),
-  ]);
+  printJsonOrHuman(
+    arguments_,
+    {
+      ok: true,
+      sessionId: id,
+      outputDirectory,
+      observation: summarizeExplorationObservation(observation),
+    },
+    [
+      `[demo-recorder] Exploration session started: ${id}`,
+      `[demo-recorder] Output: ${outputDirectory}`,
+      ...observationLines(observation),
+    ],
+  );
   return outputDirectory;
 }
 
@@ -185,7 +197,22 @@ async function observeCommand(context: SessionCommandContext): Promise<string> {
       ok: true,
       sessionId: context.id,
       outputDirectory: context.outputDirectory,
-      observation,
+      observation: summarizeExplorationObservation(observation),
+    },
+    [`[demo-recorder] Output: ${context.outputDirectory}`, ...observationLines(observation)],
+  );
+  return observation.artifacts.observation;
+}
+
+async function currentCommand(context: SessionCommandContext): Promise<string> {
+  const observation = await currentInteractiveSession(sessionRoot, context.id);
+  printJsonOrHuman(
+    context.arguments,
+    {
+      ok: true,
+      sessionId: context.id,
+      outputDirectory: context.outputDirectory,
+      observation: summarizeExplorationObservation(observation),
     },
     [`[demo-recorder] Output: ${context.outputDirectory}`, ...observationLines(observation)],
   );
@@ -257,7 +284,11 @@ async function actCommand(context: SessionCommandContext): Promise<string> {
   const action = explorationActionSchema.parse(
     await readRequiredJson(context.arguments, "act", "action.json"),
   );
-  const transition = await actInInteractiveSession(sessionRoot, context.id, action);
+  const { transition, observation } = await actAndObserveInteractiveSession(
+    sessionRoot,
+    context.id,
+    action,
+  );
   printJsonOrHuman(
     context.arguments,
     {
@@ -265,10 +296,11 @@ async function actCommand(context: SessionCommandContext): Promise<string> {
       sessionId: context.id,
       outputDirectory: context.outputDirectory,
       transition,
+      observation: summarizeExplorationObservation(observation),
     },
-    transitionLines(transition),
+    [...transitionLines(transition), ...observationLines(observation)],
   );
-  return context.id;
+  return observation.artifacts.observation;
 }
 
 async function finishCommand(context: SessionCommandContext, abort: boolean): Promise<string> {
@@ -293,6 +325,7 @@ async function statusCommand(context: SessionCommandContext): Promise<string> {
 
 const sessionCommandHandlers: Record<SessionOperation, SessionCommandHandler> = {
   observe: observeCommand,
+  current: currentCommand,
   find: findCommand,
   act: actCommand,
   verify: verifyCommand,

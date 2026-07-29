@@ -1,10 +1,10 @@
 import type { Browser, BrowserContext, Locator, Page } from "playwright";
 import { resolveUniqueLocator } from "../browser/locator.js";
-import { smoothScroll } from "../browser/smooth-scroll.js";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
 import {
   attachBlockedInteractionHandlers,
   createGuardedBrowserContext,
+  performExplorationScroll,
   waitForSemanticQuiet,
 } from "./browser-runtime.js";
 import { explorationSemanticFingerprint } from "./graph.js";
@@ -59,7 +59,7 @@ async function executeReplayAction(
       await page.goBack({ waitUntil: "domcontentloaded", timeout: 30_000 });
       return undefined;
     case "scroll":
-      await smoothScroll(page, action.deltaY, action.deltaX);
+      await performExplorationScroll(page, action.deltaY, action.deltaX);
       return undefined;
     case "wait":
       await page.waitForTimeout(action.durationMs);
@@ -132,7 +132,11 @@ async function verifyTransitionStep(options: {
 
   try {
     candidateUsed = await executeReplayAction(options.page, options.transition, options.baseUrl);
-    await waitForSemanticQuiet(options.page);
+    const action = options.transition.action;
+    await waitForSemanticQuiet(options.page, {
+      minimumMs:
+        action.type === "click" || action.type === "goto" || action.type === "back" ? 750 : 0,
+    });
     const actual = await captureActualState(options.page);
     await options.artifacts.writeExternalFile(
       options.screenshot,

@@ -1,11 +1,11 @@
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
-import { smoothScroll } from "../browser/smooth-scroll.js";
 import type { DemoPlan } from "../demo-plan/index.js";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts.js";
 import {
   attachBlockedInteractionHandlers,
   createGuardedBrowserContext,
   explorationViewport,
+  performExplorationScroll,
   waitForSemanticQuiet,
 } from "./browser-runtime.js";
 import {
@@ -75,6 +75,64 @@ function emptyInteractionEffects(): InteractionEffects {
   return { popupBlocked: false, downloadBlocked: false, dialogDismissed: false };
 }
 
+function cleanSemanticSearchLine(line: string): string | undefined {
+  const trimmed = line.trim();
+  if (!trimmed || /^-?\s*\/url:/.test(trimmed)) return undefined;
+  const cleaned = trimmed
+    .replace(/^-\s+/, "")
+    .replaceAll(/\s*\[ref=e\d+\]/g, "")
+    .replaceAll(/\s*\[(?:cursor|box)=[^\]]+\]/g, "")
+    .replaceAll(/\s+/g, " ")
+    .trim()
+    .slice(0, 500);
+  return cleaned || undefined;
+}
+
+function semanticSearchContext(
+  lines: Array<string | undefined>,
+  index: number,
+  matchedText: string,
+): string[] {
+  const context: string[] = [];
+  const isUseful = (value: string | undefined): value is string =>
+    Boolean(
+      value &&
+      value !== matchedText &&
+      !/^(?:generic|img|list|listitem|main|banner|navigation|region|group|paragraph):?$/.test(
+        value,
+      ),
+    );
+  for (const direction of [-1, 1]) {
+    for (let offset = 1; offset <= 4 && context.length < 4; offset += 1) {
+      const candidate = lines[index + direction * offset];
+      if (isUseful(candidate)) {
+        context.push(candidate);
+        break;
+      }
+    }
+  }
+  return context;
+}
+
+function semanticTextMatches(
+  snapshot: string,
+  matchesText: (value: string) => boolean,
+  existing: Set<string>,
+): ExplorationFindResult["matches"] {
+  const lines = snapshot.split("\n").map(cleanSemanticSearchLine);
+  const matches: ExplorationFindResult["matches"] = [];
+  for (const [index, text] of lines.entries()) {
+    if (!text || !matchesText(text)) continue;
+    const key = text.toLocaleLowerCase();
+    if (existing.has(key)) continue;
+    existing.add(key);
+    const context = semanticSearchContext(lines, index, text);
+    matches.push({ kind: "text", text, ...(context.length > 0 ? { context } : {}) });
+    if (matches.length >= 50) break;
+  }
+  return matches;
+}
+
 /**
  * Owns the long-lived browser used by an interactive exploration.
  *
@@ -93,6 +151,7 @@ export class InteractiveExplorationSession {
   private stateSequence = 0;
   private verificationSequence = 0;
   private currentObservation: ExplorationObservation | undefined;
+  private currentSnapshot = "";
   private refs = new Map<string, ExplorationRefEntry>();
   private states = new Map<string, string>();
   private observations: ExplorationObservation[] = [];
@@ -121,14 +180,11 @@ export class InteractiveExplorationSession {
           `Blocked cross-origin main-frame navigation to ${sanitizeExplorationUrl(url)}`,
         ),
     });
-    await this.context.tracing.start({ screenshots: true, snapshots: true, sources: false });
     this.page = await this.context.newPage();
     this.attachPageEvents(this.page);
     await this.page.goto(this.config.baseUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
     const settled = await waitForSemanticQuiet(this.page, { initial: true });
-    const observation = await this.observe("initial", settled);
-    await this.writeReport("active");
-    return observation;
+    return this.observe("initial", settled);
   }
 
   private attachPageEvents(page: Page): void {
@@ -160,6 +216,18 @@ export class InteractiveExplorationSession {
   }
 
   async observe(reason = "agent-request", settled?: Settled): Promise<ExplorationObservation> {
+    return this.captureObservation(reason, settled, true);
+  }
+
+  current(): ExplorationObservation {
+    return this.requireCurrentObservation();
+  }
+
+  private async captureObservation(
+    reason: string,
+    settled: Settled | undefined,
+    materialize: boolean,
+  ): Promise<ExplorationObservation> {
     const sequence = ++this.observationSequence;
     const id = `obs-${String(sequence).padStart(4, "0")}`;
     const snapshotArtifact = `snapshots/${id}.yml`;
@@ -215,10 +283,13 @@ export class InteractiveExplorationSession {
       this.artifacts.appendJsonLine("observations.ndjson", observation),
     ]);
     this.refs = refs;
+    this.currentSnapshot = snapshot;
     this.currentObservation = observation;
     this.observations.push(observation);
-    await this.writeGraph();
-    await this.writeReport("active");
+    if (materialize) {
+      await this.writeGraph();
+      await this.writeReport("active");
+    }
     return observation;
   }
 
@@ -227,6 +298,7 @@ export class InteractiveExplorationSession {
     const observation = this.requireCurrentObservation();
     const matchesText = createFindMatcher(query);
     const matches: ExplorationFindResult["matches"] = [];
+    const existing = new Set<string>();
     for (const element of observation.interactiveElements) {
       if (!matchesText(`${element.role ?? ""} ${element.name}`)) continue;
       matches.push({
@@ -236,17 +308,30 @@ export class InteractiveExplorationSession {
         text: element.name,
         risk: element.risk,
       });
+      existing.add(element.name.toLocaleLowerCase());
     }
     for (const heading of observation.headings) {
-      if (matchesText(heading)) matches.push({ kind: "heading", role: "heading", text: heading });
+      if (matchesText(heading)) {
+        matches.push({ kind: "heading", role: "heading", text: heading });
+        existing.add(heading.toLocaleLowerCase());
+      }
     }
     for (const layer of observation.layers) {
-      if (matchesText(`${layer.role} ${layer.name}`))
+      if (matchesText(`${layer.role} ${layer.name}`)) {
         matches.push({ kind: "layer", role: layer.role, text: layer.name });
+        existing.add(layer.name.toLocaleLowerCase());
+      }
     }
+    if (matches.length < 50)
+      matches.push(
+        ...semanticTextMatches(this.currentSnapshot, matchesText, existing).slice(
+          0,
+          50 - matches.length,
+        ),
+      );
     return explorationFindResultSchema.parse({
       observationId: observation.id,
-      matches: matches.slice(0, 50),
+      matches,
     });
   }
 
@@ -337,8 +422,10 @@ export class InteractiveExplorationSession {
       await this.performAction(action, entry);
       const settled = await waitForSemanticQuiet(this.page, {
         explicit: action.type === "wait",
+        minimumMs:
+          action.type === "click" || action.type === "goto" || action.type === "back" ? 750 : 0,
       });
-      const after = await this.observe(`after-${action.type}`, settled);
+      const after = await this.captureObservation(`after-${action.type}`, settled, false);
       const transition = explorationTransitionSchema.parse({
         ...transitionBase,
         status: "succeeded",
@@ -418,7 +505,7 @@ export class InteractiveExplorationSession {
         await this.page.goBack({ waitUntil: "domcontentloaded", timeout: 30_000 });
         return;
       case "scroll":
-        await smoothScroll(this.page, action.deltaY, action.deltaX);
+        await performExplorationScroll(this.page, action.deltaY, action.deltaX);
         return;
       case "wait":
         await this.page.waitForTimeout(action.durationMs);
@@ -471,12 +558,6 @@ export class InteractiveExplorationSession {
     if (this.closed) return;
     this.closed = true;
     await this.writeReport(status).catch(() => undefined);
-    if (this.context)
-      await this.artifacts
-        .writeExternalFile("diagnostics/trace.zip", explorationArtifactLimits.traceBytes, (path) =>
-          this.context.tracing.stop({ path }),
-        )
-        .catch(() => undefined);
     await this.context?.close().catch(() => undefined);
     await this.browser?.close().catch(() => undefined);
   }
