@@ -24,7 +24,7 @@ Project and legal information: https://ffmpeg.org/legal.html
 
 ## Playwright
 
-Noice Demo Recorder uses Playwright 1.61.1 and playwright-core under the
+Noice Demo Recorder uses Playwright 1.62.1 and playwright-core under the
 Apache License 2.0.
 
 Project: https://playwright.dev/
