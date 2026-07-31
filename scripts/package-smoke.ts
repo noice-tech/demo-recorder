@@ -92,7 +92,10 @@ try {
   if (reportedWorkspace !== expectedWorkspace) {
     throw new Error(`Packaged CLI used the wrong workspace: ${doctor.workspace}`);
   }
-  const setupText = await runNpm(["exec", "--", "demo-recorder", "setup", "--json"], workspace);
+  const setupText = await runNpm(
+    ["exec", "--", "demo-recorder", "setup", "--chromium", "--json"],
+    workspace,
+  );
   const setup = JSON.parse(setupText) as { status?: string };
   if (setup.status !== "ready") throw new Error(`Packaged setup status: ${setup.status}`);
   const fixture = await startFixtureServer(fixtureDirectory);

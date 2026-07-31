@@ -2,6 +2,8 @@
 name: demo-video
 description: Create polished product demo, feature walkthrough, app showcase, or product-tour videos from a public or staging URL, localhost app, or local repository. Safely explore the application, plan browser interactions, record them, render an MP4, and inspect the result. Use when the user asks to create or record a demo video, product walkthrough, feature showcase, app tour, or website presentation.
 compatibility: Requires Node.js 22+, user-installed ffmpeg and ffprobe, terminal and process access, and permission to download the Demo Recorder npm package and Playwright Chromium on first use.
+metadata:
+  version: "0.0.1"
 ---
 
 # Agent-Directed Demo Video
@@ -24,5 +26,9 @@ Use the versioned, user-cached CLI described in [the first-run setup guide](refe
 12. Run `node "$DR_CLI" run <plan>` and wait for both recording and FFmpeg rendering to complete. Do not stop after `record`; `recordings/<id>/browser.webm` is raw capture and is never the final deliverable. Final capture never performs repair. Use `--headed` only when the target requires it.
 13. Confirm `output/<id>.mp4` exists. Run `node "$DR_CLI" inspect <mp4> --contact-sheet` when FFmpeg is available, then inspect metadata and the sheet for browser framing, startup state, cursor, clicks, zooms, pacing, alignment, and the intended final state.
 14. Revise and rerun when needed. Report the raw recording path and final rendered MP4 path separately, labeling the MP4 as the deliverable.
+
+## Updates
+
+Do not check for updates automatically. When the user asks, run `node "$DR_CLI" update check --json`; this reads release metadata but installs nothing. If an update is available, present its unified product version and release-notes URL. Only after the user agrees, run the reported Skills CLI update command without `--yes`. Tell the user to restart or reload their coding-agent session so the updated skill is active. The updated skill will ask separately before installing its exact matching runtime in a new versioned cache directory. Never update the runtime independently or delete the previous cached version automatically.
 
 Follow [exploration safety](references/exploration.md) and [authentication handling](references/authentication.md). Do not import `previous/` or `references/` into production code. Never claim that Demo Recorder itself contains an LLM.
