@@ -46,11 +46,11 @@ Install the canonical skill into a supported coding agent with:
 npx skills add noice-tech/demo-recorder
 ```
 
-Ask the agent for a demo. The skill checks Node, asks before downloading and executing the pinned CLI through `npx`, separately asks before downloading Playwright Chromium when required, and completes the workflow through the final MP4.
+Ask the agent for a demo. On first use, the skill checks Node and asks before installing the exact CLI version into a versioned user cache; it never adds the runtime to your project or installs it globally. It checks FFmpeg, links to the platform setup guide when needed, separately asks before downloading Playwright Chromium, and then completes the workflow through the final MP4.
 
 ## Requirements
 
-The installed workflow requires Node.js 22 or newer plus `ffmpeg` and `ffprobe` with the capabilities reported by `demo-recorder doctor`. No global CLI or target-project dependency is required.
+The installed workflow requires Node.js 22 or newer plus `ffmpeg` and `ffprobe` with the capabilities reported by `demo-recorder doctor`. See the short [FFmpeg installation guide](docs/install-ffmpeg.md) for macOS, Windows, and popular Linux distributions. The pinned CLI is installed in the user's cache on first use; no global CLI or target-project dependency is required.
 
 ## Architecture
 

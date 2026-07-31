@@ -5,7 +5,7 @@
 Use a persistent session when the feature depends on same-page controls such as tabs, menus, dialogs, drawers, or other SPA state:
 
 ```bash
-npx --yes @noice-tech/demo-recorder@0.0.1 explore start \
+node "$DR_CLI" explore start \
   --url https://example.com \
   --session product-demo \
   --goal "Find the feature requested by the user" \
@@ -28,7 +28,7 @@ Propose one bounded action at a time in a JSON file:
 Then execute it:
 
 ```bash
-npx --yes @noice-tech/demo-recorder@0.0.1 explore act product-demo \
+node "$DR_CLI" explore act product-demo \
   --input action.json \
   --json
 ```
@@ -44,9 +44,9 @@ Use `--policy reversible` only when the user explicitly requested it and the tar
 Search controls, headings, layers, and accessible page text without loading the whole snapshot, or retrieve the existing compact observation without recapturing it:
 
 ```bash
-npx --yes @noice-tech/demo-recorder@0.0.1 explore find product-demo --text "Templates" --json
-npx --yes @noice-tech/demo-recorder@0.0.1 explore find product-demo --regex "template|gallery" --json
-npx --yes @noice-tech/demo-recorder@0.0.1 explore current product-demo --json
+node "$DR_CLI" explore find product-demo --text "Templates" --json
+node "$DR_CLI" explore find product-demo --regex "template|gallery" --json
+node "$DR_CLI" explore current product-demo --json
 ```
 
 Reserve `explore observe` for pages that changed without an explorer action, such as externally updated or time-driven UI.
@@ -63,7 +63,7 @@ After selecting a connected sequence of successful transitions, verify it once i
 ```
 
 ```bash
-npx --yes @noice-tech/demo-recorder@0.0.1 explore verify product-demo \
+node "$DR_CLI" explore verify product-demo \
   --input verification-path.json \
   --json
 ```
@@ -88,7 +88,7 @@ fragment, export refuses to persist that URL state by default. Add `"includeUrlS
 the request only after confirming those values contain no credentials, tokens, or private data.
 
 ```bash
-npx --yes @noice-tech/demo-recorder@0.0.1 explore export-plan product-demo \
+node "$DR_CLI" explore export-plan product-demo \
   --input draft-request.json \
   --output .demo-recorder/plans/product-demo/demo-plan.json \
   --json
@@ -99,7 +99,7 @@ The exporter uses the locator candidate actually proven during replay, retains b
 Always close the session:
 
 ```bash
-npx --yes @noice-tech/demo-recorder@0.0.1 explore finish product-demo --json
+node "$DR_CLI" explore finish product-demo --json
 ```
 
 Use `explore abort product-demo` after an unrecoverable failure. `explore status` lists active sessions.
@@ -109,7 +109,7 @@ Use `explore abort product-demo` after an unrecoverable failure. `explore status
 Use the bounded mapper for ordinary link-based sites:
 
 ```bash
-npx --yes @noice-tech/demo-recorder@0.0.1 explore \
+node "$DR_CLI" explore \
   --url https://example.com \
   --max-pages 10 \
   --max-depth 2
@@ -120,7 +120,7 @@ npx --yes @noice-tech/demo-recorder@0.0.1 explore \
 First inspect startup documentation and scripts. A persistent session owns the managed process until `finish` or `abort`:
 
 ```bash
-npx --yes @noice-tech/demo-recorder@0.0.1 explore start \
+node "$DR_CLI" explore start \
   --repo /path/to/app \
   --start 'pnpm dev' \
   --url http://localhost:3000 \

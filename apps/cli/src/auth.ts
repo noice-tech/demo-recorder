@@ -9,7 +9,6 @@ import {
 } from "./explorer/index.js";
 import { stringOption, type ParsedArguments } from "./arguments.js";
 import { workingDirectory } from "./paths.js";
-import { cliVersion } from "./version.js";
 
 const authRoot = join(workingDirectory, ".demo-recorder/auth");
 
@@ -30,7 +29,7 @@ export async function authCommand(
     const session = await startAuthSession({ rootDirectory: authRoot, profile, baseUrl: url });
     console.log(`[demo-recorder] Headed authentication browser opened for profile: ${profile}`);
     console.log(
-      `[demo-recorder] Complete login/CAPTCHA, then ask the agent to run: npx --yes @noice-tech/demo-recorder@${cliVersion} auth save --profile ${profile}`,
+      `[demo-recorder] Complete login/CAPTCHA, then ask the agent to run the cached CLI: auth save --profile ${profile}`,
     );
     console.log(`[demo-recorder] Authentication session PID: ${session.pid}`);
     return;
