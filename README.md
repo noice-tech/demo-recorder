@@ -6,6 +6,14 @@ The intelligence stays in Codex, Claude Code, Cursor, Pi, or any other terminal-
 
 > **Alpha:** `0.0.1` is an early release. Commands, plan schemas, recording formats, and safety behavior may change before beta.
 
+## Demo
+
+**Prompt example:**
+
+> Create a short demo of banger.show: choose a template, create a project, and show the result in the editor.
+
+![Demo Recorder workflow](docs/demo.gif)
+
 ## Licensing
 
 Noice Demo Recorder's original source code is licensed under the [MIT License](LICENSE). Rendering invokes user-installed FFmpeg and ffprobe; their binaries are not bundled or redistributed. The bundled Inter font is licensed under the SIL Open Font License 1.1, and Playwright is licensed under Apache-2.0.
@@ -73,41 +81,3 @@ Coding agent + skill
 `recording.json` remains the immutable capture boundary. Agent-authored direction is stored separately in `demo-plan.json` and `presentation.json`.
 
 See [`docs/agent-first-workflow.md`](docs/agent-first-workflow.md) and [`docs/architecture.md`](docs/architecture.md).
-
-## Development
-
-Contributors use Node.js 22.18 or newer, pnpm 10, tsdown, and Turbo through the checked-in workspace:
-
-```bash
-pnpm install
-pnpm exec playwright install chromium
-pnpm package:cli
-pnpm demo-recorder doctor
-```
-
-`pnpm build` uses Turbo for workspace ordering and caching. `pnpm package:cli` bundles the standalone CLI and auth daemon with tsdown, then prepares the FFmpeg renderer assets and bundled font.
-
-## Checks and cleanup
-
-```bash
-pnpm check
-pnpm test:integration
-pnpm build
-pnpm test:package
-pnpm clean
-```
-
-Cleanup removes generated explorations, recordings, outputs, workspace build output, and package assets. It preserves `.demo-recorder/plans/` and `.demo-recorder/auth/`.
-
-## Important directories
-
-- `packages/core/` — immutable recording schemas and pure timeline/layout logic
-- `apps/cli/src/explorer/` — browser/repository exploration, managed apps, and auth profiles
-- `apps/cli/src/demo-plan/` — plan schemas, safety validation, estimation, and storyboards
-- `apps/cli/src/capture/` — plan execution, Playwright capture, and instrumented actions
-- `apps/cli/src/renderer/` — recording preparation and FFmpeg render orchestration
-- `packages/ffmpeg-renderer/` — FFmpeg capabilities, filter graphs, overlays, and renderer assets
-- `apps/cli/tests/` — unit, integration, fixture, and package pipeline support
-- `skills/demo-video/` — portable agent workflow
-- `.demo-recorder/` — ignored explorations, plans, and authentication state
-- `recordings/` and `output/` — generated capture and video artifacts
