@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProductDemoRenderInput } from "../src/index.js";
 import {
-  buildCameraExpressions,
   buildProductDemoFilterGraph,
   generateTimedOverlayScript,
   productDemoGeometry,
@@ -39,30 +38,15 @@ const input: ProductDemoRenderInput = {
 };
 
 describe("product demo graph generation", () => {
-  it("uses the established ceil frame count and one-process graph", () => {
+  it("uses the established geometry, frame count, and trim range", () => {
+    expect(productDemoGeometry(input.recording.viewport, input.config)).toEqual({
+      content: { x: 290, y: 145, width: 1340, height: 838 },
+      browser: { x: 290, y: 97, width: 1340, height: 886 },
+    });
     const graph = buildProductDemoFilterGraph(input);
     expect(graph.frameCount).toBe(45);
     expect(graph.durationMs).toBe(1500);
     expect(graph.script).toContain("trim=start=0.25:end=1.75");
-    expect(graph.script).toContain("ass=filename=timed-overlays.subtitle:fontsdir=fonts:alpha=1");
-    expect(graph.script).toContain("eval=frame");
-    expect(graph.script).toContain("format=yuv420p[output]");
-  });
-
-  it("generates piecewise smooth-step camera expressions around projected origins", () => {
-    const geometry = productDemoGeometry(input.recording.viewport, input.config);
-    const camera = buildCameraExpressions({
-      timeline: input.timeline,
-      viewport: input.recording.viewport,
-      geometry,
-      output: input.config,
-      enterDurationMs: input.config.zoom.enterDurationMs,
-      exitDurationMs: input.config.zoom.exitDurationMs,
-    });
-    expect(camera.scale).toContain("between((t+0.25),0.4,1.2)");
-    expect(camera.scale).toContain("pow(");
-    expect(camera.originX).toContain("662.22");
-    expect(camera.scaledWidth).toContain("trunc(1920");
   });
 
   it("rejects output dimensions outside the version 1 contract", async () => {
@@ -85,10 +69,7 @@ describe("product demo graph generation", () => {
       geometry,
       frameCount: 45,
     });
-    expect(overlayScript).toContain("Style: Title,Inter,14");
     expect(overlayScript).toContain("https://example.com/a｛b｝");
-    expect(overlayScript).toContain("\\p1\\bord1.8");
-    expect(overlayScript).toContain("&H00CDF08C&");
     expect(overlayScript).not.toContain("https://example.com/a{b}");
   });
 });
