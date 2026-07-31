@@ -154,7 +154,19 @@ async function runPlaywrightInstall(json: boolean): Promise<void> {
 
 export async function setupCommand(arguments_: ParsedArguments): Promise<void> {
   const json = arguments_.options.has("json");
-  if (!chromiumAvailable()) await runPlaywrightInstall(json);
+  if (!arguments_.options.has("chromium")) {
+    throw new Error("Setup requires an explicit target. Use `setup --chromium`.");
+  }
+
+  if (!chromiumAvailable()) {
+    if (!arguments_.options.has("accept-downloads")) {
+      throw new Error(
+        "Playwright Chromium is missing. After user approval, rerun with `setup --chromium --accept-downloads`.",
+      );
+    }
+    await runPlaywrightInstall(json);
+  }
+
   const browser = await chromium.launch({ headless: true });
   await browser.close();
   const result = await inspectEnvironment();

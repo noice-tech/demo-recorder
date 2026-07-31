@@ -18,13 +18,15 @@ import { showPlanCommand, validatePlanCommand } from "./plan.js";
 import { renderRecording } from "./render.js";
 import { rehearsePlanFile } from "./rehearsal.js";
 import { recordPlan, runPlan } from "./run-plan.js";
+import { updateCommand } from "./updates.js";
 import { cliVersion } from "./version.js";
 
 function usage(): string {
   return [
     "Usage:",
     "  demo-recorder doctor [--json]",
-    "  demo-recorder setup [--json]",
+    "  demo-recorder setup --chromium [--accept-downloads] [--json]",
+    "  demo-recorder update check [--json]",
     "  demo-recorder explore --url URL [--repo PATH --start COMMAND] [--auth PROFILE]",
     "  demo-recorder explore start --url URL [--session ID] [--policy read-only|reversible]",
     "  demo-recorder explore <observe|current|find|act|verify|export-plan|finish|abort|status> [SESSION] [options]",
@@ -41,7 +43,12 @@ function usage(): string {
 
 export const commandOptions: Record<string, OptionDefinitions> = {
   doctor: { json: { type: "boolean" } },
-  setup: { json: { type: "boolean" } },
+  setup: {
+    chromium: { type: "boolean" },
+    "accept-downloads": { type: "boolean" },
+    json: { type: "boolean" },
+  },
+  update: { json: { type: "boolean" } },
   explore: {
     url: { type: "string" },
     repo: { type: "string" },
@@ -141,6 +148,7 @@ function runRecordCommand(parsed: ParsedArguments): Promise<unknown> {
 const commandHandlers = new Map<string, CommandHandler>([
   ["doctor", doctorCommand],
   ["setup", setupCommand],
+  ["update", updateCommand],
   ["explore", (parsed) => exploreCommand(parsed)],
   [
     "inspect",

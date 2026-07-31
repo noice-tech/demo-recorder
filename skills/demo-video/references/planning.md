@@ -45,7 +45,7 @@ If the target must be managed, add `repositoryPath`, `startCommand`, and optiona
 Before recording, rehearse the validated plan without video capture:
 
 ```bash
-npx --yes @noice-tech/demo-recorder@0.0.1 plan rehearse \
+node "$DR_CLI" plan rehearse \
   .demo-recorder/plans/product-demo/demo-plan.json \
   --attempt 1 \
   --json
