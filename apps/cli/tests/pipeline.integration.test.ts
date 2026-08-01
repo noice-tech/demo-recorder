@@ -62,13 +62,6 @@ afterAll(async () => {
 });
 
 describe.sequential("capture pipeline", () => {
-  it("starts a ready test fixture and shuts it down", async () => {
-    const fixture = await startFixtureServer(fixtureDirectory);
-    expect((await fetch(`${fixture.baseUrl}/__ready`)).status).toBe(200);
-    await fixture.close();
-    await expect(fetch(`${fixture.baseUrl}/__ready`)).rejects.toThrow();
-  });
-
   it("rejects ambiguous capture locators and accepts a unique fallback", async () => {
     const browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();

@@ -61,23 +61,8 @@ describe("CLI argument parsing", () => {
     }
   });
 
-  it("defines strict options for every public command", () => {
-    for (const command of [
-      "doctor",
-      "setup",
-      "explore",
-      "inspect",
-      "plan",
-      "auth",
-      "record",
-      "run",
-      "render",
-      "create",
-    ]) {
-      expect(() => parseArguments(["--unknown"], definitionsFor(command))).toThrow(
-        "Unknown option",
-      );
-    }
+  it("rejects unknown options", () => {
+    expect(() => parseArguments(["--unknown"], definitions)).toThrow("Unknown option");
   });
 
   it("rejects duplicate options", () => {

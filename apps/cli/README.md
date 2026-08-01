@@ -4,8 +4,6 @@
 
 Describe the demo you need, and your coding agent explores the web app, records the flow, adds cursor movements and zooms, then renders the finished video.
 
-![Example](docs/demo.gif)
-
 > **Alpha:** Demo Recorder is under active development. Expect rough edges and changes before the first stable release.
 
 ## What it's for
@@ -24,16 +22,6 @@ Common use cases:
 - clips for launch posts and social media
 - internal walkthroughs for teammates and stakeholders
 
-Current capabilities:
-
-- explore a web application and prepare the recording flow
-- hand control back when login or CAPTCHA is required, then reuse the authenticated session
-- avoid destructive or unclear actions unless explicitly requested
-- record navigation, clicks, scrolling, and interface changes
-- add smooth cursor movement, clicks, zooms, and trim unused parts
-- save the walkthrough as a reusable plan that can be adjusted and recorded again
-- render the finished video as an MP4
-
 ## Getting started
 
 ### Requirements
@@ -42,7 +30,7 @@ Current capabilities:
 - `ffmpeg` and `ffprobe`
 - Pi, Claude Code, Codex, Cursor, or another terminal-capable coding agent
 
-See the [FFmpeg installation guide](docs/install-ffmpeg.md) for setup instructions on macOS, Windows, and Linux.
+See the [FFmpeg installation guide](https://github.com/noice-tech/demo-recorder/blob/main/docs/install-ffmpeg.md) for setup instructions on macOS, Windows, and Linux.
 
 ### Installation
 
@@ -58,27 +46,14 @@ Then ask your coding agent for the demo you want:
 
 On first use, the skill asks before installing its pinned runtime in a user cache. It also asks separately before downloading Playwright Chromium if it is not already available.
 
-## Current status and plans
+## npm package
 
-The current release is **0.0.1 Alpha**. The complete workflow - from exploring a product to rendering an MP4 - is available today, but commands, plan formats, and behavior may still change.
+This package supplies the deterministic Demo Recorder tools used by the skill. The host coding agent supplies the reasoning; Demo Recorder does not call a model API.
 
-The next areas of focus are:
-
-- multiple aspect ratios and video formats
-- smoother animations and transitions
-- tooltips for pressed keys
-- ready-made templates for socials
-
-See [Updates and releases](docs/updates.md) for information about versioning and updates.
-
-## Contributing
-
-Contributions, bug reports, and real-world examples are welcome. If you want to work on the project, start with the [development guide](docs/development.md).
-
-For larger changes, opening an issue first is the easiest way to discuss the approach and avoid duplicated work.
+For the complete workflow, documentation, and examples, see the [Demo Recorder repository](https://github.com/noice-tech/demo-recorder#readme).
 
 ## License
 
-Demo Recorder is available under the [MIT License](LICENSE).
+Demo Recorder is available under the [MIT License](https://github.com/noice-tech/demo-recorder/blob/main/LICENSE).
 
-FFmpeg and ffprobe are used from your existing system installation and are not bundled with the project. See [Third-Party Notices](THIRD_PARTY_NOTICES.md) for bundled licenses and attributions.
+FFmpeg and ffprobe are used from your existing system installation and are not bundled with the project. See [Third-Party Notices](https://github.com/noice-tech/demo-recorder/blob/main/THIRD_PARTY_NOTICES.md) for bundled licenses and attributions.
