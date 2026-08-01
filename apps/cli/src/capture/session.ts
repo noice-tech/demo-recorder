@@ -5,7 +5,7 @@ import {
   type RecordingEvent,
   type RecordingManifest,
 } from "@noice-tech/demo-recorder-core";
-import type { Page, Video } from "playwright";
+import type { Page } from "playwright";
 import { createActions } from "./actions.js";
 import { createRecordingBrowser } from "./create-browser.js";
 import { createInteractionTracker } from "./interaction-tracker.js";
@@ -26,21 +26,40 @@ export async function createRecordingSession(
   }
 
   const artifactsDirectory = join(outputDirectory, "artifacts");
-  const rawVideoDirectory = join(artifactsDirectory, "playwright-video");
+  const browserVideoPath = join(outputDirectory, "browser.webm");
+  await mkdir(artifactsDirectory);
   let recordingBrowser: Awaited<ReturnType<typeof createRecordingBrowser>>;
   try {
-    recordingBrowser = await createRecordingBrowser(options, rawVideoDirectory);
+    recordingBrowser = await createRecordingBrowser(options);
   } catch (error) {
     await rm(outputDirectory, { recursive: true, force: true });
     throw error;
   }
 
-  const startedAtNs = process.hrtime.bigint();
   const createdAt = new Date().toISOString();
-  const tracker = createInteractionTracker(startedAtNs);
   let page: Page;
+  let firstFrameAtNs: bigint | undefined;
+  let resolveFirstFrame: (() => void) | undefined;
+  const firstFrameReceived = new Promise<void>((resolveFrame) => {
+    resolveFirstFrame = resolveFrame;
+  });
   try {
     page = await recordingBrowser.context.newPage();
+    await page.screencast.start({
+      path: browserVideoPath,
+      size: options.viewport,
+      onFrame: () => {
+        if (firstFrameAtNs !== undefined) return;
+        firstFrameAtNs = process.hrtime.bigint();
+        resolveFirstFrame?.();
+      },
+    });
+    await Promise.race([
+      firstFrameReceived,
+      page.waitForTimeout(5_000).then(() => {
+        throw new Error("Timed out waiting for the first recorded browser frame");
+      }),
+    ]);
   } catch (error) {
     try {
       await recordingBrowser.context.close();
@@ -50,7 +69,8 @@ export async function createRecordingSession(
     }
     throw new Error("Unable to create the recording page", { cause: error });
   }
-  const video: Video | null = page.video();
+  if (firstFrameAtNs === undefined) throw new Error("Recording did not establish a video clock");
+  const tracker = createInteractionTracker(firstFrameAtNs);
   const cursor = { x: 32, y: 32 };
   tracker.push({ type: "cursor-move", ...cursor });
   const actionContext = {
@@ -91,18 +111,10 @@ export async function createRecordingSession(
   const stop = async (): Promise<RecordingManifest> => {
     if (state !== "active") throw new Error(`Cannot stop recording session in state: ${state}`);
     state = "stopping";
-    const browserVideoPath = join(outputDirectory, "browser.webm");
 
     try {
-      // Playwright finalizes video when the context closes, but saveAs still
-      // needs the browser connection to remain alive.
-      await recordingBrowser.context.close();
-      try {
-        if (!video) throw new Error("Playwright did not provide a video handle");
-        await video.saveAs(browserVideoPath);
-      } finally {
-        await recordingBrowser.browser.close();
-      }
+      await page.screencast.stop();
+      await closeBrowser();
       const metadata = await probeVideo(browserVideoPath);
       const durationMs = metadata.durationMs;
       const events: RecordingEvent[] = tracker.events().map((event) => ({
@@ -134,7 +146,6 @@ export async function createRecordingSession(
         `${JSON.stringify({ recorder: "playwright", eventCount: events.length }, null, 2)}\n`,
         "utf8",
       );
-      await rm(rawVideoDirectory, { recursive: true, force: true });
       state = "stopped";
       return manifest;
     } catch (error) {
