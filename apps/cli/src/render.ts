@@ -1,3 +1,4 @@
+import type { CanvasOptions } from "@noice-tech/demo-recorder-core";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { renderDemoVideo, type RenderDemoVideoResult } from "./renderer/index.js";
 import { requireFfmpegAssets, workingDirectory } from "./paths.js";
@@ -10,11 +11,15 @@ export function resolveRecordingArgument(value: string): string {
   return join(workingDirectory, "recordings", value);
 }
 
-export async function renderRecording(value: string): Promise<RenderDemoVideoResult> {
+export async function renderRecording(
+  value: string,
+  canvas?: CanvasOptions,
+): Promise<RenderDemoVideoResult> {
   const recordingPath = resolveRecordingArgument(value);
   console.log(`[demo-recorder] Loading recording: ${recordingPath}`);
   return renderDemoVideo(recordingPath, {
     assetsDirectory: requireFfmpegAssets(),
     outputDirectory: join(workingDirectory, "output"),
+    ...(canvas ? { canvas } : {}),
   });
 }

@@ -64,7 +64,7 @@ The current release is **0.0.1 Alpha**. The complete workflow - from exploring a
 
 The next areas of focus are:
 
-- multiple aspect ratios and video formats
+- additional canvas styles and export formats
 - smoother animations and transitions
 - tooltips for pressed keys
 - ready-made templates for socials

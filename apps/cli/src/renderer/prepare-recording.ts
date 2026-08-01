@@ -4,10 +4,12 @@ import {
   defaultConfig,
   generateZoomSegments,
   loadRecordingManifest,
+  resolveCanvas,
+  type CanvasOptions,
   type ProductDemoInput,
   type RecordingManifest,
 } from "@noice-tech/demo-recorder-core";
-import { plannedZoomSchema } from "../demo-plan/index.js";
+import { plannedZoomSchema, presentationCanvasSchema } from "../demo-plan/index.js";
 
 export type PreparedRecording = {
   manifestPath: string;
@@ -22,7 +24,10 @@ function isInside(parent: string, child: string): boolean {
   return path === "" || (!path.startsWith(`..${sep}`) && path !== ".." && !isAbsolute(path));
 }
 
-export async function prepareRecording(recordingPath: string): Promise<PreparedRecording> {
+export async function prepareRecording(
+  recordingPath: string,
+  canvasOverride?: CanvasOptions,
+): Promise<PreparedRecording> {
   const resolvedInput = resolve(recordingPath);
   const inputStats = await stat(resolvedInput).catch((error: unknown) => {
     throw new Error(`Recording path does not exist: ${resolvedInput}`, { cause: error });
@@ -64,6 +69,7 @@ export async function prepareRecording(recordingPath: string): Promise<PreparedR
           zoomSegments?: unknown[];
           trimStartMs?: unknown;
           trimEndMs?: unknown;
+          canvas?: unknown;
         },
     )
     .catch((error: NodeJS.ErrnoException) => {
@@ -84,6 +90,18 @@ export async function prepareRecording(recordingPath: string): Promise<PreparedR
     throw new Error("Presentation zoom segment is outside the recording timeline or viewport");
   }
   const zoomSegments = plannedZoomSegments ?? automaticZoomSegments;
+  const plannedCanvas = presentationValue?.canvas
+    ? presentationCanvasSchema.parse(presentationValue.canvas)
+    : undefined;
+  const mergedCanvas = canvasOverride
+    ? {
+        ...plannedCanvas,
+        ...(canvasOverride.aspectRatio ? { width: undefined, height: undefined } : {}),
+        ...(canvasOverride.width ? { aspectRatio: undefined } : {}),
+        ...canvasOverride,
+      }
+    : plannedCanvas;
+  const canvas = resolveCanvas(mergedCanvas, manifest.viewport);
   const firstNavigationMs = manifest.events.find(
     (event) => event.type === "navigation" && event.timestampMs < manifest.durationMs,
   )?.timestampMs;
@@ -116,6 +134,7 @@ export async function prepareRecording(recordingPath: string): Promise<PreparedR
       },
       config: {
         ...defaultConfig.render,
+        ...canvas,
         cursorEnabled: defaultConfig.cursor.enabled,
         zoom: {
           enterDurationMs: defaultConfig.zoom.enterDurationMs,

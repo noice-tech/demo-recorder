@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseArguments, stringOption } from "../../src/arguments.js";
+import {
+  dimensionsOption,
+  nonNegativeNumberOption,
+  parseArguments,
+  stringOption,
+} from "../../src/arguments.js";
 import { commandOptions } from "../../src/index.js";
 
 const definitions = {
@@ -59,6 +64,22 @@ describe("CLI argument parsing", () => {
       expect(parsed.options.get(option)).toBe(true);
       expect(parsed.positionals).toEqual(["positional"]);
     }
+  });
+
+  it("parses viewport, output size, and zero padding options", () => {
+    const explore = parseArguments(["--viewport", "1280x720"], definitionsFor("explore"));
+    expect(dimensionsOption(explore, "viewport")).toEqual({ width: 1280, height: 720 });
+    const render = parseArguments(
+      ["--size", "1080x1080", "--padding", "0"],
+      definitionsFor("render"),
+    );
+    expect(dimensionsOption(render, "size")).toEqual({ width: 1080, height: 1080 });
+    expect(nonNegativeNumberOption(render, "padding")).toBe(0);
+  });
+
+  it("rejects malformed dimensions", () => {
+    const parsed = parseArguments(["--viewport", "wide"], definitionsFor("explore"));
+    expect(() => dimensionsOption(parsed, "viewport")).toThrow("WIDTHxHEIGHT");
   });
 
   it("rejects unknown options", () => {

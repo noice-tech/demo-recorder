@@ -2,7 +2,7 @@ import type { DemoVideoConfig } from "./types.js";
 
 export const defaultConfig: DemoVideoConfig = {
   recording: { viewport: { width: 1440, height: 900 } },
-  render: { width: 1920, height: 1080, fps: 60 },
+  render: { width: 1920, height: 1080, fps: 60, padding: 97.2 },
   cursor: { enabled: true },
   zoom: {
     enabled: true,

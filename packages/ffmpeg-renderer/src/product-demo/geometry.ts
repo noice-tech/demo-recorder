@@ -1,8 +1,6 @@
 import { containRect, type Rect, type Viewport } from "@noice-tech/demo-recorder-core";
 
 export const BROWSER_TITLE_BAR_HEIGHT = 48;
-const FRAME_PADDING_X_RATIO = 0.065;
-const FRAME_PADDING_Y_RATIO = 0.09;
 
 export type ProductDemoGeometry = {
   content: Rect;
@@ -16,15 +14,18 @@ function even(value: number): number {
 
 export function productDemoGeometry(
   viewport: Pick<Viewport, "width" | "height">,
-  output: { width: number; height: number },
+  output: { width: number; height: number; padding: number },
 ): ProductDemoGeometry {
-  const paddingX = output.width * FRAME_PADDING_X_RATIO;
-  const paddingY = output.height * FRAME_PADDING_Y_RATIO;
+  if (
+    output.padding * 2 >= output.width ||
+    output.padding * 2 + BROWSER_TITLE_BAR_HEIGHT >= output.height
+  )
+    throw new Error("Canvas padding leaves no room for the browser frame");
   const raw = containRect(viewport, {
-    x: paddingX,
-    y: paddingY + BROWSER_TITLE_BAR_HEIGHT,
-    width: output.width - paddingX * 2,
-    height: output.height - paddingY * 2 - BROWSER_TITLE_BAR_HEIGHT,
+    x: output.padding,
+    y: output.padding + BROWSER_TITLE_BAR_HEIGHT,
+    width: output.width - output.padding * 2,
+    height: output.height - output.padding * 2 - BROWSER_TITLE_BAR_HEIGHT,
   });
   const content = {
     x: Math.round(raw.x),

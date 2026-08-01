@@ -61,6 +61,33 @@ export function stringOption(arguments_: ParsedArguments, name: string): string 
   return typeof value === "string" ? value : undefined;
 }
 
+export function dimensionsOption(
+  arguments_: ParsedArguments,
+  name: string,
+): { width: number; height: number } | undefined {
+  const text = stringOption(arguments_, name);
+  if (text === undefined) return undefined;
+  const match = /^(\d+)x(\d+)$/.exec(text);
+  if (!match) throw new Error(`--${name} must use WIDTHxHEIGHT`);
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0)
+    throw new Error(`--${name} dimensions must be positive integers`);
+  return { width, height };
+}
+
+export function nonNegativeNumberOption(
+  arguments_: ParsedArguments,
+  name: string,
+): number | undefined {
+  const text = stringOption(arguments_, name);
+  if (text === undefined) return undefined;
+  const value = Number(text);
+  if (!Number.isSafeInteger(value) || value < 0)
+    throw new Error(`--${name} must be a non-negative integer`);
+  return value;
+}
+
 export function numberOption(arguments_: ParsedArguments, name: string, fallback: number): number {
   const text = stringOption(arguments_, name);
   if (text === undefined) return fallback;

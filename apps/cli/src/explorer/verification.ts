@@ -212,6 +212,7 @@ export async function verifyExplorationPath(options: {
     // from cookies, DOM mutations, or an accidental dependency on earlier actions.
     context = await createGuardedBrowserContext(options.browser, {
       baseUrl: options.config.baseUrl,
+      viewport: options.config.viewport ?? { width: 1440, height: 900 },
       ...(options.config.storageStatePath
         ? { storageStatePath: options.config.storageStatePath }
         : {}),

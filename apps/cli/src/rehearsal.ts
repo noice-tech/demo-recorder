@@ -177,6 +177,7 @@ export async function rehearseDemoPlan(options: {
   try {
     context = await createGuardedBrowserContext(browser, {
       baseUrl: options.plan.target.baseUrl,
+      viewport: options.plan.capture.viewport ?? { width: 1440, height: 900 },
       ...(options.storageStatePath ? { storageStatePath: options.storageStatePath } : {}),
       ...(options.sessionStoragePath ? { sessionStoragePath: options.sessionStoragePath } : {}),
     });

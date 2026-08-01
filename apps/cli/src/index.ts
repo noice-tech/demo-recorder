@@ -5,6 +5,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { authCommand } from "./auth.js";
 import {
+  dimensionsOption,
+  nonNegativeNumberOption,
   numberOption,
   parseArguments,
   stringOption,
@@ -27,8 +29,8 @@ function usage(): string {
     "  demo-recorder doctor [--json]",
     "  demo-recorder setup --chromium [--accept-downloads] [--json]",
     "  demo-recorder update check [--json]",
-    "  demo-recorder explore --url URL [--repo PATH --start COMMAND] [--auth PROFILE]",
-    "  demo-recorder explore start --url URL [--session ID] [--policy read-only|reversible]",
+    "  demo-recorder explore --url URL [--repo PATH --start COMMAND] [--auth PROFILE] [--viewport WIDTHxHEIGHT]",
+    "  demo-recorder explore start --url URL [--session ID] [--policy read-only|reversible] [--viewport WIDTHxHEIGHT]",
     "  demo-recorder explore <observe|current|find|act|verify|export-plan|finish|abort|status> [SESSION] [options]",
     "  demo-recorder inspect <video.mp4> [--contact-sheet[=PATH]]",
     "  demo-recorder plan validate <demo-plan.json>",
@@ -37,7 +39,7 @@ function usage(): string {
     "  demo-recorder record --plan <demo-plan.json> [--headed]",
     "  demo-recorder run <demo-plan.json> [--headed]",
     "  demo-recorder auth <start|save|stop|verify|remove|list> [options]",
-    "  demo-recorder render <recording>",
+    "  demo-recorder render <recording> [--aspect-ratio RATIO | --size WIDTHxHEIGHT] [--padding PX]",
   ].join("\n");
 }
 
@@ -69,6 +71,7 @@ export const commandOptions: Record<string, OptionDefinitions> = {
     policy: { type: "string" },
     json: { type: "boolean" },
     headed: { type: "boolean" },
+    viewport: { type: "string" },
   },
   inspect: { "contact-sheet": { type: "string", optionalValue: true } },
   plan: {
@@ -80,7 +83,11 @@ export const commandOptions: Record<string, OptionDefinitions> = {
   auth: { profile: { type: "string" }, url: { type: "string" } },
   record: { plan: { type: "string" }, headed: { type: "boolean" } },
   run: { headed: { type: "boolean" } },
-  render: {},
+  render: {
+    "aspect-ratio": { type: "string" },
+    size: { type: "string" },
+    padding: { type: "string" },
+  },
   create: {},
 };
 
@@ -164,7 +171,20 @@ const commandHandlers = new Map<string, CommandHandler>([
         headless: !parsed.options.has("headed"),
       }),
   ],
-  ["render", (parsed) => renderRecording(requireArgument(parsed.positionals[0], "render"))],
+  [
+    "render",
+    (parsed) => {
+      const size = dimensionsOption(parsed, "size");
+      const aspectRatio = stringOption(parsed, "aspect-ratio");
+      if (size && aspectRatio) throw new Error("Use either --aspect-ratio or --size, not both");
+      const padding = nonNegativeNumberOption(parsed, "padding");
+      return renderRecording(requireArgument(parsed.positionals[0], "render"), {
+        ...size,
+        ...(aspectRatio ? { aspectRatio } : {}),
+        ...(padding !== undefined ? { padding } : {}),
+      });
+    },
+  ],
   [
     "create",
     () => {

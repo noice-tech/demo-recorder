@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isAbsolute, join, resolve } from "node:path";
-import { numberOption, stringOption, type ParsedArguments } from "./arguments.js";
+import { dimensionsOption, numberOption, stringOption, type ParsedArguments } from "./arguments.js";
 import { authProfilePaths, exploreSite, startManagedApp } from "./explorer/index.js";
 import {
   interactiveExploreCommand,
@@ -55,6 +55,7 @@ export async function exploreCommand(arguments_: ParsedArguments): Promise<strin
       maxDepth: numberOption(arguments_, "max-depth", 2),
       sameOriginOnly: !arguments_.options.has("allow-cross-origin"),
       headless: !arguments_.options.has("headed"),
+      viewport: dimensionsOption(arguments_, "viewport") ?? { width: 1440, height: 900 },
       ...(authPaths
         ? {
             storageStatePath: authPaths.storageStatePath,

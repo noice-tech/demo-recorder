@@ -60,6 +60,7 @@ export type ExploreSiteOptions = {
   maxDepth?: number;
   sameOriginOnly?: boolean;
   headless?: boolean;
+  viewport?: { width: number; height: number };
   storageStatePath?: string;
   sessionStoragePath?: string;
   authProfile?: string;
