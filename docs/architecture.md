@@ -48,7 +48,7 @@ A detached loopback auth session opens headed Chromium while returning conversat
 
 `apps/cli/src/capture` owns Chromium video capture, the shared relative clock, interaction instrumentation, plan locator resolution, plan execution, media inspection, and finalization. Instrumented navigation, movement, click, fill, key, selection, scroll, visibility, URL, and hold actions execute a validated plan. Capture and rehearsal scroll actions use cross-platform, 60 Hz wheel gestures with brief acceleration and a longer momentum decay. Exploration uses a fast finite wheel action because it needs the resulting state rather than presentation-quality motion.
 
-The recorder executes validated plan actions through instrumented Playwright helpers so cursor and semantic metadata remain synchronized. Locator candidates must resolve to exactly one element; ambiguous matches are errors rather than implicit first-element selection. Incomplete recording directories are removed on failure.
+The recorder executes validated plan actions through instrumented Playwright helpers so cursor and semantic metadata remain synchronized. Cursor gestures use deterministic, viewport-safe curved paths, minimum-jerk timing, and safely inset target points instead of repeatedly moving to exact element centers. Locator candidates must resolve to exactly one element; ambiguous matches are errors rather than implicit first-element selection. Incomplete recording directories are removed on failure.
 
 ## 7. Recording format
 

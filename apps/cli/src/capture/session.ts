@@ -52,10 +52,13 @@ export async function createRecordingSession(
   }
   const video: Video | null = page.video();
   const cursor = { x: 32, y: 32 };
+  tracker.push({ type: "cursor-move", ...cursor });
   const actionContext = {
     page,
     tracker,
     cursor,
+    viewport: options.viewport,
+    movementIndex: 0,
     ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
   };
   const actions = createActions(actionContext);

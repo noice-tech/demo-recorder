@@ -78,7 +78,7 @@ The URL is the observed main-frame destination.
 { "type": "cursor-move", "timestampMs": 600, "x": 32, "y": 32 }
 ```
 
-Instrumented movement emits deterministic points that can be interpolated by the composition.
+Instrumented movement emits deterministic, frame-sampled points that can be interpolated by the composition. The first movement event establishes the synthetic cursor's initial position, and subsequent events preserve the curved capture trajectory.
 
 ### Click
 

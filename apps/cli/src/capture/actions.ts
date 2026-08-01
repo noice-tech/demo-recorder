@@ -1,6 +1,12 @@
 import type { InteractionTarget } from "@noice-tech/demo-recorder-core";
 import type { Locator, Page } from "playwright";
 import { smoothScroll } from "../browser/smooth-scroll.js";
+import {
+  generateCursorPath,
+  targetPointWithinBounds,
+  type CursorPoint,
+  type CursorViewport,
+} from "./cursor-motion.js";
 import type { InteractionTracker } from "./interaction-tracker.js";
 import type {
   ClickOptions,
@@ -10,14 +16,14 @@ import type {
   WaitForOptions,
 } from "./types.js";
 
-export type CursorState = { x: number; y: number };
-
-const CURSOR_SAMPLE_RATE = 60;
+export type CursorState = CursorPoint;
 
 type ActionContext = {
   page: Page;
   tracker: InteractionTracker;
   cursor: CursorState;
+  viewport: CursorViewport;
+  movementIndex: number;
   baseUrl?: string;
 };
 
@@ -27,7 +33,11 @@ type ResolvedTarget = {
   target: InteractionTarget;
 };
 
-async function resolveTarget(locator: Locator): Promise<ResolvedTarget> {
+async function resolveTarget(
+  locator: Locator,
+  viewport: CursorViewport,
+  seed: number,
+): Promise<ResolvedTarget> {
   await locator.waitFor({ state: "visible" });
   await locator.scrollIntoViewIfNeeded();
   const bounds = await locator.boundingBox();
@@ -56,32 +66,8 @@ async function resolveTarget(locator: Locator): Promise<ResolvedTarget> {
   if (semantics.role) target.role = semantics.role;
   if (semantics.name) target.name = semantics.name;
 
-  return {
-    x: bounds.x + bounds.width / 2,
-    y: bounds.y + bounds.height / 2,
-    target,
-  };
-}
-
-export function generateCursorPath(
-  from: CursorState,
-  to: CursorState,
-  options: MoveOptions = {},
-): { points: CursorState[]; durationMs: number } {
-  const distance = Math.hypot(to.x - from.x, to.y - from.y);
-  const durationMs =
-    options.durationMs ?? Math.max(280, Math.min(950, Math.round(distance * 0.95)));
-  const steps =
-    options.steps ?? Math.max(2, Math.ceil((durationMs / 1000) * CURSOR_SAMPLE_RATE) + 1);
-  const points = Array.from({ length: steps }, (_, index) => {
-    const progress = (index + 1) / steps;
-    const eased = 1 - (1 - progress) * (1 - progress);
-    return {
-      x: from.x + (to.x - from.x) * eased,
-      y: from.y + (to.y - from.y) * eased,
-    };
-  });
-  return { points, durationMs };
+  const point = targetPointWithinBounds(bounds, viewport, seed);
+  return { ...point, target };
 }
 
 async function moveToPoint(
@@ -89,11 +75,15 @@ async function moveToPoint(
   point: CursorState,
   options: MoveOptions = {},
 ): Promise<void> {
-  const { points, durationMs } = generateCursorPath(context.cursor, point, options);
+  const { points, durationMs } = generateCursorPath(context.cursor, point, {
+    ...options,
+    seed: context.movementIndex,
+    viewport: context.viewport,
+  });
+  context.movementIndex += 1;
   const startedAtMs = context.tracker.now();
   for (const [index, next] of points.entries()) {
-    const scheduledAtMs =
-      startedAtMs + (points.length > 1 ? (durationMs * index) / (points.length - 1) : 0);
+    const scheduledAtMs = startedAtMs + (durationMs * (index + 1)) / points.length;
     const delayMs = scheduledAtMs - context.tracker.now();
     if (delayMs > 0) await context.page.waitForTimeout(delayMs);
     await context.page.mouse.move(next.x, next.y);
@@ -108,7 +98,7 @@ async function moveTo(
   locator: Locator,
   options?: MoveOptions,
 ): Promise<void> {
-  const target = await resolveTarget(locator);
+  const target = await resolveTarget(locator, context.viewport, context.movementIndex);
   await moveToPoint(context, target, options);
 }
 
@@ -117,7 +107,7 @@ async function click(
   locator: Locator,
   options: ClickOptions = {},
 ): Promise<void> {
-  const resolved = await resolveTarget(locator);
+  const resolved = await resolveTarget(locator, context.viewport, context.movementIndex);
   await moveToPoint(context, resolved, options);
   const button = options.button ?? "left";
 
