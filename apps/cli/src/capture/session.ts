@@ -61,9 +61,13 @@ export async function createRecordingSession(
   const actions = createActions(actionContext);
   let state: SessionState = "active";
 
-  page.on("framenavigated", (frame) => {
-    if (frame !== page.mainFrame() || frame.url() === "about:blank") return;
-    tracker.push({ type: "navigation", url: frame.url() });
+  // A frame commits before the browser has painted the destination, so using
+  // framenavigated here leaves blank navigation frames at the start of renders.
+  // DOMContentLoaded is the first reliable point at which the page is renderable.
+  page.on("domcontentloaded", () => {
+    const url = page.url();
+    if (url === "about:blank") return;
+    tracker.push({ type: "navigation", url });
   });
 
   const closeBrowser = async (): Promise<void> => {
