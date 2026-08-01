@@ -1,7 +1,7 @@
 # Third-Party Notices
 
-The MIT License in `LICENSE` applies to Noice Demo Recorder's original code.
-Third-party software included with or used by Noice Demo Recorder remains
+The MIT License in `LICENSE` applies to Demo Recorder's original code.
+Third-party software included with or used by Demo Recorder remains
 subject to its own license terms.
 
 ## Inter font
@@ -15,7 +15,7 @@ Project: https://github.com/rsms/inter
 
 ## FFmpeg
 
-Noice Demo Recorder invokes separately installed `ffmpeg` and `ffprobe`
+Demo Recorder invokes separately installed `ffmpeg` and `ffprobe`
 executables but does not bundle or redistribute them. FFmpeg licensing depends
 on how a particular binary was configured and is documented by the provider of
 that binary.
@@ -24,7 +24,7 @@ Project and legal information: https://ffmpeg.org/legal.html
 
 ## Playwright
 
-Noice Demo Recorder uses Playwright 1.62.1 and playwright-core under the
+Demo Recorder uses Playwright 1.62.1 and playwright-core under the
 Apache License 2.0.
 
 Project: https://playwright.dev/
