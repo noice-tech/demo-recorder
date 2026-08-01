@@ -3,25 +3,25 @@
   "version": "0.0.1",
   "description": "Create product demo videos for web apps with coding agents",
   "keywords": [
-    "product-demo",
+    "agent-skill",
+    "browser-automation",
+    "browser-recording",
+    "cli",
+    "coding-agent",
     "demo-recorder",
     "demo-video",
-    "product-demo-automation",
-    "browser-recording",
-    "browser-automation",
-    "web-app",
-    "coding-agent",
-    "agent-skill",
-    "playwright",
     "ffmpeg",
-    "cli"
+    "playwright",
+    "product-demo",
+    "product-demo-automation",
+    "web-app"
   ],
   "homepage": "https://github.com/noice-tech/demo-recorder#readme",
   "bugs": {
     "url": "https://github.com/noice-tech/demo-recorder/issues"
   },
-  "author": "Noice.Tech",
   "license": "MIT",
+  "author": "Noice.Tech",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/noice-tech/demo-recorder.git"
