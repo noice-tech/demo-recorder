@@ -14,19 +14,32 @@ function even(value: number): number {
 
 export function productDemoGeometry(
   viewport: Pick<Viewport, "width" | "height">,
-  output: { width: number; height: number; padding: number },
+  output: {
+    width: number;
+    height: number;
+    padding: number;
+    paddingMode: "minimum" | "exact";
+  },
 ): ProductDemoGeometry {
   if (
     output.padding * 2 >= output.width ||
     output.padding * 2 + BROWSER_TITLE_BAR_HEIGHT >= output.height
   )
     throw new Error("Canvas padding leaves no room for the browser frame");
-  const raw = containRect(viewport, {
+  const available = {
     x: output.padding,
     y: output.padding + BROWSER_TITLE_BAR_HEIGHT,
     width: output.width - output.padding * 2,
     height: output.height - output.padding * 2 - BROWSER_TITLE_BAR_HEIGHT,
-  });
+  };
+  const availableRatio = available.width / available.height;
+  const viewportRatio = viewport.width / viewport.height;
+  if (output.paddingMode === "exact" && Math.abs(viewportRatio / availableRatio - 1) > 0.002) {
+    throw new Error(
+      `Exact ${output.padding}px padding requires a capture viewport ratio near ${availableRatio.toFixed(4)}; received ${viewport.width}x${viewport.height}`,
+    );
+  }
+  const raw = output.paddingMode === "exact" ? available : containRect(viewport, available);
   const content = {
     x: Math.round(raw.x),
     y: Math.round(raw.y),

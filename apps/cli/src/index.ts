@@ -39,7 +39,7 @@ function usage(): string {
     "  demo-recorder record --plan <demo-plan.json> [--headed]",
     "  demo-recorder run <demo-plan.json> [--headed]",
     "  demo-recorder auth <start|save|stop|verify|remove|list> [options]",
-    "  demo-recorder render <recording> [--aspect-ratio RATIO | --size WIDTHxHEIGHT] [--padding PX]",
+    "  demo-recorder render <recording> [--aspect-ratio RATIO | --size WIDTHxHEIGHT] [--padding PX] [--padding-mode minimum|exact]",
   ].join("\n");
 }
 
@@ -87,6 +87,7 @@ export const commandOptions: Record<string, OptionDefinitions> = {
     "aspect-ratio": { type: "string" },
     size: { type: "string" },
     padding: { type: "string" },
+    "padding-mode": { type: "string" },
   },
   create: {},
 };
@@ -178,10 +179,14 @@ const commandHandlers = new Map<string, CommandHandler>([
       const aspectRatio = stringOption(parsed, "aspect-ratio");
       if (size && aspectRatio) throw new Error("Use either --aspect-ratio or --size, not both");
       const padding = nonNegativeNumberOption(parsed, "padding");
+      const paddingMode = stringOption(parsed, "padding-mode");
+      if (paddingMode && !["minimum", "exact"].includes(paddingMode))
+        throw new Error("--padding-mode must be minimum or exact");
       return renderRecording(requireArgument(parsed.positionals[0], "render"), {
         ...size,
         ...(aspectRatio ? { aspectRatio } : {}),
         ...(padding !== undefined ? { padding } : {}),
+        ...(paddingMode ? { paddingMode: paddingMode as "minimum" | "exact" } : {}),
       });
     },
   ],

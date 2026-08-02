@@ -5,12 +5,14 @@ export type CanvasOptions = {
   width?: number | undefined;
   height?: number | undefined;
   padding?: number | undefined;
+  paddingMode?: "minimum" | "exact" | undefined;
 };
 
 export type ResolvedCanvas = {
   width: number;
   height: number;
   padding: number;
+  paddingMode: "minimum" | "exact";
 };
 
 const DEFAULT_PADDING = 97.2;
@@ -31,6 +33,19 @@ function ratioFromText(value: string, source: Pick<Viewport, "width" | "height">
   return width / height;
 }
 
+function resolved(
+  width: number,
+  height: number,
+  options: CanvasOptions | undefined,
+): ResolvedCanvas {
+  return {
+    width: even(width),
+    height: even(height),
+    padding: options?.padding ?? DEFAULT_PADDING,
+    paddingMode: options?.paddingMode ?? "minimum",
+  };
+}
+
 export function resolveCanvas(
   options: CanvasOptions | undefined,
   source: Pick<Viewport, "width" | "height">,
@@ -38,22 +53,15 @@ export function resolveCanvas(
   if (options?.width !== undefined || options?.height !== undefined) {
     if (options.width === undefined || options.height === undefined)
       throw new Error("Canvas width and height must be specified together");
-    return {
-      width: even(options.width),
-      height: even(options.height),
-      padding: options.padding ?? DEFAULT_PADDING,
-    };
+    return resolved(options.width, options.height, options);
   }
 
   const aspectRatio = options?.aspectRatio ?? "16:9";
-  if (aspectRatio === "16:9")
-    return { width: 1920, height: 1080, padding: options?.padding ?? DEFAULT_PADDING };
-  if (aspectRatio === "1:1")
-    return { width: 1080, height: 1080, padding: options?.padding ?? DEFAULT_PADDING };
-  if (aspectRatio === "9:16")
-    return { width: 1080, height: 1920, padding: options?.padding ?? DEFAULT_PADDING };
+  if (aspectRatio === "16:9") return resolved(1920, 1080, options);
+  if (aspectRatio === "1:1") return resolved(1080, 1080, options);
+  if (aspectRatio === "9:16") return resolved(1080, 1920, options);
 
   const ratio = ratioFromText(aspectRatio, source);
   const [width, height] = ratio >= 1 ? [1920, 1920 / ratio] : [1920 * ratio, 1920];
-  return { width: even(width), height: even(height), padding: options?.padding ?? DEFAULT_PADDING };
+  return resolved(width, height, options);
 }

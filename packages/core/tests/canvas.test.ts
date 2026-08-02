@@ -9,6 +9,7 @@ describe("canvas resolution", () => {
       width: 1920,
       height: 1080,
       padding: 97.2,
+      paddingMode: "minimum",
     });
   });
 
@@ -17,6 +18,7 @@ describe("canvas resolution", () => {
       width: 1080,
       height: 1080,
       padding: 72,
+      paddingMode: "minimum",
     });
     expect(resolveCanvas({ aspectRatio: "9:16" }, source)).toMatchObject({
       width: 1080,
@@ -37,6 +39,7 @@ describe("canvas resolution", () => {
       width: 1602,
       height: 1002,
       padding: 0,
+      paddingMode: "minimum",
     });
     expect(() => resolveCanvas({ width: 1600 }, source)).toThrow("specified together");
     expect(() => resolveCanvas({ aspectRatio: "0:1" }, source)).toThrow("positive");

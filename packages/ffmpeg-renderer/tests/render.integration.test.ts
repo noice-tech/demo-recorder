@@ -29,6 +29,7 @@ function renderInput() {
       height: 1080,
       fps: 30,
       padding: 97.2,
+      paddingMode: "minimum" as const,
       cursorEnabled: true,
       zoom: { enterDurationMs: 350, exitDurationMs: 450 },
     },

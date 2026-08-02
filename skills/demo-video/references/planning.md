@@ -33,7 +33,7 @@ Use a version 1 `demo-plan.json`. When a persistent exploration path passed veri
   },
   "presentation": {
     "beats": [{ "label": "Examples", "importance": "primary" }],
-    "canvas": { "aspectRatio": "1:1", "padding": 72 }
+    "canvas": { "aspectRatio": "1:1", "padding": 72, "paddingMode": "minimum" }
   }
 }
 ```
@@ -57,6 +57,6 @@ A failed rehearsal writes the failing step, sanitized current URL, ARIA snapshot
 
 Choose `capture.viewport` before exploration when the user requests a particular browser size or responsive layout. The default is 1440×900. Pass the same value to exploration with `--viewport WIDTHxHEIGHT`; verified plan export preserves it. Browser viewport and output canvas are independent: for example, a 1280×720 browser can sit inside a square canvas. Changing the viewport after verification requires exploring and verifying again because responsive controls and locators may change.
 
-Presentation `canvas` controls final framing without changing the immutable browser recording. `aspectRatio` accepts `16:9`, `1:1`, `9:16`, `source`, or another positive `WIDTH:HEIGHT` ratio; alternatively use explicit `width` and `height`. `padding` is the minimum pixel distance between the canvas edge and browser frame. Defaults remain a 1920×1080 canvas and 97px padding. Canvas-only changes can be rerendered without recapturing. Use `demo-recorder render <recording> --aspect-ratio 1:1 --padding 72` for a temporary override, or `--size 1600x1000` for explicit dimensions.
+Presentation `canvas` controls final framing without changing the immutable browser recording. `aspectRatio` accepts `16:9`, `1:1`, `9:16`, `source`, or another positive `WIDTH:HEIGHT` ratio; alternatively use explicit `width` and `height`. `padding` is the requested pixel distance between the canvas edge and browser frame. `paddingMode` is `minimum` by default, preserving the complete capture and allowing extra space on one axis. Use `exact` only with a capture viewport matched to the available content rectangle; the renderer rejects mismatched ratios rather than stretching the interface. The available content ratio is `(canvasWidth - 2 × padding) / (canvasHeight - 2 × padding - 48)`. Defaults remain a 1920×1080 canvas and 97px minimum padding. Canvas-only changes can be rerendered without recapturing. Use `demo-recorder render <recording> --aspect-ratio 1:1 --padding 72` for a temporary override, or `--size 1600x1000` for explicit dimensions.
 
 Presentation may include absolute source-timeline `trimStartMs`, `trimEndMs`, and explicit `zoomSegments`. Prefer capture `hold` steps for deliberate pacing. Add trims only after inspecting a recording; the renderer validates them against source duration without changing the manifest or WebM.

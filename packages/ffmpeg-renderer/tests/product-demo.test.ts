@@ -32,6 +32,7 @@ const input: ProductDemoRenderInput = {
     height: 1080,
     fps: 30,
     padding: 97.2,
+    paddingMode: "minimum",
     cursorEnabled: true,
     zoom: { enterDurationMs: 350, exitDurationMs: 450 },
   },
@@ -56,11 +57,33 @@ describe("product demo graph generation", () => {
         width: 1080,
         height: 1080,
         padding: 72,
+        paddingMode: "minimum",
       }),
     ).toEqual({
       content: { x: 72, y: 272, width: 936, height: 586 },
       browser: { x: 72, y: 224, width: 936, height: 634 },
     });
+  });
+
+  it("uses exact four-sided padding for a matched capture viewport", () => {
+    expect(
+      productDemoGeometry(
+        { width: 1252, height: 900 },
+        { ...input.config, width: 1920, height: 1440, padding: 20, paddingMode: "exact" },
+      ),
+    ).toEqual({
+      content: { x: 20, y: 68, width: 1880, height: 1352 },
+      browser: { x: 20, y: 20, width: 1880, height: 1400 },
+    });
+    expect(() =>
+      productDemoGeometry(input.recording.viewport, {
+        ...input.config,
+        width: 1920,
+        height: 1440,
+        padding: 20,
+        paddingMode: "exact",
+      }),
+    ).toThrow("requires a capture viewport ratio");
   });
 
   it("emits frame-sampled cursor and click drawings with safe title text", () => {

@@ -111,6 +111,7 @@ export const presentationCanvasSchema = z
     width: z.number().int().positive().max(7680).optional(),
     height: z.number().int().positive().max(7680).optional(),
     padding: z.number().int().nonnegative().max(2000).optional(),
+    paddingMode: z.enum(["minimum", "exact"]).optional(),
   })
   .refine(
     (canvas) => {
