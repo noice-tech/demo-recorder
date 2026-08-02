@@ -161,7 +161,9 @@ describe.sequential("capture pipeline", () => {
       await expect(access(join(outputDirectory, "demo-plan.json"))).resolves.toBeUndefined();
       await expect(access(join(outputDirectory, "presentation.json"))).resolves.toBeUndefined();
       expect(manifest.events.some((event) => event.type === "click")).toBe(true);
-      expect(manifest.events.some((event) => event.type === "cursor-move")).toBe(true);
+      const initialCursor = manifest.events.find((event) => event.type === "cursor-move");
+      expect(initialCursor).toMatchObject({ x: 32, y: 32 });
+      expect(initialCursor?.timestampMs).toBeLessThan(10);
       expect(
         generateZoomSegments(manifest.events, manifest.durationMs, defaultConfig.zoom).length,
       ).toBeGreaterThan(0);

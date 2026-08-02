@@ -1,4 +1,10 @@
-export { generateCursorPath } from "./actions.js";
+export {
+  generateCursorPath,
+  targetPointWithinBounds,
+  type CursorBounds,
+  type CursorPoint,
+  type CursorViewport,
+} from "./cursor-motion.js";
 export { createRecordingBrowser } from "./create-browser.js";
 export { executeDemoPlan, recordDemoPlan, resolvePlanLocator } from "./plan.js";
 export { createRecordingSession } from "./session.js";

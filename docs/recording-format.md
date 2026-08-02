@@ -37,7 +37,7 @@ Unknown versions are rejected. New incompatible contracts require a new version 
 
 ## Timeline origin and duration
 
-The logical timeline begins at `0` when the recording session starts. All event timestamps are milliseconds on that same clock and are stored in nondecreasing order.
+The logical timeline begins at `0` with the first recorded screencast frame. All event timestamps are milliseconds on that same video-aligned clock and are stored in nondecreasing order.
 
 In version 1, `durationMs` must equal `video.durationMs`; both describe the source video timeline. Events may occur exactly at the duration but never after it.
 
@@ -78,7 +78,7 @@ The URL is the observed main-frame destination.
 { "type": "cursor-move", "timestampMs": 600, "x": 32, "y": 32 }
 ```
 
-Instrumented movement emits deterministic points that can be interpolated by the composition.
+Instrumented movement emits deterministic, frame-sampled points that can be interpolated by the composition. The first movement event establishes the synthetic cursor's initial position, and subsequent events preserve the curved capture trajectory.
 
 ### Click
 

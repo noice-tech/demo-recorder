@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { chromium, type Browser, type BrowserContext } from "playwright";
 import type { RecordingSessionOptions } from "./types.js";
 
@@ -9,10 +9,7 @@ export type RecordingBrowser = {
 
 export async function createRecordingBrowser(
   options: RecordingSessionOptions,
-  videoDirectory: string,
 ): Promise<RecordingBrowser> {
-  await mkdir(videoDirectory, { recursive: true });
-
   let browser: Browser;
   try {
     browser = await chromium.launch({ headless: options.headless ?? true });
@@ -26,7 +23,6 @@ export async function createRecordingBrowser(
   try {
     const context = await browser.newContext({
       viewport: options.viewport,
-      recordVideo: { dir: videoDirectory, size: options.viewport },
       ...(options.storageStatePath ? { storageState: options.storageStatePath } : {}),
     });
     if (options.sessionStoragePath) {
