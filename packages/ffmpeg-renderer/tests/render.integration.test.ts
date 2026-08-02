@@ -28,6 +28,8 @@ function renderInput() {
       width: 1920,
       height: 1080,
       fps: 30,
+      padding: 97.2,
+      paddingMode: "minimum" as const,
       cursorEnabled: true,
       zoom: { enterDurationMs: 350, exitDurationMs: 450 },
     },
@@ -104,6 +106,22 @@ describe.sequential("FFmpeg product-demo render", () => {
       codec: "h264",
       pixelFormat: "yuv420p",
       hasAudio: false,
+    });
+  });
+
+  it("renders a square canvas with custom padding", async () => {
+    const squareOutput = join(temporaryDirectory, "square render.mp4");
+    await renderProductDemo(
+      {
+        ...renderInput(),
+        config: { ...renderInput().config, width: 1080, height: 1080, padding: 72 },
+      },
+      { outputPath: squareOutput, assetsDirectory },
+    );
+    await expect(probeVideo(squareOutput)).resolves.toMatchObject({
+      width: 1080,
+      height: 1080,
+      durationMs: 2000,
     });
   });
 

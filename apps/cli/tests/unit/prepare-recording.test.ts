@@ -67,6 +67,20 @@ describe("prepareRecording", () => {
     expect(prepared.manifest.events).toHaveLength(3);
   });
 
+  it("resolves saved canvas settings and lets CLI dimensions override their ratio", async () => {
+    const directory = await createRecording();
+    await writeFile(join(directory, "browser.webm"), Buffer.from("video"));
+    await writeFile(
+      join(directory, "presentation.json"),
+      JSON.stringify({ canvas: { aspectRatio: "1:1", padding: 72 } }),
+    );
+
+    const square = await prepareRecording(directory);
+    expect(square.input.config).toMatchObject({ width: 1080, height: 1080, padding: 72 });
+    const explicit = await prepareRecording(directory, { width: 1600, height: 1000 });
+    expect(explicit.input.config).toMatchObject({ width: 1600, height: 1000, padding: 72 });
+  });
+
   it("rejects presentation trims outside the source duration", async () => {
     const directory = await createRecording();
     await writeFile(join(directory, "browser.webm"), Buffer.from("video"));

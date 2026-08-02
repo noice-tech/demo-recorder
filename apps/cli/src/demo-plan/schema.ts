@@ -1,3 +1,4 @@
+import { viewportSchema } from "@noice-tech/demo-recorder-core";
 import { z } from "zod";
 import { locatorMethodSchema } from "../browser/locator.js";
 
@@ -101,6 +102,32 @@ export const plannedZoomSchema = z
   })
   .refine((zoom) => zoom.endMs > zoom.startMs, "Zoom end must follow its start");
 
+export const presentationCanvasSchema = z
+  .object({
+    aspectRatio: z
+      .string()
+      .regex(/^(?:source|\d+(?:\.\d+)?:\d+(?:\.\d+)?)$/)
+      .optional(),
+    width: z.number().int().positive().max(7680).optional(),
+    height: z.number().int().positive().max(7680).optional(),
+    padding: z.number().int().nonnegative().max(2000).optional(),
+    paddingMode: z.enum(["minimum", "exact"]).optional(),
+  })
+  .refine(
+    (canvas) => {
+      if (!canvas.aspectRatio || canvas.aspectRatio === "source") return true;
+      const [width, height] = canvas.aspectRatio.split(":").map(Number);
+      return Boolean(width && height && width > 0 && height > 0);
+    },
+    { message: "Canvas aspect ratio values must be positive" },
+  )
+  .refine((canvas) => (canvas.width === undefined) === (canvas.height === undefined), {
+    message: "Canvas width and height must be specified together",
+  })
+  .refine((canvas) => canvas.aspectRatio === undefined || canvas.width === undefined, {
+    message: "Use either canvas aspectRatio or explicit width and height",
+  });
+
 export const demoPlanSchema = z.object({
   version: z.literal(1),
   name: nonempty.regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
@@ -112,7 +139,10 @@ export const demoPlanSchema = z.object({
     readinessUrl: z.url().optional(),
     authProfile: nonempty.optional(),
   }),
-  capture: z.object({ steps: z.array(demoActionSchema).min(1).max(500) }),
+  capture: z.object({
+    viewport: viewportSchema.optional(),
+    steps: z.array(demoActionSchema).min(1).max(500),
+  }),
   presentation: z
     .object({
       beats: z
@@ -126,6 +156,7 @@ export const demoPlanSchema = z.object({
       zoomSegments: z.array(plannedZoomSchema).optional(),
       trimStartMs: z.number().nonnegative().optional(),
       trimEndMs: z.number().positive().optional(),
+      canvas: presentationCanvasSchema.optional(),
     })
     .refine(
       (presentation) =>

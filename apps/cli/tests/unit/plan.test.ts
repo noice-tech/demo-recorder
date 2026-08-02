@@ -21,6 +21,34 @@ describe("demo plan", () => {
     expect(plan.brief.constraints.submitForms).toBe(false);
   });
 
+  it("accepts independent capture viewport and presentation canvas settings", () => {
+    const plan = parseDemoPlan({
+      ...basePlan,
+      capture: { ...basePlan.capture, viewport: { width: 1280, height: 720 } },
+      presentation: {
+        beats: [],
+        canvas: { aspectRatio: "1:1", padding: 72 },
+      },
+    });
+    expect(plan.capture.viewport).toEqual({ width: 1280, height: 720 });
+    expect(plan.presentation.canvas).toEqual({ aspectRatio: "1:1", padding: 72 });
+  });
+
+  it("rejects invalid or conflicting canvas dimensions", () => {
+    expect(() =>
+      parseDemoPlan({
+        ...basePlan,
+        presentation: { beats: [], canvas: { aspectRatio: "0:1" } },
+      }),
+    ).toThrow(/positive/);
+    expect(() =>
+      parseDemoPlan({
+        ...basePlan,
+        presentation: { beats: [], canvas: { width: 1080 } },
+      }),
+    ).toThrow(/specified together/);
+  });
+
   it("rejects cross-origin navigation by default", () => {
     expect(() =>
       parseDemoPlan({

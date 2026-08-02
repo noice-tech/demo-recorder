@@ -10,10 +10,11 @@ export async function createGuardedBrowserContext(
     storageStatePath?: string;
     sessionStoragePath?: string;
     onBlockedNavigation?: (url: string) => void;
+    viewport?: { width: number; height: number };
   },
 ): Promise<BrowserContext> {
   const context = await browser.newContext({
-    viewport: explorationViewport,
+    viewport: options.viewport ?? explorationViewport,
     acceptDownloads: false,
     ...(options.storageStatePath ? { storageState: options.storageStatePath } : {}),
   });

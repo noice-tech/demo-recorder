@@ -4,7 +4,6 @@ import {
   buildProductDemoFilterGraph,
   generateTimedOverlayScript,
   productDemoGeometry,
-  renderProductDemo,
 } from "../src/index.js";
 
 const input: ProductDemoRenderInput = {
@@ -32,6 +31,8 @@ const input: ProductDemoRenderInput = {
     width: 1920,
     height: 1080,
     fps: 30,
+    padding: 97.2,
+    paddingMode: "minimum",
     cursorEnabled: true,
     zoom: { enterDurationMs: 350, exitDurationMs: 450 },
   },
@@ -49,13 +50,40 @@ describe("product demo graph generation", () => {
     expect(graph.script).toContain("trim=start=0.25:end=1.75");
   });
 
-  it("rejects output dimensions outside the version 1 contract", async () => {
-    await expect(
-      renderProductDemo(
-        { ...input, config: { ...input.config, width: 1280, height: 720 } },
-        { outputPath: "/unused.mp4", assetsDirectory: "/unused" },
+  it("computes geometry for square output and configurable padding", () => {
+    expect(
+      productDemoGeometry(input.recording.viewport, {
+        ...input.config,
+        width: 1080,
+        height: 1080,
+        padding: 72,
+        paddingMode: "minimum",
+      }),
+    ).toEqual({
+      content: { x: 72, y: 272, width: 936, height: 586 },
+      browser: { x: 72, y: 224, width: 936, height: 634 },
+    });
+  });
+
+  it("uses exact four-sided padding for a matched capture viewport", () => {
+    expect(
+      productDemoGeometry(
+        { width: 1252, height: 900 },
+        { ...input.config, width: 1920, height: 1440, padding: 20, paddingMode: "exact" },
       ),
-    ).rejects.toThrow("only 1920x1080");
+    ).toEqual({
+      content: { x: 20, y: 68, width: 1880, height: 1352 },
+      browser: { x: 20, y: 20, width: 1880, height: 1400 },
+    });
+    expect(() =>
+      productDemoGeometry(input.recording.viewport, {
+        ...input.config,
+        width: 1920,
+        height: 1440,
+        padding: 20,
+        paddingMode: "exact",
+      }),
+    ).toThrow("requires a capture viewport ratio");
   });
 
   it("emits frame-sampled cursor and click drawings with safe title text", () => {

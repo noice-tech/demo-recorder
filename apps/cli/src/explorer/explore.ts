@@ -73,7 +73,7 @@ export async function exploreSite(options: ExploreSiteOptions): Promise<Explorat
 
   const browser = await chromium.launch({ headless: options.headless ?? true });
   const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
+    viewport: options.viewport ?? { width: 1440, height: 900 },
     ...(options.storageStatePath ? { storageState: options.storageStatePath } : {}),
   });
   if (options.sessionStoragePath) {

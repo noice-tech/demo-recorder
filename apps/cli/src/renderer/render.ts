@@ -1,4 +1,5 @@
 import { join, resolve } from "node:path";
+import type { CanvasOptions } from "@noice-tech/demo-recorder-core";
 import { renderProductDemo } from "@noice-tech/demo-recorder-ffmpeg";
 import { prepareRecording } from "./prepare-recording.js";
 
@@ -10,6 +11,7 @@ export type RenderDemoVideoOptions = {
   ffprobePath?: string;
   signal?: AbortSignal;
   log?: (message: string) => void;
+  canvas?: CanvasOptions;
 };
 
 export type RenderDemoVideoResult = {
@@ -31,7 +33,7 @@ export async function renderDemoVideo(
   options: RenderDemoVideoOptions,
 ): Promise<RenderDemoVideoResult> {
   const log = options.log ?? ((message: string) => console.log(`[demo-recorder] ${message}`));
-  const prepared = await prepareRecording(recordingPath).catch((error: unknown) => {
+  const prepared = await prepareRecording(recordingPath, options.canvas).catch((error: unknown) => {
     throw stageError("Recording preparation", error);
   });
   const zoomSegmentCount = prepared.input.timeline.zoomSegments.length;

@@ -4,7 +4,6 @@ import { ExplorationArtifactStore, explorationArtifactLimits } from "./artifacts
 import {
   attachBlockedInteractionHandlers,
   createGuardedBrowserContext,
-  explorationViewport,
   performExplorationScroll,
   waitForSemanticQuiet,
 } from "./browser-runtime.js";
@@ -171,6 +170,7 @@ export class InteractiveExplorationSession {
     this.browser = await chromium.launch({ headless: this.config.headless });
     this.context = await createGuardedBrowserContext(this.browser, {
       baseUrl: this.config.baseUrl,
+      viewport: this.config.viewport ?? { width: 1440, height: 900 },
       ...(this.config.storageStatePath ? { storageStatePath: this.config.storageStatePath } : {}),
       ...(this.config.sessionStoragePath
         ? { sessionStoragePath: this.config.sessionStoragePath }
@@ -264,7 +264,7 @@ export class InteractiveExplorationSession {
       url: sanitizeExplorationUrl(currentUrl),
       pathname: semantics.pathname,
       title: semantics.title,
-      viewport: explorationViewport,
+      viewport: this.config.viewport ?? { width: 1440, height: 900 },
       scroll: semantics.scroll,
       headings: semantics.headings,
       layers: semantics.layers,

@@ -181,7 +181,7 @@ export function exportVerifiedPathToDemoPlan(options: {
       ...(options.config.readinessUrl ? { readinessUrl: options.config.readinessUrl } : {}),
       ...(options.config.authProfile ? { authProfile: options.config.authProfile } : {}),
     },
-    capture: { steps },
+    capture: { viewport: options.config.viewport ?? { width: 1440, height: 900 }, steps },
     presentation: { beats },
   });
 }

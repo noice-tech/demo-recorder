@@ -18,6 +18,8 @@ export const demoVideoConfigSchema = z.object({
     width: z.number().int().positive(),
     height: z.number().int().positive(),
     fps: z.number().int().positive(),
+    padding: z.number().nonnegative(),
+    paddingMode: z.enum(["minimum", "exact"]),
   }),
   cursor: z.object({ enabled: z.boolean() }),
   zoom: zoomConfigSchema,

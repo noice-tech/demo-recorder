@@ -90,6 +90,12 @@ export function planStoryboard(plan: DemoPlan): string {
     plan.brief.goal,
     "",
     `Target: ${plan.target.baseUrl}`,
+    `Browser viewport: ${plan.capture.viewport?.width ?? 1440}×${plan.capture.viewport?.height ?? 900}`,
+    `Output canvas: ${
+      plan.presentation.canvas?.width
+        ? `${plan.presentation.canvas.width}×${plan.presentation.canvas.height}`
+        : (plan.presentation.canvas?.aspectRatio ?? "16:9")
+    }, padding ${plan.presentation.canvas?.padding ?? "default"}`,
     `Estimated duration: ${(estimatePlanDurationMs(plan) / 1000).toFixed(1)} seconds`,
     "",
     "## Actions",

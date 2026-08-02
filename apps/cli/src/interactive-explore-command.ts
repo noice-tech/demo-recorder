@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { numberOption, stringOption, type ParsedArguments } from "./arguments.js";
+import { dimensionsOption, numberOption, stringOption, type ParsedArguments } from "./arguments.js";
 import {
   actAndObserveInteractiveSession,
   authProfilePaths,
@@ -136,6 +136,7 @@ async function startCommand(arguments_: ParsedArguments): Promise<string> {
       baseUrl: url,
       outputDirectory,
       headless: !arguments_.options.has("headed"),
+      viewport: dimensionsOption(arguments_, "viewport") ?? { width: 1440, height: 900 },
       policy: explorationPolicySchema.parse(stringOption(arguments_, "policy") ?? "read-only"),
       maxActions: numberOption(arguments_, "max-actions", 40),
       maxDurationMs: numberOption(arguments_, "max-duration-ms", 5 * 60_000),

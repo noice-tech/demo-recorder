@@ -24,6 +24,9 @@ export const explorationLaunchConfigSchema = z.object({
   baseUrl: z.url(),
   outputDirectory: nonempty,
   headless: z.boolean(),
+  viewport: z
+    .object({ width: z.number().int().positive(), height: z.number().int().positive() })
+    .optional(),
   policy: explorationPolicySchema,
   maxActions: z.number().int().positive().max(500),
   maxDurationMs: z

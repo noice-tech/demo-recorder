@@ -40,7 +40,7 @@ export async function recordPlan(
     console.log(`[demo-recorder] Recording plan: ${plan.name}`);
     await recordDemoPlan(plan, {
       outputDirectory,
-      viewport: { width: 1440, height: 900 },
+      viewport: plan.capture.viewport ?? { width: 1440, height: 900 },
       headless: options.headless ?? true,
       ...(authPaths
         ? {

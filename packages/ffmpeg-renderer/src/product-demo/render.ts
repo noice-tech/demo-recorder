@@ -33,9 +33,6 @@ export async function renderProductDemo(
   input: ProductDemoRenderInput,
   options: RenderProductDemoOptions,
 ): Promise<RenderProductDemoResult> {
-  if (input.config.width !== 1920 || input.config.height !== 1080) {
-    throw new Error("The initial FFmpeg renderer supports only 1920x1080 output");
-  }
   const ffmpegPath = options.ffmpegPath ?? process.env.DEMO_RECORDER_FFMPEG ?? "ffmpeg";
   const ffprobePath = options.ffprobePath ?? process.env.DEMO_RECORDER_FFPROBE ?? "ffprobe";
   const capabilities = await inspectFfmpegCapabilities({ ffmpegPath, ffprobePath });
