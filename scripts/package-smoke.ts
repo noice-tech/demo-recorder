@@ -306,6 +306,38 @@ try {
     await fixture.close();
   }
 
+  const recordings = await readdir(join(workspace, "recordings"));
+  if (recordings.length !== 1)
+    throw new Error(`Expected one raw recording, found ${recordings.length}`);
+  const recordingDirectory = join(workspace, "recordings", recordings[0]!);
+  const recording = JSON.parse(
+    await readFile(join(recordingDirectory, "recording.json"), "utf8"),
+  ) as { video?: { path?: string } };
+  const diagnostics = JSON.parse(
+    await readFile(join(recordingDirectory, "metadata.json"), "utf8"),
+  ) as { recorder?: string; fps?: number };
+  if (diagnostics.recorder !== "cdp-ffmpeg" || diagnostics.fps !== 60) {
+    throw new Error(`Packaged recorder did not use CDP/FFmpeg at 60 FPS`);
+  }
+  const sourcePath = join(recordingDirectory, recording.video?.path ?? "missing");
+  const { stdout: sourceFrameRate } = await execute(
+    process.env.DEMO_RECORDER_FFPROBE ?? "ffprobe",
+    [
+      "-v",
+      "error",
+      "-select_streams",
+      "v:0",
+      "-show_entries",
+      "stream=avg_frame_rate",
+      "-of",
+      "default=noprint_wrappers=1:nokey=1",
+      sourcePath,
+    ],
+  );
+  if (sourceFrameRate.trim() !== "60/1") {
+    throw new Error(`Packaged raw recording is not 60 FPS: ${sourceFrameRate.trim()}`);
+  }
+
   const outputs = (await readdir(join(workspace, "output"))).filter((name) =>
     name.endsWith(".mp4"),
   );

@@ -5,14 +5,14 @@ Each successful capture creates:
 ```text
 recordings/<recording-id>/
 ├── recording.json
-├── browser.webm
+├── browser.mp4
 ├── metadata.json
 ├── demo-plan.json       # present for plan-driven recordings
 ├── presentation.json    # present for plan-driven recordings
 └── artifacts/
 ```
 
-`recording.json` is the versioned contract between Playwright capture and timeline/render processing. `metadata.json` is optional diagnostics and is not part of that contract. Plan-driven captures also preserve the validated plan and presentation direction as separate, non-manifest files.
+`recording.json` is the versioned contract between Chromium capture and timeline/render processing. `metadata.json` is optional diagnostics and is not part of that contract. Plan-driven captures also preserve the validated plan and presentation direction as separate, non-manifest files.
 
 ## Version 1
 
@@ -24,7 +24,7 @@ recordings/<recording-id>/
   "durationMs": 6720,
   "viewport": { "width": 1440, "height": 900 },
   "video": {
-    "path": "browser.webm",
+    "path": "browser.mp4",
     "width": 1440,
     "height": 900,
     "durationMs": 6720
@@ -37,7 +37,7 @@ Unknown versions are rejected. New incompatible contracts require a new version 
 
 ## Timeline origin and duration
 
-The logical timeline begins at `0` with the first recorded screencast frame. All event timestamps are milliseconds on that same video-aligned clock and are stored in nondecreasing order.
+The logical timeline begins at `0` with the first recorded CDP screencast frame. All event timestamps are milliseconds on that same video-aligned clock and are stored in nondecreasing order.
 
 In version 1, `durationMs` must equal `video.durationMs`; both describe the source video timeline. Events may occur exactly at the duration but never after it.
 
@@ -103,7 +103,7 @@ Version 1 records only navigation, cursor movement, and click events. Fill, pres
 
 ## Source video relationship
 
-`video.path` is relative to the manifest directory. The renderer rejects absolute paths, traversal, missing files, and symlinks resolving outside that directory. Width and height are measured from the finalized Playwright WebM, not estimated from configuration.
+`video.path` is relative to the manifest directory. The renderer rejects absolute paths, traversal, missing files, and symlinks resolving outside that directory. Width and height are measured from the finalized 60 FPS H.264 source, not estimated from configuration. The source is constant-frame-rate; when Chromium supplies fewer than 60 unique paints per second, the recorder repeats the latest frame to preserve real-time duration and the 60 FPS contract.
 
 The native browser cursor is hidden during capture. The final cursor and click response are reconstructed from events.
 

@@ -1,4 +1,4 @@
-import { access, mkdtemp, readdir, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,7 @@ import {
   generateZoomSegments,
   loadRecordingManifest,
 } from "@noice-tech/demo-recorder-core";
+import { probeVideo } from "@noice-tech/demo-recorder-ffmpeg";
 import { chromium } from "playwright";
 import { afterAll, describe, expect, it } from "vitest";
 import { recordDemoPlan, resolvePlanLocator } from "../src/capture/index.js";
@@ -157,7 +158,17 @@ describe.sequential("capture pipeline", () => {
         headless: true,
       });
 
-      await expect(access(join(outputDirectory, manifest.video.path))).resolves.toBeUndefined();
+      const sourcePath = join(outputDirectory, manifest.video.path);
+      await expect(access(sourcePath)).resolves.toBeUndefined();
+      const source = await probeVideo(sourcePath);
+      expect(source.fps).toBe(60);
+      expect(source.width).toBe(1440);
+      expect(source.height).toBe(900);
+      const diagnostics = JSON.parse(
+        await readFile(join(outputDirectory, "metadata.json"), "utf8"),
+      ) as { recorder?: string; fps?: number; emittedFrames?: number };
+      expect(diagnostics).toMatchObject({ recorder: "cdp-ffmpeg", fps: 60 });
+      expect(diagnostics.emittedFrames).toBeGreaterThan(0);
       await expect(access(join(outputDirectory, "demo-plan.json"))).resolves.toBeUndefined();
       await expect(access(join(outputDirectory, "presentation.json"))).resolves.toBeUndefined();
       expect(manifest.events.some((event) => event.type === "click")).toBe(true);
