@@ -7,9 +7,6 @@ settings:
 overrides:
   postcss: 8.5.25
 
-patchedDependencies:
-  playwright-core@1.62.1: 1f9789044ae3e76dbc6a973749d789c2dd6d193ce363be32654cd25b149484ff
-
 importers:
 
   .:
@@ -2299,11 +2296,11 @@ snapshots:
 
   picomatch@4.0.5: {}
 
-  playwright-core@1.62.1(patch_hash=1f9789044ae3e76dbc6a973749d789c2dd6d193ce363be32654cd25b149484ff): {}
+  playwright-core@1.62.1: {}
 
   playwright@1.62.1:
     dependencies:
-      playwright-core: 1.62.1(patch_hash=1f9789044ae3e76dbc6a973749d789c2dd6d193ce363be32654cd25b149484ff)
+      playwright-core: 1.62.1
     optionalDependencies:
       fsevents: 2.3.2
 

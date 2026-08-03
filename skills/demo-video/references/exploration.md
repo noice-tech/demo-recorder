@@ -35,7 +35,7 @@ node "$DR_CLI" explore act product-demo \
 
 A successful `act` response includes both the transition and the already-captured resulting observation with fresh refs. Continue from that observation instead of issuing a redundant `observe` command.
 
-Supported session actions are `click`, `hover`, `goto`, `back`, finite `scroll`, and bounded `wait`. Use `find` to identify content and a small number of direct exploration scrolls to inspect it. Do not copy incremental exploratory scrolls into the final plan; combine them into the fewest directed capture scrolls that preserve the intended story.
+Supported session actions are `click`, `hover`, `goto`, `back`, finite `scroll`, and bounded `wait`. Use `find` to identify content and a small number of direct exploration scrolls to inspect it. `goto` and `back` are discovery tools: do not select them for a final visible story transition when the interface offers a link, card, tab, or button a human can click. Explore and verify that visible click instead, including any scroll or overlay dismissal needed to expose it. Do not copy incremental exploratory scrolls into the final plan; combine them into the fewest directed capture scrolls that preserve the intended story.
 
 The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked. Open shadow-root controls are discoverable through Playwright locators. Child-frame controls do not receive main-frame refs in this version; treat them as unsupported and report the limitation rather than guessing a selector.
 
@@ -94,7 +94,7 @@ node "$DR_CLI" explore export-plan product-demo \
   --json
 ```
 
-The exporter uses the locator candidate actually proven during replay, retains bounded fallbacks, and compiles observed URL/heading changes into ordinary plan assertions. Treat its navigation, click, move, scroll, locator, URL, and generated assertion steps as the verified interaction core. Do not manually reconstruct those steps. Editorial edits may change the brief, purposes, timing holds, beats, and presentation. If the story needs an interaction export cannot represent, change only that unsupported portion and require rehearsal to prove it. Write a plan from scratch only when there is no verified interactive path. The exporter is a deterministic handoff, not semantic story generation.
+The exporter uses the locator candidate actually proven during replay, retains bounded fallbacks, and compiles observed URL/heading changes into ordinary plan assertions. Treat its click, move, scroll, locator, URL, and generated assertion steps as the verified interaction core. Do not manually reconstruct those steps. The initial `navigate` establishes the recording, but a mid-story `navigate` exported from an exploration `goto` is not presentation-ready: return to exploration and verify the visible click path rather than shipping a cursorless route change. Editorial edits may change the brief, purposes, timing holds, beats, and presentation. If the story needs an interaction export cannot represent, change only that unsupported portion and require rehearsal to prove it. Write a plan from scratch only when there is no verified interactive path. The exporter is a deterministic handoff, not semantic story generation.
 
 Always close the session:
 

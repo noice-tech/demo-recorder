@@ -58,6 +58,21 @@ describe("demo plan", () => {
     ).toThrow(/outside/);
   });
 
+  it("rejects invisible mid-story route changes", () => {
+    expect(() =>
+      parseDemoPlan({
+        ...basePlan,
+        capture: {
+          steps: [
+            { type: "navigate", url: "/" },
+            { type: "hold", durationMs: 800 },
+            { type: "navigate", url: "/pricing" },
+          ],
+        },
+      }),
+    ).toThrow(/must click a visible link or button/);
+  });
+
   it("rejects likely mutations in a read-only plan", () => {
     expect(() =>
       parseDemoPlan({

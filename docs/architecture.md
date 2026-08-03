@@ -9,7 +9,7 @@ User brief → Coding agent + skill
                     ↓
           Validated DemoPlan
                     ↓
-       Recorder → recording.json + browser.webm
+       Recorder → recording.json + browser.mp4
                     ↓
             Timeline Processing
                     ↓
@@ -46,13 +46,13 @@ A detached loopback auth session opens headed Chromium while returning conversat
 
 ## 6. Recorder
 
-`apps/cli/src/capture` owns Chromium video capture, the shared relative clock, interaction instrumentation, plan locator resolution, plan execution, media inspection, and finalization. The interaction clock is anchored to the first screencast frame so synthetic cursor events and browser paint timestamps share the same video origin. Instrumented navigation, movement, click, fill, key, selection, scroll, visibility, URL, and hold actions execute a validated plan. Capture and rehearsal scroll actions use cross-platform, 60 Hz wheel gestures with brief acceleration and a longer momentum decay. Exploration uses a fast finite wheel action because it needs the resulting state rather than presentation-quality motion.
+`apps/cli/src/capture` owns Chromium video capture, the shared relative clock, interaction instrumentation, plan locator resolution, plan execution, media inspection, and finalization. Capture uses Chromium's public CDP screencast interface and streams JPEG frames into user-installed FFmpeg rather than relying on Playwright's built-in recorder. An absolute 60 Hz scheduler produces constant-frame-rate H.264 while duplicating the latest browser frame when Chromium does not paint a new frame. The interaction clock is anchored to receipt of the first CDP frame so synthetic cursor events and browser frames share the same video origin. Instrumented navigation, movement, click, fill, key, selection, scroll, visibility, URL, and hold actions execute a validated plan. Capture and rehearsal scroll actions use cross-platform, 60 Hz wheel gestures with brief acceleration and a longer momentum decay. Exploration uses a fast finite wheel action because it needs the resulting state rather than presentation-quality motion.
 
 The recorder executes validated plan actions through instrumented Playwright helpers so cursor and semantic metadata remain synchronized. Cursor gestures use deterministic, viewport-safe curved paths, minimum-jerk timing, and safely inset target points instead of repeatedly moving to exact element centers. Locator candidates must resolve to exactly one element; ambiguous matches are errors rather than implicit first-element selection. Incomplete recording directories are removed on failure.
 
 ## 7. Recording format
 
-A recording directory contains immutable `recording.json` capture facts and `browser.webm`. Agent-authored `demo-plan.json` and `presentation.json` are separate inputs. This preserves the recording boundary: changing direction never rewrites what Playwright captured.
+A recording directory contains immutable `recording.json` capture facts and `browser.mp4`. Agent-authored `demo-plan.json` and `presentation.json` are separate inputs. This preserves the recording boundary: changing direction never rewrites what Playwright captured.
 
 ## 8. Timeline processing
 

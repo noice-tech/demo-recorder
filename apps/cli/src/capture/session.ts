@@ -7,6 +7,7 @@ import {
 } from "@noice-tech/demo-recorder-core";
 import type { Page } from "playwright";
 import { createActions } from "./actions.js";
+import { startCdpRecorder, type CdpRecorder } from "./cdp-recorder.js";
 import { createRecordingBrowser } from "./create-browser.js";
 import { createInteractionTracker } from "./interaction-tracker.js";
 import { probeVideo } from "./media-metadata.js";
@@ -26,7 +27,7 @@ export async function createRecordingSession(
   }
 
   const artifactsDirectory = join(outputDirectory, "artifacts");
-  const browserVideoPath = join(outputDirectory, "browser.webm");
+  const browserVideoPath = join(outputDirectory, "browser.mp4");
   await mkdir(artifactsDirectory);
   let recordingBrowser: Awaited<ReturnType<typeof createRecordingBrowser>>;
   try {
@@ -38,39 +39,29 @@ export async function createRecordingSession(
 
   const createdAt = new Date().toISOString();
   let page: Page;
-  let firstFrameAtNs: bigint | undefined;
-  let resolveFirstFrame: (() => void) | undefined;
-  const firstFrameReceived = new Promise<void>((resolveFrame) => {
-    resolveFirstFrame = resolveFrame;
-  });
+  let recorder: CdpRecorder | undefined;
   try {
     page = await recordingBrowser.context.newPage();
-    await page.screencast.start({
-      path: browserVideoPath,
-      size: options.viewport,
-      onFrame: () => {
-        if (firstFrameAtNs !== undefined) return;
-        firstFrameAtNs = process.hrtime.bigint();
-        resolveFirstFrame?.();
-      },
+    recorder = await startCdpRecorder({
+      page,
+      outputPath: browserVideoPath,
+      width: options.viewport.width,
+      height: options.viewport.height,
     });
-    await Promise.race([
-      firstFrameReceived,
-      page.waitForTimeout(5_000).then(() => {
-        throw new Error("Timed out waiting for the first recorded browser frame");
-      }),
-    ]);
   } catch (error) {
     try {
-      await recordingBrowser.context.close();
+      try {
+        await recorder?.abort();
+      } finally {
+        await recordingBrowser.context.close();
+      }
     } finally {
       await recordingBrowser.browser.close();
       await rm(outputDirectory, { recursive: true, force: true });
     }
     throw new Error("Unable to create the recording page", { cause: error });
   }
-  if (firstFrameAtNs === undefined) throw new Error("Recording did not establish a video clock");
-  const tracker = createInteractionTracker(firstFrameAtNs);
+  const tracker = createInteractionTracker(recorder.startedAtNs);
   const cursor = { x: 32, y: 32 };
   tracker.push({ type: "cursor-move", ...cursor });
   const actionContext = {
@@ -106,7 +97,11 @@ export async function createRecordingSession(
     if (state === "stopped") throw new Error("Cannot abort a stopped recording session");
     state = "aborted";
     try {
-      await closeBrowser();
+      try {
+        await recorder.abort();
+      } finally {
+        await closeBrowser();
+      }
     } finally {
       await rm(outputDirectory, { recursive: true, force: true });
     }
@@ -117,7 +112,7 @@ export async function createRecordingSession(
     state = "stopping";
 
     try {
-      await page.screencast.stop();
+      const diagnostics = await recorder.stop();
       await closeBrowser();
       const metadata = await probeVideo(browserVideoPath);
       const durationMs = metadata.durationMs;
@@ -132,7 +127,7 @@ export async function createRecordingSession(
         durationMs,
         viewport: options.viewport,
         video: {
-          path: "browser.webm",
+          path: "browser.mp4",
           width: metadata.width,
           height: metadata.height,
           durationMs,
@@ -147,7 +142,7 @@ export async function createRecordingSession(
       );
       await writeFile(
         join(outputDirectory, "metadata.json"),
-        `${JSON.stringify({ recorder: "playwright", eventCount: events.length }, null, 2)}\n`,
+        `${JSON.stringify({ ...diagnostics, eventCount: events.length }, null, 2)}\n`,
         "utf8",
       );
       state = "stopped";
