@@ -40,7 +40,19 @@ Use a version 1 `demo-plan.json`. When a persistent exploration path passed veri
 
 Locator methods are `role`, `text`, `label`, `placeholder`, `test-id`, and `css`. Prefer role and accessible name. A locator may contain up to three `fallbacks` observed during exploration.
 
-Actions are `navigate`, `move`, `click`, `fill`, `press`, `select`, `scroll`, `wait-for`, `assert-visible`, `wait-for-url`, and `hold`. Read-only plans should not use fill, press, or select. Keep holds purposeful and usually between 800–2000ms. A simple directed demo should usually need roughly 8–18 capture steps. Collapse adjacent exploratory scrolls in the same direction before verifying the selected path; after export, preserve the verified navigation, interaction, locator, scroll, URL, and generated assertion steps. The final plan is a directed story, not an exploration transcript.
+Actions are `navigate`, `move`, `click`, `fill`, `press`, `select`, `scroll`, `wait-for`, `assert-visible`, `wait-for-url`, and `hold`. Read-only plans should not use fill, press, or select. Keep holds purposeful and usually between 800–2000ms. A simple directed demo should usually need roughly 8–18 capture steps. Collapse adjacent exploratory scrolls in the same direction before verifying the selected path; after export, preserve the verified interaction, locator, scroll, URL, and generated assertion steps. The final plan is a directed story, not an exploration transcript.
+
+## Human-performance standard
+
+Treat the recording as if a practiced human presenter is operating the browser:
+
+- Use `navigate` only to establish the initial page. A story route change must be a visible `click` on the link, card, tab, or button a person would use, followed by `wait-for-url` or a visible destination assertion. Mid-story direct navigation is a page teleport and is not acceptable in a finished demo.
+- Do not convert a difficult or ambiguous link into `navigate`. Scroll or dismiss overlays to expose it, derive a unique durable locator from evidence, and rehearse the click. If it cannot be made reliable, simplify the story instead of hiding the transition.
+- Let a page settle and remain readable before the first interaction. Use varied, purposeful pauses rather than identical delays: roughly 600–1200ms before an ordinary decision, 800–1600ms after a meaningful state change, and 1800–3000ms for a final result or price reveal.
+- Click actions already use curved minimum-jerk cursor motion. Add `move` before a click only when a brief hover or visible moment of consideration improves the story; avoid decorative cursor wandering and repeated exact-center motions.
+- Scroll in deliberate, readable sections. Pause after a long scroll, avoid reversing direction without a narrative reason, and never trigger navigation while scrolling is still settling.
+- Show decisions rather than merely reaching states. When comparing options, allow the first selection and its price or visual change to register before changing to another option.
+- On inspection, reject captures with blank route flashes, cursorless route changes, abrupt jumps, rushed reveals, mechanical equal-tempo actions, or unexplained idle time.
 
 If the target must be managed, add `repositoryPath`, `startCommand`, and optionally `readinessUrl`. If authenticated, add `authProfile`.
 

@@ -27,6 +27,11 @@ export function parseDemoPlan(value: unknown): DemoPlan {
   const baseOrigin = new URL(plan.target.baseUrl).origin;
   for (const [index, step] of plan.capture.steps.entries()) {
     if (step.type === "navigate") {
+      if (index !== 0) {
+        throw new Error(
+          `Step ${index + 1} uses mid-story navigation; demo route changes must click a visible link or button`,
+        );
+      }
       const destination = new URL(step.url, plan.target.baseUrl);
       if (plan.brief.constraints.sameOriginOnly && destination.origin !== baseOrigin) {
         throw new Error(

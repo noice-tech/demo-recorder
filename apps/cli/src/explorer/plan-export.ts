@@ -48,8 +48,6 @@ function locatorForTransition(
 function actionForTransition(
   transition: ExplorationTransition,
   chosen: ExplorationLocatorMethod | undefined,
-  baseUrl: string,
-  includeUrlState: boolean,
 ): DemoAction {
   const action = transition.action;
   const purpose = action.reason ?? `Replay verified transition ${transition.id}`;
@@ -59,11 +57,9 @@ function actionForTransition(
     case "hover":
       return { type: "move", locator: locatorForTransition(transition, chosen), purpose };
     case "goto":
-      return {
-        type: "navigate",
-        url: replayUrl(action.url, baseUrl, includeUrlState),
-        purpose,
-      };
+      throw new Error(
+        `Verified transition ${transition.id} uses direct navigation; explore and verify the visible link or button instead`,
+      );
     case "scroll":
       return { type: "scroll", deltaX: action.deltaX, deltaY: action.deltaY, purpose };
     case "wait":
@@ -120,14 +116,7 @@ export function exportVerifiedPathToDemoPlan(options: {
         `Missing observation ${verificationStep.expected.observationId} during plan export`,
       );
     modifiesData ||= transition.policy.risk === "reversible";
-    steps.push(
-      actionForTransition(
-        transition,
-        verificationStep.candidateUsed,
-        options.config.baseUrl,
-        includeUrlState,
-      ),
-    );
+    steps.push(actionForTransition(transition, verificationStep.candidateUsed));
 
     if (expected.url !== previousExpectedUrl) {
       steps.push({
