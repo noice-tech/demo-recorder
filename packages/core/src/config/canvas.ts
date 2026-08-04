@@ -1,4 +1,5 @@
 import type { Viewport } from "../recording/types.js";
+import type { BackgroundOptions } from "./background.js";
 
 export type CanvasOptions = {
   aspectRatio?: string | undefined;
@@ -6,6 +7,7 @@ export type CanvasOptions = {
   height?: number | undefined;
   padding?: number | undefined;
   paddingMode?: "minimum" | "exact" | undefined;
+  background?: BackgroundOptions | undefined;
 };
 
 export type ResolvedCanvas = {

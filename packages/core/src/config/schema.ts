@@ -1,5 +1,26 @@
 import { z } from "zod";
 import { viewportSchema } from "../recording/schema.js";
+import { backgroundPresetNames } from "./background.js";
+
+const hexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Expected a #RRGGBB color");
+export const backgroundOptionsSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("preset"), name: z.enum(backgroundPresetNames) }),
+  z.object({ type: z.literal("color"), color: hexColorSchema }),
+  z.object({
+    type: z.literal("gradient"),
+    angle: z.number().finite().optional(),
+    colors: z.array(hexColorSchema).min(2).max(4),
+  }),
+]);
+
+export const resolvedBackgroundSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("color"), color: hexColorSchema }),
+  z.object({
+    type: z.literal("gradient"),
+    angle: z.number().finite(),
+    stops: z.array(z.object({ color: hexColorSchema, position: z.number().min(0).max(1) })).min(2),
+  }),
+]);
 
 export const zoomConfigSchema = z.object({
   enabled: z.boolean(),
@@ -20,6 +41,7 @@ export const demoVideoConfigSchema = z.object({
     fps: z.number().int().positive(),
     padding: z.number().nonnegative(),
     paddingMode: z.enum(["minimum", "exact"]),
+    background: resolvedBackgroundSchema,
   }),
   cursor: z.object({ enabled: z.boolean() }),
   zoom: zoomConfigSchema,

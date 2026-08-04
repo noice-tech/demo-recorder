@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { resolveBackground } from "@noice-tech/demo-recorder-core";
 import type { ProductDemoRenderInput } from "../src/index.js";
 import {
   buildProductDemoFilterGraph,
@@ -33,6 +34,7 @@ const input: ProductDemoRenderInput = {
     fps: 30,
     padding: 97.2,
     paddingMode: "minimum",
+    background: resolveBackground({ type: "preset", name: "midnight" }),
     cursorEnabled: true,
     zoom: { enterDurationMs: 350, exitDurationMs: 450 },
   },

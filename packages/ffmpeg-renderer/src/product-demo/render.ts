@@ -11,17 +11,13 @@ import type {
   RenderProductDemoOptions,
   RenderProductDemoResult,
 } from "../types.js";
+import { generateBackgroundRaster } from "./background-raster.js";
 import { generateTimedOverlayScript } from "./overlay-script.js";
 import { buildProductDemoFilterGraph } from "./filter-graph.js";
 import { productDemoGeometry } from "./geometry.js";
 
 const DEFAULT_ASSETS = fileURLToPath(new URL("../../assets/", import.meta.url));
-const ASSET_FILES = [
-  "browser-underlay.png",
-  "content-mask.png",
-  "browser-overlay.png",
-  "background.png",
-] as const;
+const ASSET_FILES = ["browser-underlay.png", "content-mask.png", "browser-overlay.png"] as const;
 const FONT_FILE = "fonts/Inter-Variable.ttf";
 
 async function requireFile(path: string): Promise<void> {
@@ -80,9 +76,14 @@ export async function renderProductDemo(
       frameCount: graph.frameCount,
     });
     await mkdir(join(temporaryDirectory, "fonts"));
+    const backgroundPath = join(temporaryDirectory, "background.ppm");
     await Promise.all([
       writeFile(join(temporaryDirectory, "filter.txt"), graph.script),
       writeFile(join(temporaryDirectory, "timed-overlays.subtitle"), overlayScript),
+      writeFile(
+        backgroundPath,
+        generateBackgroundRaster(input.config.width, input.config.height, input.config.background),
+      ),
       cp(fontPath, join(temporaryDirectory, FONT_FILE)),
     ]);
 
@@ -111,7 +112,7 @@ export async function renderProductDemo(
         "-i",
         assetPaths[2] ?? "",
         "-i",
-        assetPaths[3] ?? "",
+        backgroundPath,
         "-filter_complex_script",
         "filter.txt",
         "-map",

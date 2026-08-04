@@ -2,7 +2,7 @@ import { access, copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseRecordingManifest } from "@noice-tech/demo-recorder-core";
+import { parseRecordingManifest, resolveBackground } from "@noice-tech/demo-recorder-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { probeVideo, renderProductDemo, runProcess } from "../src/index.js";
 
@@ -30,6 +30,7 @@ function renderInput() {
       fps: 30,
       padding: 97.2,
       paddingMode: "minimum" as const,
+      background: resolveBackground({ type: "preset", name: "midnight" }),
       cursorEnabled: true,
       zoom: { enterDurationMs: 350, exitDurationMs: 450 },
     },

@@ -1,4 +1,4 @@
-import { viewportSchema } from "@noice-tech/demo-recorder-core";
+import { backgroundOptionsSchema, viewportSchema } from "@noice-tech/demo-recorder-core";
 import { z } from "zod";
 import { locatorMethodSchema } from "../browser/locator.js";
 
@@ -112,6 +112,7 @@ export const presentationCanvasSchema = z
     height: z.number().int().positive().max(7680).optional(),
     padding: z.number().int().nonnegative().max(2000).optional(),
     paddingMode: z.enum(["minimum", "exact"]).optional(),
+    background: backgroundOptionsSchema.optional(),
   })
   .refine(
     (canvas) => {

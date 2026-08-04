@@ -38,6 +38,14 @@ export async function renderDemoVideo(
   });
   const zoomSegmentCount = prepared.input.timeline.zoomSegments.length;
   log(`Generated ${zoomSegmentCount} zoom segment${zoomSegmentCount === 1 ? "" : "s"}`);
+  const background = prepared.input.config.background;
+  log(
+    `Background: ${
+      background.type === "color"
+        ? background.color
+        : `gradient (${background.stops.map((stop) => stop.color).join(", ")})`
+    }`,
+  );
 
   const outputPath = resolve(
     options.outputPath ??

@@ -4,6 +4,7 @@ import {
   defaultConfig,
   generateZoomSegments,
   loadRecordingManifest,
+  resolveBackground,
   resolveCanvas,
   type CanvasOptions,
   type ProductDemoInput,
@@ -135,6 +136,7 @@ export async function prepareRecording(
       config: {
         ...defaultConfig.render,
         ...canvas,
+        background: resolveBackground(mergedCanvas?.background),
         cursorEnabled: defaultConfig.cursor.enabled,
         zoom: {
           enterDurationMs: defaultConfig.zoom.enterDurationMs,
