@@ -32,13 +32,22 @@ describe("cameraStateAt", () => {
     expect(stateAt(500)).toMatchObject({ scale: 1.5, originX: 900, originY: 200 });
   });
 
-  it("smoothly enters, holds, and exits", () => {
+  it("quickly focuses and gently settles on entry and exit", () => {
     expect(stateAt(100).scale).toBe(1);
-    expect(stateAt(200).scale).toBe(1.25);
+    expect(stateAt(200).scale).toBeGreaterThan(1.4);
     expect(stateAt(300).scale).toBe(1.5);
     expect(stateAt(800).scale).toBe(1.5);
-    expect(stateAt(950).scale).toBe(1.25);
+    expect(stateAt(950).scale).toBeLessThan(1.1);
     expect(stateAt(1100).scale).toBe(1);
+  });
+
+  it("pans between joined zooms without zooming out", () => {
+    const next = { ...segment, startMs: 1100, endMs: 2100, focusX: 0, focusY: 500 };
+    expect(stateAt(1099, { segments: [segment, next] }).scale).toBe(1.5);
+    const moving = stateAt(1200, { segments: [segment, next] });
+    expect(moving.scale).toBe(1.5);
+    expect(moving.originX).toBeLessThan(500);
+    expect(moving.originY).toBeGreaterThan(400);
   });
 
   it("proportionally shortens transitions when they exceed segment duration", () => {
