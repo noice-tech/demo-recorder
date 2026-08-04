@@ -8,7 +8,6 @@ const assetsRoot = join(cliRoot, "assets");
 const rendererSource = join(repositoryRoot, "packages/ffmpeg-renderer/assets");
 const rendererTarget = join(assetsRoot, "ffmpeg");
 const rendererAssets = [
-  "background.png",
   "browser-underlay.png",
   "browser-overlay.png",
   "content-mask.png",

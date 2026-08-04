@@ -72,11 +72,22 @@ describe("prepareRecording", () => {
     await writeFile(join(directory, "browser.webm"), Buffer.from("video"));
     await writeFile(
       join(directory, "presentation.json"),
-      JSON.stringify({ canvas: { aspectRatio: "1:1", padding: 72 } }),
+      JSON.stringify({
+        canvas: {
+          aspectRatio: "1:1",
+          padding: 72,
+          background: { type: "color", color: "#123456" },
+        },
+      }),
     );
 
     const square = await prepareRecording(directory);
-    expect(square.input.config).toMatchObject({ width: 1080, height: 1080, padding: 72 });
+    expect(square.input.config).toMatchObject({
+      width: 1080,
+      height: 1080,
+      padding: 72,
+      background: { type: "color", color: "#123456", source: "custom" },
+    });
     const explicit = await prepareRecording(directory, { width: 1600, height: 1000 });
     expect(explicit.input.config).toMatchObject({ width: 1600, height: 1000, padding: 72 });
   });

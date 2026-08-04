@@ -48,7 +48,6 @@ for (const required of [
   "dist/cli.js",
   "dist/auth-daemon.js",
   "dist/exploration-daemon.js",
-  "assets/ffmpeg/background.png",
   "assets/ffmpeg/browser-underlay.png",
   "assets/ffmpeg/browser-overlay.png",
   "assets/ffmpeg/content-mask.png",

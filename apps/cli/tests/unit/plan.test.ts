@@ -27,11 +27,19 @@ describe("demo plan", () => {
       capture: { ...basePlan.capture, viewport: { width: 1280, height: 720 } },
       presentation: {
         beats: [],
-        canvas: { aspectRatio: "1:1", padding: 72 },
+        canvas: {
+          aspectRatio: "1:1",
+          padding: 72,
+          background: { type: "preset", name: "prism" },
+        },
       },
     });
     expect(plan.capture.viewport).toEqual({ width: 1280, height: 720 });
-    expect(plan.presentation.canvas).toEqual({ aspectRatio: "1:1", padding: 72 });
+    expect(plan.presentation.canvas).toEqual({
+      aspectRatio: "1:1",
+      padding: 72,
+      background: { type: "preset", name: "prism" },
+    });
   });
 
   it("rejects invalid or conflicting canvas dimensions", () => {

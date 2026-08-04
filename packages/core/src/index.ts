@@ -1,3 +1,4 @@
+export * from "./config/background.js";
 export * from "./config/canvas.js";
 export * from "./config/defaults.js";
 export * from "./config/schema.js";

@@ -8,7 +8,6 @@ export const workingDirectory =
   process.env.DEMO_RECORDER_CWD ?? process.env.INIT_CWD ?? process.cwd();
 
 const rendererAssetFiles = [
-  "background.png",
   "browser-underlay.png",
   "browser-overlay.png",
   "content-mask.png",

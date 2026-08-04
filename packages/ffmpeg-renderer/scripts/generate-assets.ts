@@ -14,13 +14,6 @@ try {
   const page = await browser.newPage({ viewport: output, deviceScaleFactor: 1 });
   await page.setContent(`<!doctype html><style>
     * { box-sizing: border-box; }
-    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
-    body { background: radial-gradient(circle at 20% 15%, #31456e 0%, transparent 38%), radial-gradient(circle at 80% 85%, #1f604e 0%, transparent 36%), linear-gradient(145deg, #111522 0%, #080a10 100%); }
-  </style>`);
-  await page.screenshot({ path: `${assetsDirectory}/background.png`, type: "png" });
-
-  await page.setContent(`<!doctype html><style>
-    * { box-sizing: border-box; }
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
     .frame { position: absolute; left: ${geometry.browser.x}px; top: ${geometry.browser.y}px; width: ${geometry.browser.width}px; height: ${geometry.browser.height}px; border-radius: 20px; background: #111522; box-shadow: 0 34px 90px rgba(0,0,0,0.48); }
   </style><div class="frame"></div>`);

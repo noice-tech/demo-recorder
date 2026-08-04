@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { backgroundPresetNames, type BackgroundOptions } from "@noice-tech/demo-recorder-core";
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,7 +40,7 @@ function usage(): string {
     "  demo-recorder record --plan <demo-plan.json> [--headed]",
     "  demo-recorder run <demo-plan.json> [--headed]",
     "  demo-recorder auth <start|save|stop|verify|remove|list> [options]",
-    "  demo-recorder render <recording> [--aspect-ratio RATIO | --size WIDTHxHEIGHT] [--padding PX] [--padding-mode minimum|exact]",
+    "  demo-recorder render <recording> [--aspect-ratio RATIO | --size WIDTHxHEIGHT] [--padding PX] [--padding-mode minimum|exact] [--background auto|preset:NAME|#RRGGBB]",
   ].join("\n");
 }
 
@@ -88,6 +89,7 @@ export const commandOptions: Record<string, OptionDefinitions> = {
     size: { type: "string" },
     padding: { type: "string" },
     "padding-mode": { type: "string" },
+    background: { type: "string" },
   },
   create: {},
 };
@@ -95,6 +97,21 @@ export const commandOptions: Record<string, OptionDefinitions> = {
 function requireArgument(value: string | undefined, command: string): string {
   if (!value) throw new Error(`Missing argument for ${command}\n${usage()}`);
   return value;
+}
+
+function backgroundOption(value: string | undefined): BackgroundOptions | undefined {
+  if (!value) return undefined;
+  if (value === "auto") return { type: "auto" };
+  if (/^#[0-9a-fA-F]{6}$/.test(value)) return { type: "color", color: value };
+  if (value.startsWith("preset:")) {
+    const name = value.slice("preset:".length);
+    if (backgroundPresetNames.includes(name as (typeof backgroundPresetNames)[number])) {
+      return { type: "preset", name: name as (typeof backgroundPresetNames)[number] };
+    }
+  }
+  throw new Error(
+    `--background must be auto, #RRGGBB, or preset:${backgroundPresetNames.join("|")}`,
+  );
 }
 
 function formatError(error: unknown): string {
@@ -182,11 +199,13 @@ const commandHandlers = new Map<string, CommandHandler>([
       const paddingMode = stringOption(parsed, "padding-mode");
       if (paddingMode && !["minimum", "exact"].includes(paddingMode))
         throw new Error("--padding-mode must be minimum or exact");
+      const background = backgroundOption(stringOption(parsed, "background"));
       return renderRecording(requireArgument(parsed.positionals[0], "render"), {
         ...size,
         ...(aspectRatio ? { aspectRatio } : {}),
         ...(padding !== undefined ? { padding } : {}),
         ...(paddingMode ? { paddingMode: paddingMode as "minimum" | "exact" } : {}),
+        ...(background ? { background } : {}),
       });
     },
   ],
