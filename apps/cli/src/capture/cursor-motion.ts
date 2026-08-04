@@ -7,6 +7,7 @@ export type CursorBounds = CursorPoint & { width: number; height: number };
 type CursorPathOptions = MoveOptions & {
   seed?: number;
   viewport?: CursorViewport;
+  targetSizePx?: number;
 };
 
 const CURSOR_SAMPLE_RATE = 60;
@@ -111,8 +112,10 @@ export function generateCursorPath(
   const deltaX = to.x - from.x;
   const deltaY = to.y - from.y;
   const distance = Math.hypot(deltaX, deltaY);
+  const targetSize = Math.max(8, options.targetSizePx ?? 44);
   const durationMs =
-    options.durationMs ?? Math.max(280, Math.min(950, Math.round(distance * 0.95)));
+    options.durationMs ??
+    Math.max(260, Math.min(900, Math.round(180 + 150 * Math.log2(distance / targetSize + 1))));
   const steps =
     options.steps ?? Math.max(2, Math.ceil((durationMs / 1000) * CURSOR_SAMPLE_RATE) + 1);
 

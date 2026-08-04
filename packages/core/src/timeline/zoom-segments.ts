@@ -10,7 +10,21 @@ export function generateZoomSegments(
 ): ZoomSegment[] {
   if (!config.enabled || durationMs <= 0) return [];
 
-  const segments = clusterClicks(events, config).map((cluster) => ({
+  const clicks = events.filter((event) => event.type === "click");
+  const activeClicks = new Set(
+    clicks.filter((click, index) => {
+      const previous = clicks[index - 1];
+      const next = clicks[index + 1];
+      return (
+        (previous && click.timestampMs - previous.timestampMs <= config.clickClusterWindowMs) ||
+        (next && next.timestampMs - click.timestampMs <= config.clickClusterWindowMs)
+      );
+    }),
+  );
+  const clusters = clusterClicks(events, config).filter((cluster) =>
+    cluster.clicks.some((click) => activeClicks.has(click)),
+  );
+  const segments = clusters.map((cluster) => ({
     startMs: Math.max(0, cluster.startMs - config.paddingBeforeMs),
     endMs: Math.min(durationMs, cluster.endMs + config.paddingAfterMs),
     focusX: cluster.centerX,
@@ -18,12 +32,20 @@ export function generateZoomSegments(
     scale: config.zoomScale,
   }));
 
-  // Adjacent clusters keep distinct focal points. Split overlapping padding at
-  // its midpoint so the composition never has two active camera segments.
+  // Keep one camera session for nearby activity. A new spatial cluster pans the
+  // camera; repeated clicks in the same area remain on the existing focus.
   for (let index = 1; index < segments.length; index += 1) {
     const previous = segments[index - 1];
     const current = segments[index];
-    if (previous && current && current.startMs < previous.endMs) {
+    const previousCluster = clusters[index - 1];
+    const currentCluster = clusters[index];
+    if (
+      previous &&
+      current &&
+      previousCluster &&
+      currentCluster &&
+      currentCluster.startMs - previousCluster.endMs <= config.clickClusterWindowMs
+    ) {
       const boundary = (current.startMs + previous.endMs) / 2;
       previous.endMs = boundary;
       current.startMs = boundary;

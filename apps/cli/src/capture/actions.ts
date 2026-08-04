@@ -31,6 +31,7 @@ type ResolvedTarget = {
   x: number;
   y: number;
   target: InteractionTarget;
+  targetSizePx: number;
 };
 
 async function resolveTarget(
@@ -67,13 +68,13 @@ async function resolveTarget(
   if (semantics.name) target.name = semantics.name;
 
   const point = targetPointWithinBounds(bounds, viewport, seed);
-  return { ...point, target };
+  return { ...point, target, targetSizePx: Math.min(bounds.width, bounds.height) };
 }
 
 async function moveToPoint(
   context: ActionContext,
   point: CursorState,
-  options: MoveOptions = {},
+  options: MoveOptions & { targetSizePx?: number } = {},
 ): Promise<void> {
   const { points, durationMs } = generateCursorPath(context.cursor, point, {
     ...options,
@@ -99,7 +100,10 @@ async function moveTo(
   options?: MoveOptions,
 ): Promise<void> {
   const target = await resolveTarget(locator, context.viewport, context.movementIndex);
-  await moveToPoint(context, target, options);
+  await moveToPoint(context, target, {
+    ...options,
+    targetSizePx: target.targetSizePx,
+  });
 }
 
 async function click(
@@ -108,7 +112,10 @@ async function click(
   options: ClickOptions = {},
 ): Promise<void> {
   const resolved = await resolveTarget(locator, context.viewport, context.movementIndex);
-  await moveToPoint(context, resolved, options);
+  await moveToPoint(context, resolved, {
+    ...options,
+    targetSizePx: resolved.targetSizePx,
+  });
   const button = options.button ?? "left";
 
   await context.page.mouse.down({ button });

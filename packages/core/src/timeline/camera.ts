@@ -18,10 +18,20 @@ type CameraStateInput = {
   exitDurationMs: number;
 };
 
-const smoothStep = (progress: number): number => {
+const SPRING_RESPONSE = 6;
+const SPRING_NORMALIZATION = 1 - (1 + SPRING_RESPONSE) * Math.exp(-SPRING_RESPONSE);
+
+/** A normalized critically damped spring: fast to focus, then gently settles. */
+const springStep = (progress: number): number => {
   const clamped = Math.min(1, Math.max(0, progress));
-  return clamped * clamped * (3 - 2 * clamped);
+  return (
+    (1 - (1 + SPRING_RESPONSE * clamped) * Math.exp(-SPRING_RESPONSE * clamped)) /
+    SPRING_NORMALIZATION
+  );
 };
+
+const joined = (left: ZoomSegment | undefined, right: ZoomSegment | undefined): boolean =>
+  Boolean(left && right && Math.abs(left.endMs - right.startMs) < 0.001);
 
 function transitionDurations(
   segmentDurationMs: number,
@@ -42,6 +52,8 @@ function transitionDurations(
 function scaleAt(
   timestampMs: number,
   segment: ZoomSegment,
+  previous: ZoomSegment | undefined,
+  next: ZoomSegment | undefined,
   enterDurationMs: number,
   exitDurationMs: number,
 ): number {
@@ -51,11 +63,12 @@ function scaleAt(
 
   if (enterMs > 0 && timestampMs < segment.startMs + enterMs) {
     const progress = (timestampMs - segment.startMs) / enterMs;
-    return 1 + (segment.scale - 1) * smoothStep(progress);
+    const initialScale = joined(previous, segment) ? previous!.scale : 1;
+    return initialScale + (segment.scale - initialScale) * springStep(progress);
   }
-  if (exitMs > 0 && timestampMs > exitStart) {
+  if (!joined(segment, next) && exitMs > 0 && timestampMs > exitStart) {
     const progress = (timestampMs - exitStart) / exitMs;
-    return segment.scale - (segment.scale - 1) * smoothStep(progress);
+    return segment.scale - (segment.scale - 1) * springStep(progress);
   }
   return segment.scale;
 }
@@ -65,9 +78,10 @@ export function cameraStateAt(input: CameraStateInput): CameraState {
     x: input.contentRect.x + input.contentRect.width / 2,
     y: input.contentRect.y + input.contentRect.height / 2,
   };
-  const segment = input.segments.find(
+  const segmentIndex = input.segments.findIndex(
     ({ startMs, endMs }) => input.timestampMs >= startMs && input.timestampMs <= endMs,
   );
+  const segment = input.segments[segmentIndex];
 
   if (!segment) {
     return {
@@ -77,14 +91,43 @@ export function cameraStateAt(input: CameraStateInput): CameraState {
     };
   }
 
-  const origin = projectViewportPoint(
+  const previous = input.segments[segmentIndex - 1];
+  const next = input.segments[segmentIndex + 1];
+  const targetOrigin = projectViewportPoint(
     { x: segment.focusX, y: segment.focusY },
     input.viewport,
     input.contentRect,
   );
+  let origin = targetOrigin;
+  if (joined(previous, segment) && input.enterDurationMs > 0) {
+    const enterMs = transitionDurations(
+      segment.endMs - segment.startMs,
+      input.enterDurationMs,
+      input.exitDurationMs,
+    ).enterMs;
+    if (enterMs > 0 && input.timestampMs < segment.startMs + enterMs) {
+      const sourceOrigin = projectViewportPoint(
+        { x: previous!.focusX, y: previous!.focusY },
+        input.viewport,
+        input.contentRect,
+      );
+      const progress = springStep((input.timestampMs - segment.startMs) / enterMs);
+      origin = {
+        x: sourceOrigin.x + (targetOrigin.x - sourceOrigin.x) * progress,
+        y: sourceOrigin.y + (targetOrigin.y - sourceOrigin.y) * progress,
+      };
+    }
+  }
 
   return {
-    scale: scaleAt(input.timestampMs, segment, input.enterDurationMs, input.exitDurationMs),
+    scale: scaleAt(
+      input.timestampMs,
+      segment,
+      previous,
+      next,
+      input.enterDurationMs,
+      input.exitDurationMs,
+    ),
     originX: origin.x,
     originY: origin.y,
     activeSegment: segment,

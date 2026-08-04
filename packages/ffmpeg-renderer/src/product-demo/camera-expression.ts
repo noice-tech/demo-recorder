@@ -32,29 +32,42 @@ function transitionDurations(
   return { enterMs: enter * ratio, exitMs: exit * ratio };
 }
 
-function smoothStep(progress: string): string {
-  return `(pow(${progress},2)*(3-2*${progress}))`;
+const SPRING_RESPONSE = 6;
+const SPRING_NORMALIZATION = 1 - (1 + SPRING_RESPONSE) * Math.exp(-SPRING_RESPONSE);
+
+function springStep(progress: string): string {
+  return `((1-(1+${SPRING_RESPONSE}*${progress})*exp(-${SPRING_RESPONSE}*${progress}))/${number(SPRING_NORMALIZATION)})`;
 }
+
+const joined = (
+  left: DemoTimeline["zoomSegments"][number] | undefined,
+  right: DemoTimeline["zoomSegments"][number] | undefined,
+): boolean => Boolean(left && right && Math.abs(left.endMs - right.startMs) < 0.001);
 
 function segmentScale(
   time: string,
-  segment: DemoTimeline["zoomSegments"][number],
+  segments: DemoTimeline["zoomSegments"],
+  index: number,
   enterDurationMs: number,
   exitDurationMs: number,
 ): string {
+  const segment = segments[index]!;
+  const previous = segments[index - 1];
+  const next = segments[index + 1];
   const durationMs = Math.max(0, segment.endMs - segment.startMs);
   const { enterMs, exitMs } = transitionDurations(durationMs, enterDurationMs, exitDurationMs);
   const target = number(segment.scale);
   let hold = target;
-  if (exitMs > 0) {
+  if (!joined(segment, next) && exitMs > 0) {
     const exitStart = segment.endMs - exitMs;
     const progress = `((${time}-${number(exitStart / 1000)})/${number(exitMs / 1000)})`;
-    hold = `if(gt(${time},${number(exitStart / 1000)}),${target}-(${target}-1)*${smoothStep(progress)},${hold})`;
+    hold = `if(gt(${time},${number(exitStart / 1000)}),${target}-(${target}-1)*${springStep(progress)},${hold})`;
   }
   if (enterMs > 0) {
     const enterEnd = segment.startMs + enterMs;
     const progress = `((${time}-${number(segment.startMs / 1000)})/${number(enterMs / 1000)})`;
-    hold = `if(lt(${time},${number(enterEnd / 1000)}),1+(${target}-1)*${smoothStep(progress)},${hold})`;
+    const initial = joined(previous, segment) ? number(previous!.scale) : "1";
+    hold = `if(lt(${time},${number(enterEnd / 1000)}),${initial}+(${target}-${initial})*${springStep(progress)},${hold})`;
   }
   return hold;
 }
@@ -62,14 +75,14 @@ function segmentScale(
 function piecewise(
   time: string,
   segments: DemoTimeline["zoomSegments"],
-  value: (segment: DemoTimeline["zoomSegments"][number]) => string,
+  value: (segment: DemoTimeline["zoomSegments"][number], index: number) => string,
   fallback: string,
 ): string {
   let expression = fallback;
   for (let index = segments.length - 1; index >= 0; index -= 1) {
     const segment = segments[index];
     if (!segment) continue;
-    expression = `if(between(${time},${number(segment.startMs / 1000)},${number(segment.endMs / 1000)}),${value(segment)},${expression})`;
+    expression = `if(between(${time},${number(segment.startMs / 1000)},${number(segment.endMs / 1000)}),${value(segment, index)},${expression})`;
   }
   return expression;
 }
@@ -87,35 +100,53 @@ export function buildCameraExpressions(input: {
   const scale = piecewise(
     time,
     input.timeline.zoomSegments,
-    (segment) => segmentScale(time, segment, input.enterDurationMs, input.exitDurationMs),
+    (_segment, index) =>
+      segmentScale(
+        time,
+        input.timeline.zoomSegments,
+        index,
+        input.enterDurationMs,
+        input.exitDurationMs,
+      ),
     "1",
   );
   const neutralX = input.geometry.content.x + input.geometry.content.width / 2;
   const neutralY = input.geometry.content.y + input.geometry.content.height / 2;
+  const segmentOrigin = (index: number, axis: "x" | "y"): string => {
+    const segment = input.timeline.zoomSegments[index]!;
+    const target = projectViewportPoint(
+      { x: segment.focusX, y: segment.focusY },
+      input.viewport,
+      input.geometry.content,
+    )[axis];
+    const previous = input.timeline.zoomSegments[index - 1];
+    if (!joined(previous, segment) || input.enterDurationMs === 0) return number(target);
+
+    const enterMs = transitionDurations(
+      segment.endMs - segment.startMs,
+      input.enterDurationMs,
+      input.exitDurationMs,
+    ).enterMs;
+    if (enterMs === 0) return number(target);
+    const source = projectViewportPoint(
+      { x: previous!.focusX, y: previous!.focusY },
+      input.viewport,
+      input.geometry.content,
+    )[axis];
+    const enterEnd = segment.startMs + enterMs;
+    const progress = `((${time}-${number(segment.startMs / 1000)})/${number(enterMs / 1000)})`;
+    return `if(lt(${time},${number(enterEnd / 1000)}),${number(source)}+(${number(target)}-${number(source)})*${springStep(progress)},${number(target)})`;
+  };
   const originX = piecewise(
     time,
     input.timeline.zoomSegments,
-    (segment) =>
-      number(
-        projectViewportPoint(
-          { x: segment.focusX, y: segment.focusY },
-          input.viewport,
-          input.geometry.content,
-        ).x,
-      ),
+    (_segment, index) => segmentOrigin(index, "x"),
     number(neutralX),
   );
   const originY = piecewise(
     time,
     input.timeline.zoomSegments,
-    (segment) =>
-      number(
-        projectViewportPoint(
-          { x: segment.focusX, y: segment.focusY },
-          input.viewport,
-          input.geometry.content,
-        ).y,
-      ),
+    (_segment, index) => segmentOrigin(index, "y"),
     number(neutralY),
   );
   const scaledWidth = `trunc(${input.output.width}*(${scale})/2)*2`;
