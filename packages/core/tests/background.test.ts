@@ -6,7 +6,7 @@ describe("background configuration", () => {
     expect(resolveBackground()).toEqual(resolveBackground({ type: "preset", name: "tahoe" }));
   });
 
-  it("normalizes custom colors and fills omitted gradient positions", () => {
+  it("normalizes colors and evenly positions custom gradients", () => {
     expect(resolveBackground({ type: "color", color: "#AABBCC" })).toEqual({
       type: "color",
       color: "#aabbcc",
@@ -14,32 +14,22 @@ describe("background configuration", () => {
     expect(
       resolveBackground({
         type: "gradient",
-        stops: [
-          { color: "#000000", position: 0.2 },
-          { color: "#888888" },
-          { color: "#FFFFFF", position: 0.8 },
-        ],
+        colors: ["#000000", "#888888", "#FFFFFF"],
       }),
     ).toMatchObject({
       angle: 135,
       stops: [
-        { color: "#000000", position: 0.2 },
+        { color: "#000000", position: 0 },
         { color: "#888888", position: 0.5 },
-        { color: "#ffffff", position: 0.8 },
+        { color: "#ffffff", position: 1 },
       ],
     });
   });
 
-  it("rejects invalid colors and unordered explicit stops", () => {
+  it("rejects invalid colors", () => {
     expect(() => backgroundOptionsSchema.parse({ type: "color", color: "red" })).toThrow();
     expect(() =>
-      backgroundOptionsSchema.parse({
-        type: "gradient",
-        stops: [
-          { color: "#000000", position: 0.8 },
-          { color: "#ffffff", position: 0.2 },
-        ],
-      }),
-    ).toThrow(/ordered/);
+      backgroundOptionsSchema.parse({ type: "gradient", colors: ["#000000", "white"] }),
+    ).toThrow();
   });
 });

@@ -3,30 +3,15 @@ import { viewportSchema } from "../recording/schema.js";
 import { backgroundPresetNames } from "./background.js";
 
 const hexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Expected a #RRGGBB color");
-const gradientStopSchema = z.object({
-  color: hexColorSchema,
-  position: z.number().min(0).max(1).optional(),
-});
-
-export const backgroundOptionsSchema = z
-  .discriminatedUnion("type", [
-    z.object({ type: z.literal("preset"), name: z.enum(backgroundPresetNames) }),
-    z.object({ type: z.literal("color"), color: hexColorSchema }),
-    z.object({
-      type: z.literal("gradient"),
-      angle: z.number().finite().optional(),
-      stops: z.array(gradientStopSchema).min(2).max(4),
-    }),
-  ])
-  .superRefine((background, context) => {
-    if (background.type !== "gradient") return;
-    const positions = background.stops.flatMap((stop) =>
-      stop.position === undefined ? [] : [stop.position],
-    );
-    if (positions.some((position, index) => index > 0 && position < positions[index - 1]!)) {
-      context.addIssue({ code: "custom", message: "Gradient stop positions must be ordered" });
-    }
-  });
+export const backgroundOptionsSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("preset"), name: z.enum(backgroundPresetNames) }),
+  z.object({ type: z.literal("color"), color: hexColorSchema }),
+  z.object({
+    type: z.literal("gradient"),
+    angle: z.number().finite().optional(),
+    colors: z.array(hexColorSchema).min(2).max(4),
+  }),
+]);
 
 export const resolvedBackgroundSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("color"), color: hexColorSchema }),

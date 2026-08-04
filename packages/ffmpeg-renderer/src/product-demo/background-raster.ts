@@ -2,6 +2,7 @@ import type { ResolvedBackground } from "@noice-tech/demo-recorder-core";
 
 type Rgb = readonly [number, number, number];
 type RgbStop = { color: Rgb; position: number };
+type PixelSampler = (x: number, y: number) => Rgb;
 
 function parseHex(color: string): Rgb {
   return [
@@ -11,41 +12,42 @@ function parseHex(color: string): Rgb {
   ];
 }
 
-function channel(start: number, end: number, progress: number): number {
-  return Math.round(start + (end - start) * progress);
-}
-
 function colorAt(stops: RgbStop[], position: number): Rgb {
-  if (position <= stops[0]!.position) return stops[0]!.color;
-  for (let index = 1; index < stops.length; index += 1) {
-    const end = stops[index]!;
-    if (position > end.position) continue;
-    const start = stops[index - 1]!;
-    const span = end.position - start.position;
-    const progress = span === 0 ? 1 : (position - start.position) / span;
-    return [
-      channel(start.color[0], end.color[0], progress),
-      channel(start.color[1], end.color[1], progress),
-      channel(start.color[2], end.color[2], progress),
-    ];
-  }
-  return stops.at(-1)!.color;
+  const endIndex = stops.findIndex((stop) => position <= stop.position);
+  if (endIndex < 0) return stops.at(-1)!.color;
+  if (endIndex === 0) return stops[0]!.color;
+
+  const start = stops[endIndex - 1]!;
+  const end = stops[endIndex]!;
+  const progress = (position - start.position) / (end.position - start.position || 1);
+  const mix = (channel: number) =>
+    Math.round(start.color[channel]! + (end.color[channel]! - start.color[channel]!) * progress);
+  return [mix(0), mix(1), mix(2)];
 }
 
-function gradientPosition(
-  x: number,
-  y: number,
+function createPixelSampler(
   width: number,
   height: number,
-  angle: number,
-): number {
-  const dx = x + 0.5 - width / 2;
-  const dy = y + 0.5 - height / 2;
-  const radians = (angle * Math.PI) / 180;
+  background: ResolvedBackground,
+): PixelSampler {
+  if (background.type === "color") {
+    const color = parseHex(background.color);
+    return () => color;
+  }
+
+  const stops = background.stops.map((stop) => ({
+    color: parseHex(stop.color),
+    position: stop.position,
+  }));
+  const radians = (background.angle * Math.PI) / 180;
   const axisX = Math.sin(radians);
   const axisY = -Math.cos(radians);
   const extent = Math.abs(axisX) * width + Math.abs(axisY) * height;
-  return Math.max(0, Math.min(1, 0.5 + (dx * axisX + dy * axisY) / extent));
+  return (x, y) => {
+    const projection = (x + 0.5 - width / 2) * axisX + (y + 0.5 - height / 2) * axisY;
+    const position = Math.max(0, Math.min(1, 0.5 + projection / extent));
+    return colorAt(stops, position);
+  };
 }
 
 /** Generates a single binary PPM frame without browser or native image dependencies. */
@@ -57,19 +59,14 @@ export function generateBackgroundRaster(
   if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0) {
     throw new Error("Background dimensions must be positive integers");
   }
+
   const header = Buffer.from(`P6\n${width} ${height}\n255\n`, "ascii");
   const pixels = Buffer.allocUnsafe(width * height * 3);
-  const solid = background.type === "color" ? parseHex(background.color) : undefined;
-  const gradient = background.type === "gradient" ? background : undefined;
-  const gradientStops = gradient?.stops.map((stop) => ({
-    color: parseHex(stop.color),
-    position: stop.position,
-  }));
+  const sample = createPixelSampler(width, height, background);
   let offset = 0;
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      const color =
-        solid ?? colorAt(gradientStops!, gradientPosition(x, y, width, height, gradient!.angle));
+      const color = sample(x, y);
       pixels[offset++] = color[0];
       pixels[offset++] = color[1];
       pixels[offset++] = color[2];

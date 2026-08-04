@@ -25,7 +25,7 @@ describe("background raster", () => {
       resolveBackground({
         type: "gradient",
         angle: 90,
-        stops: [{ color: "#000000" }, { color: "#ffffff" }],
+        colors: ["#000000", "#ffffff"],
       }),
     );
     const values = pixels(raster);

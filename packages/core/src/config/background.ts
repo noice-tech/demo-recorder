@@ -8,11 +8,10 @@ export const backgroundPresetNames = [
 ] as const;
 
 export type BackgroundPreset = (typeof backgroundPresetNames)[number];
-export type GradientStop = { color: string; position?: number | undefined };
 export type BackgroundOptions =
   | { type: "preset"; name: BackgroundPreset }
   | { type: "color"; color: string }
-  | { type: "gradient"; angle?: number | undefined; stops: GradientStop[] };
+  | { type: "gradient"; angle?: number | undefined; colors: string[] };
 
 export type ResolvedGradientStop = { color: string; position: number };
 export type ResolvedBackground =
@@ -79,35 +78,21 @@ const presets: Record<BackgroundPreset, PresetDefinition> = {
   },
 };
 
-function positionedStops(stops: GradientStop[]): ResolvedGradientStop[] {
-  const positions = stops.map((stop) => stop.position);
-  positions[0] ??= 0;
-  positions[positions.length - 1] ??= 1;
-  let previous = 0;
-  while (previous < positions.length - 1) {
-    let next = previous + 1;
-    while (positions[next] === undefined) next += 1;
-    const start = positions[previous]!;
-    const end = positions[next]!;
-    for (let index = previous + 1; index < next; index += 1) {
-      positions[index] = start + ((end - start) * (index - previous)) / (next - previous);
-    }
-    previous = next;
-  }
-  return stops.map((stop, index) => ({
-    color: stop.color.toLowerCase(),
-    position: positions[index]!,
-  }));
-}
-
 export function resolveBackground(options?: BackgroundOptions): ResolvedBackground {
-  if (!options || options.type === "preset") {
-    return { type: "gradient", ...presets[options?.name ?? "tahoe"] };
+  const selected: BackgroundOptions = options ?? { type: "preset", name: "tahoe" };
+  switch (selected.type) {
+    case "preset":
+      return { type: "gradient", ...presets[selected.name] };
+    case "color":
+      return { type: "color", color: selected.color.toLowerCase() };
+    case "gradient":
+      return {
+        type: "gradient",
+        angle: selected.angle ?? 135,
+        stops: selected.colors.map((color, index) => ({
+          color: color.toLowerCase(),
+          position: index / (selected.colors.length - 1),
+        })),
+      };
   }
-  if (options.type === "color") return { type: "color", color: options.color.toLowerCase() };
-  return {
-    type: "gradient",
-    angle: options.angle ?? 135,
-    stops: positionedStops(options.stops),
-  };
 }
