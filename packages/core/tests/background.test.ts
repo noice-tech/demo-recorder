@@ -2,17 +2,14 @@ import { describe, expect, it } from "vitest";
 import { backgroundOptionsSchema, resolveBackground } from "../src/index.js";
 
 describe("background configuration", () => {
-  it("uses tahoe by default and as the deterministic auto fallback", () => {
-    const tahoe = resolveBackground({ type: "preset", name: "tahoe" });
-    expect(resolveBackground()).toEqual(tahoe);
-    expect(resolveBackground({ type: "auto" })).toEqual({ ...tahoe, source: "auto" });
+  it("uses tahoe by default", () => {
+    expect(resolveBackground()).toEqual(resolveBackground({ type: "preset", name: "tahoe" }));
   });
 
   it("normalizes custom colors and fills omitted gradient positions", () => {
     expect(resolveBackground({ type: "color", color: "#AABBCC" })).toEqual({
       type: "color",
       color: "#aabbcc",
-      source: "custom",
     });
     expect(
       resolveBackground({
@@ -24,7 +21,6 @@ describe("background configuration", () => {
         ],
       }),
     ).toMatchObject({
-      kind: "linear",
       angle: 135,
       stops: [
         { color: "#000000", position: 0.2 },

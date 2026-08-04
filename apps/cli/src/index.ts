@@ -40,7 +40,7 @@ function usage(): string {
     "  demo-recorder record --plan <demo-plan.json> [--headed]",
     "  demo-recorder run <demo-plan.json> [--headed]",
     "  demo-recorder auth <start|save|stop|verify|remove|list> [options]",
-    "  demo-recorder render <recording> [--aspect-ratio RATIO | --size WIDTHxHEIGHT] [--padding PX] [--padding-mode minimum|exact] [--background auto|preset:NAME|#RRGGBB]",
+    "  demo-recorder render <recording> [--aspect-ratio RATIO | --size WIDTHxHEIGHT] [--padding PX] [--padding-mode minimum|exact] [--background preset:NAME|#RRGGBB]",
   ].join("\n");
 }
 
@@ -101,17 +101,10 @@ function requireArgument(value: string | undefined, command: string): string {
 
 function backgroundOption(value: string | undefined): BackgroundOptions | undefined {
   if (!value) return undefined;
-  if (value === "auto") return { type: "auto" };
   if (/^#[0-9a-fA-F]{6}$/.test(value)) return { type: "color", color: value };
-  if (value.startsWith("preset:")) {
-    const name = value.slice("preset:".length);
-    if (backgroundPresetNames.includes(name as (typeof backgroundPresetNames)[number])) {
-      return { type: "preset", name: name as (typeof backgroundPresetNames)[number] };
-    }
-  }
-  throw new Error(
-    `--background must be auto, #RRGGBB, or preset:${backgroundPresetNames.join("|")}`,
-  );
+  const preset = backgroundPresetNames.find((name) => value === `preset:${name}`);
+  if (preset) return { type: "preset", name: preset };
+  throw new Error(`--background must be #RRGGBB or preset:${backgroundPresetNames.join("|")}`);
 }
 
 function formatError(error: unknown): string {

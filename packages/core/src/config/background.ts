@@ -9,36 +9,20 @@ export const backgroundPresetNames = [
 
 export type BackgroundPreset = (typeof backgroundPresetNames)[number];
 export type GradientStop = { color: string; position?: number | undefined };
-
 export type BackgroundOptions =
-  | { type: "auto" }
   | { type: "preset"; name: BackgroundPreset }
   | { type: "color"; color: string }
-  | {
-      type: "gradient";
-      kind?: "linear" | "radial" | undefined;
-      angle?: number | undefined;
-      stops: GradientStop[];
-    };
+  | { type: "gradient"; angle?: number | undefined; stops: GradientStop[] };
 
 export type ResolvedGradientStop = { color: string; position: number };
 export type ResolvedBackground =
-  | { type: "color"; color: string; source: "custom" }
-  | {
-      type: "gradient";
-      kind: "linear" | "radial";
-      angle: number;
-      stops: ResolvedGradientStop[];
-      source: "auto" | "custom" | BackgroundPreset;
-    };
+  | { type: "color"; color: string }
+  | { type: "gradient"; angle: number; stops: ResolvedGradientStop[] };
 
-const presets: Record<
-  BackgroundPreset,
-  Omit<Extract<ResolvedBackground, { type: "gradient" }>, "source">
-> = {
+type PresetDefinition = Omit<Extract<ResolvedBackground, { type: "gradient" }>, "type">;
+
+const presets: Record<BackgroundPreset, PresetDefinition> = {
   midnight: {
-    type: "gradient",
-    kind: "linear",
     angle: 145,
     stops: [
       { color: "#253858", position: 0 },
@@ -47,8 +31,6 @@ const presets: Record<
     ],
   },
   ocean: {
-    type: "gradient",
-    kind: "linear",
     angle: 140,
     stops: [
       { color: "#164e63", position: 0 },
@@ -57,8 +39,6 @@ const presets: Record<
     ],
   },
   aurora: {
-    type: "gradient",
-    kind: "linear",
     angle: 135,
     stops: [
       { color: "#4c1d95", position: 0 },
@@ -67,8 +47,6 @@ const presets: Record<
     ],
   },
   prism: {
-    type: "gradient",
-    kind: "linear",
     angle: 118,
     stops: [
       { color: "#ff6b6b", position: 0 },
@@ -78,8 +56,6 @@ const presets: Record<
     ],
   },
   daybreak: {
-    type: "gradient",
-    kind: "linear",
     angle: 132,
     stops: [
       { color: "#ff875e", position: 0 },
@@ -89,8 +65,6 @@ const presets: Record<
     ],
   },
   tahoe: {
-    type: "gradient",
-    kind: "linear",
     angle: 122,
     stops: [
       { color: "#c9ccc5", position: 0 },
@@ -127,17 +101,13 @@ function positionedStops(stops: GradientStop[]): ResolvedGradientStop[] {
 }
 
 export function resolveBackground(options?: BackgroundOptions): ResolvedBackground {
-  if (!options) return { ...presets.tahoe, source: "tahoe" };
-  if (options.type === "auto") return { ...presets.tahoe, source: "auto" };
-  if (options.type === "preset") return { ...presets[options.name], source: options.name };
-  if (options.type === "color") {
-    return { type: "color", color: options.color.toLowerCase(), source: "custom" };
+  if (!options || options.type === "preset") {
+    return { type: "gradient", ...presets[options?.name ?? "tahoe"] };
   }
+  if (options.type === "color") return { type: "color", color: options.color.toLowerCase() };
   return {
     type: "gradient",
-    kind: options.kind ?? "linear",
     angle: options.angle ?? 135,
     stops: positionedStops(options.stops),
-    source: "custom",
   };
 }

@@ -86,7 +86,7 @@ describe("prepareRecording", () => {
       width: 1080,
       height: 1080,
       padding: 72,
-      background: { type: "color", color: "#123456", source: "custom" },
+      background: { type: "color", color: "#123456" },
     });
     const explicit = await prepareRecording(directory, { width: 1600, height: 1000 });
     expect(explicit.input.config).toMatchObject({ width: 1600, height: 1000, padding: 72 });

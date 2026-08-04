@@ -1,6 +1,7 @@
-import type { ResolvedBackground, ResolvedGradientStop } from "@noice-tech/demo-recorder-core";
+import type { ResolvedBackground } from "@noice-tech/demo-recorder-core";
 
 type Rgb = readonly [number, number, number];
+type RgbStop = { color: Rgb; position: number };
 
 function parseHex(color: string): Rgb {
   return [
@@ -14,23 +15,21 @@ function channel(start: number, end: number, progress: number): number {
   return Math.round(start + (end - start) * progress);
 }
 
-function colorAt(stops: ResolvedGradientStop[], position: number): Rgb {
-  if (position <= stops[0]!.position) return parseHex(stops[0]!.color);
+function colorAt(stops: RgbStop[], position: number): Rgb {
+  if (position <= stops[0]!.position) return stops[0]!.color;
   for (let index = 1; index < stops.length; index += 1) {
     const end = stops[index]!;
     if (position > end.position) continue;
     const start = stops[index - 1]!;
     const span = end.position - start.position;
     const progress = span === 0 ? 1 : (position - start.position) / span;
-    const from = parseHex(start.color);
-    const to = parseHex(end.color);
     return [
-      channel(from[0], to[0], progress),
-      channel(from[1], to[1], progress),
-      channel(from[2], to[2], progress),
+      channel(start.color[0], end.color[0], progress),
+      channel(start.color[1], end.color[1], progress),
+      channel(start.color[2], end.color[2], progress),
     ];
   }
-  return parseHex(stops.at(-1)!.color);
+  return stops.at(-1)!.color;
 }
 
 function gradientPosition(
@@ -38,14 +37,11 @@ function gradientPosition(
   y: number,
   width: number,
   height: number,
-  background: Extract<ResolvedBackground, { type: "gradient" }>,
+  angle: number,
 ): number {
   const dx = x + 0.5 - width / 2;
   const dy = y + 0.5 - height / 2;
-  if (background.kind === "radial") {
-    return Math.min(1, Math.hypot(dx, dy) / Math.hypot(width / 2, height / 2));
-  }
-  const radians = (background.angle * Math.PI) / 180;
+  const radians = (angle * Math.PI) / 180;
   const axisX = Math.sin(radians);
   const axisY = -Math.cos(radians);
   const extent = Math.abs(axisX) * width + Math.abs(axisY) * height;
@@ -65,11 +61,15 @@ export function generateBackgroundRaster(
   const pixels = Buffer.allocUnsafe(width * height * 3);
   const solid = background.type === "color" ? parseHex(background.color) : undefined;
   const gradient = background.type === "gradient" ? background : undefined;
+  const gradientStops = gradient?.stops.map((stop) => ({
+    color: parseHex(stop.color),
+    position: stop.position,
+  }));
   let offset = 0;
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const color =
-        solid ?? colorAt(gradient!.stops, gradientPosition(x, y, width, height, gradient!));
+        solid ?? colorAt(gradientStops!, gradientPosition(x, y, width, height, gradient!.angle));
       pixels[offset++] = color[0];
       pixels[offset++] = color[1];
       pixels[offset++] = color[2];

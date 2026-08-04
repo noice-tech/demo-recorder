@@ -40,11 +40,11 @@ export async function renderDemoVideo(
   log(`Generated ${zoomSegmentCount} zoom segment${zoomSegmentCount === 1 ? "" : "s"}`);
   const background = prepared.input.config.background;
   log(
-    background.type === "color"
-      ? `Background: custom ${background.color}`
-      : `Background: ${background.source} ${background.kind} (${background.stops
-          .map((stop) => stop.color)
-          .join(", ")})`,
+    `Background: ${
+      background.type === "color"
+        ? background.color
+        : `gradient (${background.stops.map((stop) => stop.color).join(", ")})`
+    }`,
   );
 
   const outputPath = resolve(
