@@ -38,7 +38,7 @@ describe("browser frame layout", () => {
     expect(drawings.every((drawing) => drawing.text.includes("\\p1"))).toBe(true);
     expect(drawings.map((drawing) => drawing.layer)).toContain(6);
     expect(drawings.map((drawing) => drawing.text).join("\n")).toContain(
-      "m 11 5.2 l 15.8 6.3 l 14.9 1.5",
+      "m 11.78 6.54 l 12.02 5.06 l 15.22 5.56",
     );
   });
 

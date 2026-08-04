@@ -255,7 +255,7 @@ function reloadIconDrawings(value: Rect, theme: BrowserFrameTheme): BrowserFrame
     const radians = (degrees * Math.PI) / 180;
     return `${number(9 + radius * Math.cos(radians))} ${number(9 + radius * Math.sin(radians))}`;
   };
-  const angles = Array.from({ length: 33 }, (_, index) => 15 + index * 10);
+  const angles = [...Array.from({ length: 31 }, (_, index) => 15 + index * 10), 320];
   const outer = angles.map((angle) => point(6.65, angle));
   const inner = angles.map((_, index) => point(5.05, angles[angles.length - index - 1] ?? 0));
   const arc = [
@@ -270,7 +270,19 @@ function reloadIconDrawings(value: Rect, theme: BrowserFrameTheme): BrowserFrame
     { layer: 6, text: drawingAt(position, tags, arc) },
     {
       layer: 6,
-      text: drawingAt(position, tags, "m 11 5.2 l 15.8 6.3 l 14.9 1.5 l 11 5.2"),
+      text: drawingAt(
+        position,
+        tags,
+        "m 11.78 6.54 l 12.02 5.06 l 15.22 5.56 l 14.98 7.04 l 11.78 6.54",
+      ),
+    },
+    {
+      layer: 6,
+      text: drawingAt(
+        position,
+        tags,
+        "m 15.84 6.18 l 14.36 6.42 l 13.86 3.22 l 15.34 2.98 l 15.84 6.18",
+      ),
     },
   ];
 }
