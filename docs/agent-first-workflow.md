@@ -35,7 +35,7 @@ A passing verified interactive path is exported as the default planner handoff. 
 
 Plans use accessible locator specifications with controlled fallbacks. Locator resolution requires exactly one visible match and never silently selects `.first()`. Generated TypeScript is unnecessary; the recorder executes validated JSON directly.
 
-`plan rehearse` executes the validated plan in a fresh browser without video capture. It writes per-step timing and, on failure, the exact step, current URL, ARIA snapshot, screenshot, trace, and focused repair hints. The agent can make a targeted edit and use attempts 2 or 3; the runtime rejects later attempts. Final capture never invokes this repair workflow.
+`plan rehearse` executes the validated plan in a fresh browser without video capture. It writes per-step timing and, on failure, the exact step, current URL, ARIA snapshot, screenshot, trace, and focused repair hints. `--fast` compresses editorial holds and scroll animation for functional preflight, but its report is marked `mode: "fast"` and `captureReady: false`; a full-speed passing rehearsal remains the capture-quality gate. Checkbox and radio actions target their visible associated labels so rehearsal and capture follow the surface a user clicks. The agent can make a targeted edit and use attempts 2 or 3; the runtime rejects later attempts. Final capture never invokes this repair workflow.
 
 ### Recorder and renderer
 

@@ -56,16 +56,19 @@ Treat the recording as if a practiced human presenter is operating the browser:
 
 If the target must be managed, add `repositoryPath`, `startCommand`, and optionally `readinessUrl`. If authenticated, add `authProfile`.
 
-Before recording, rehearse the validated plan without video capture:
+Before recording, optionally run a fast functional preflight for a long plan:
 
 ```bash
 node "$DR_CLI" plan rehearse \
   .demo-recorder/plans/product-demo/demo-plan.json \
   --attempt 1 \
+  --fast \
   --json
 ```
 
-A failed rehearsal writes the failing step, sanitized current URL, ARIA snapshot, screenshot, trace, and focused repair hints. The host agent may revise only the failing plan area and rerun with `--attempt 2` or `--attempt 3`; attempts outside 1–3 are rejected. Require a passing rehearsal before final capture. Once rehearsal passes, proceed to capture; do not run another attempt for optional polish unless the plan receives a functional change. The final `run` command remains deterministic and never invokes repair logic.
+Fast mode compresses only editorial holds and scroll animation. It preserves navigation, locators, clicks, and postconditions, but reports `captureReady: false` because it does not validate presentation pacing. Follow it with a full-speed rehearsal before capture, using the appropriate attempt number and omitting `--fast`.
+
+A failed rehearsal writes the failing step, sanitized current URL, ARIA snapshot, screenshot, trace, and focused repair hints. The host agent may revise only the failing plan area and rerun with `--attempt 2` or `--attempt 3`; attempts outside 1–3 are rejected. Require a full-mode passing rehearsal (`captureReady: true`) before final capture. Once that rehearsal passes, proceed to capture; do not run another attempt for optional polish unless the plan receives a functional change. The final `run` command remains deterministic and never invokes repair logic.
 
 Choose `capture.viewport` before exploration when the user requests a particular browser size or responsive layout. The default is 1440×900. Pass the same value to exploration with `--viewport WIDTHxHEIGHT`; verified plan export preserves it. Browser viewport and output canvas are independent: for example, a 1280×720 browser can sit inside a square canvas. Changing the viewport after verification requires exploring and verifying again because responsive controls and locators may change.
 

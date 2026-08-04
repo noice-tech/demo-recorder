@@ -36,7 +36,7 @@ function usage(): string {
     "  demo-recorder inspect <video.mp4> [--contact-sheet[=PATH]]",
     "  demo-recorder plan validate <demo-plan.json>",
     "  demo-recorder plan show <demo-plan.json>",
-    "  demo-recorder plan rehearse <demo-plan.json> [--attempt 1] [--output PATH]",
+    "  demo-recorder plan rehearse <demo-plan.json> [--attempt 1] [--fast] [--output PATH]",
     "  demo-recorder record --plan <demo-plan.json> [--headed]",
     "  demo-recorder run <demo-plan.json> [--headed]",
     "  demo-recorder auth <start|save|stop|verify|remove|list> [options]",
@@ -79,6 +79,7 @@ export const commandOptions: Record<string, OptionDefinitions> = {
     output: { type: "string" },
     attempt: { type: "string" },
     headed: { type: "boolean" },
+    fast: { type: "boolean" },
     json: { type: "boolean" },
   },
   auth: { profile: { type: "string" }, url: { type: "string" } },
@@ -131,14 +132,22 @@ async function runPlanCommand(parsed: ReturnType<typeof parseArguments>): Promis
     ...(rehearsalOutput ? { outputDirectory: rehearsalOutput } : {}),
     attempt: numberOption(parsed, "attempt", 1),
     headless: !parsed.options.has("headed"),
+    fast: parsed.options.has("fast"),
   });
+  const captureReady = result.report.status === "passed" && result.report.mode === "full";
   if (parsed.options.has("json")) {
-    console.log(JSON.stringify({ ok: result.report.status === "passed", ...result }, null, 2));
+    console.log(
+      JSON.stringify({ ok: result.report.status === "passed", captureReady, ...result }, null, 2),
+    );
   } else {
-    console.log(`[demo-recorder] Rehearsal ${result.report.status}: ${result.report.planName}`);
+    console.log(
+      `[demo-recorder] Rehearsal ${result.report.status} (${result.report.mode}): ${result.report.planName}`,
+    );
     console.log(
       `[demo-recorder] Report: ${resolve(result.outputDirectory, result.report.artifacts.report)}`,
     );
+    if (result.report.status === "passed" && result.report.mode === "fast")
+      console.log("[demo-recorder] Fast preflight passed; run a full rehearsal before capture.");
     if (result.report.failure)
       console.log(
         `[demo-recorder] Failed at step ${result.report.failure.stepIndex}: ${result.report.failure.error}`,

@@ -1,7 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page } from "playwright";
-import { resolveUniqueLocator } from "../browser/locator.js";
+import { resolveUniqueLocator, resolveVisibleClickTarget } from "../browser/locator.js";
 import type { DemoAction, DemoPlan, LocatorSpec } from "../demo-plan/index.js";
 import { createRecordingSession } from "./session.js";
 import type { DemoActions, RecordingSessionOptions } from "./types.js";
@@ -29,8 +29,13 @@ async function executeAction(page: Page, actions: DemoActions, step: DemoAction)
       locator,
       step.durationMs === undefined ? undefined : { durationMs: step.durationMs },
     );
-  if (step.type === "click")
-    return actions.click(locator, step.button === undefined ? undefined : { button: step.button });
+  if (step.type === "click") {
+    const clickTarget = await resolveVisibleClickTarget(page, locator);
+    return actions.click(
+      clickTarget,
+      step.button === undefined ? undefined : { button: step.button },
+    );
+  }
   if (step.type === "fill") return actions.fill(locator, step.value);
   if (step.type === "press") return actions.press(locator, step.key);
   if (step.type === "select") return actions.select(locator, step.value);

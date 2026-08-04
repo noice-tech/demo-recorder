@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { join, resolve } from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
+import { resolveVisibleClickTarget } from "./browser/locator.js";
 import { smoothScroll } from "./browser/smooth-scroll.js";
 import { resolvePlanLocator } from "./capture/plan.js";
 import { loadDemoPlan, type DemoAction, type DemoPlan } from "./demo-plan/index.js";
@@ -30,6 +31,7 @@ export type RehearsalReport = {
   planPath: string;
   attempt: number;
   maxAttempts: 3;
+  mode: "fast" | "full";
   status: "passed" | "failed";
   createdAt: string;
   finishedAt: string;
@@ -50,7 +52,19 @@ export type RehearsalReport = {
   };
 };
 
-async function executeRehearsalAction(plan: DemoPlan, page: Page, step: DemoAction): Promise<void> {
+const fastHoldLimitMs = 100;
+const fastScrollDurationMs = 150;
+
+export function rehearsalHoldDuration(durationMs: number, fast: boolean): number {
+  return fast ? Math.min(durationMs, fastHoldLimitMs) : durationMs;
+}
+
+async function executeRehearsalAction(
+  plan: DemoPlan,
+  page: Page,
+  step: DemoAction,
+  fast: boolean,
+): Promise<void> {
   switch (step.type) {
     case "navigate":
       await page.goto(new URL(step.url, plan.target.baseUrl).href, {
@@ -59,10 +73,15 @@ async function executeRehearsalAction(plan: DemoPlan, page: Page, step: DemoActi
       });
       return;
     case "scroll":
-      await smoothScroll(page, step.deltaY, step.deltaX ?? 0);
+      await smoothScroll(
+        page,
+        step.deltaY,
+        step.deltaX ?? 0,
+        fast ? { durationMs: fastScrollDurationMs } : {},
+      );
       return;
     case "hold":
-      await page.waitForTimeout(step.durationMs);
+      await page.waitForTimeout(rehearsalHoldDuration(step.durationMs, fast));
       return;
     case "wait-for-url":
       await page.waitForURL(step.urlPattern, step.timeoutMs ? { timeout: step.timeoutMs } : {});
@@ -77,9 +96,11 @@ async function executeRehearsalAction(plan: DemoPlan, page: Page, step: DemoActi
       await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
       return;
     }
-    case "click":
-      await locator.click({ button: step.button ?? "left" });
+    case "click": {
+      const clickTarget = await resolveVisibleClickTarget(page, locator);
+      await clickTarget.click({ button: step.button ?? "left" });
       return;
+    }
     case "fill":
       await locator.fill(step.value);
       return;
@@ -155,6 +176,7 @@ export async function rehearseDemoPlan(options: {
   headless: boolean;
   storageStatePath?: string;
   sessionStoragePath?: string;
+  fast?: boolean;
 }): Promise<RehearsalReport> {
   if (!Number.isInteger(options.attempt) || options.attempt < 1 || options.attempt > 3)
     throw new Error("Rehearsal attempt must be between 1 and 3");
@@ -188,7 +210,7 @@ export async function rehearseDemoPlan(options: {
     for (const [index, step] of options.plan.capture.steps.entries()) {
       const startedAt = Date.now();
       try {
-        await executeRehearsalAction(options.plan, page, step);
+        await executeRehearsalAction(options.plan, page, step, options.fast ?? false);
         steps.push({
           index: index + 1,
           type: step.type,
@@ -262,6 +284,7 @@ export async function rehearseDemoPlan(options: {
     planPath: options.planPath,
     attempt: options.attempt,
     maxAttempts: 3,
+    mode: options.fast ? "fast" : "full",
     status: failure ? "failed" : "passed",
     createdAt,
     finishedAt: new Date().toISOString(),
@@ -283,6 +306,7 @@ export async function rehearsePlanFile(options: {
   outputDirectory?: string;
   attempt?: number;
   headless?: boolean;
+  fast?: boolean;
 }): Promise<{ outputDirectory: string; report: RehearsalReport }> {
   const planPath = resolve(workingDirectory, options.planArgument);
   const plan = await loadDemoPlan(planPath);
@@ -312,6 +336,7 @@ export async function rehearsePlanFile(options: {
       outputDirectory,
       attempt,
       headless: options.headless ?? true,
+      fast: options.fast ?? false,
       ...(authPaths
         ? {
             storageStatePath: authPaths.storageStatePath,
