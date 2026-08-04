@@ -4,6 +4,12 @@ import {
   type ClickEvent,
   type ProductDemoInput,
 } from "@noice-tech/demo-recorder-core";
+import {
+  browserFrameAddressColor,
+  computeBrowserFrameLayout,
+  drawBrowserFrame,
+  formatBrowserAddress,
+} from "./browser-frame.js";
 import type { ProductDemoGeometry } from "./geometry.js";
 
 function subtitleTime(seconds: number): string {
@@ -54,34 +60,6 @@ function latestClickAt(clicks: readonly ClickEvent[], timestampMs: number): Clic
 
 const cursorPath = "m 2 2 l 2 26 l 8 21 l 12 32 l 16 30 l 12 19 l 22 19 l 2 2";
 
-function roundedTopRectPath(width: number, height: number, radius: number): string {
-  const control = radius * 0.55228475;
-  return [
-    `m ${number(radius)} 0`,
-    `l ${number(width - radius)} 0`,
-    `b ${number(width - radius + control)} 0 ${number(width)} ${number(radius - control)} ${number(width)} ${number(radius)}`,
-    `l ${number(width)} ${number(height)}`,
-    `l 0 ${number(height)}`,
-    `l 0 ${number(radius)}`,
-    `b 0 ${number(radius - control)} ${number(radius - control)} 0 ${number(radius)} 0`,
-  ].join(" ");
-}
-
-function roundedRectPath(width: number, height: number, radius: number): string {
-  const control = radius * 0.55228475;
-  return [
-    `m ${number(radius)} 0`,
-    `l ${number(width - radius)} 0`,
-    `b ${number(width - radius + control)} 0 ${number(width)} ${number(radius - control)} ${number(width)} ${number(radius)}`,
-    `l ${number(width)} ${number(height - radius)}`,
-    `b ${number(width)} ${number(height - radius + control)} ${number(width - radius + control)} ${number(height)} ${number(width - radius)} ${number(height)}`,
-    `l ${number(radius)} ${number(height)}`,
-    `b ${number(radius - control)} ${number(height)} 0 ${number(height - radius + control)} 0 ${number(height - radius)}`,
-    `l 0 ${number(radius)}`,
-    `b 0 ${number(radius - control)} ${number(radius - control)} 0 ${number(radius)} 0`,
-  ].join(" ");
-}
-
 function circlePath(radius: number): string {
   const diameter = radius * 2;
   const control = radius * 0.55228475;
@@ -109,41 +87,9 @@ export function generateTimedOverlayScript(input: {
   const clip = `\\clip(${content.x},${content.y},${content.x + content.width},${content.y + content.height})`;
   const events: string[] = [];
 
-  const shellPosition = `\\an7\\pos(${number(browser.x)},${number(browser.y)})`;
-  events.push(
-    dialogue(
-      1,
-      0,
-      durationSeconds,
-      "Drawing",
-      `{${shellPosition}\\p1\\bord0\\1c&H32241E&}${roundedTopRectPath(browser.width, 48, 20)}`,
-    ),
-    dialogue(
-      2,
-      0,
-      durationSeconds,
-      "Drawing",
-      `{${shellPosition}\\p1\\bord1\\1a&HFF&\\3c&H332C26&}${roundedRectPath(browser.width, browser.height, 20)}`,
-    ),
-    dialogue(
-      3,
-      0,
-      durationSeconds,
-      "Drawing",
-      `{\\an7\\pos(${number(browser.x)},${number(browser.y + 47)})\\p1\\bord0\\1c&H3D352E&}m 0 0 l ${number(browser.width)} 0 l ${number(browser.width)} 1 l 0 1`,
-    ),
-  );
-  const controls = ["H575FFF", "H2EBCFE", "H40C828"];
-  for (const [index, color] of controls.entries()) {
-    events.push(
-      dialogue(
-        4,
-        0,
-        durationSeconds,
-        "Drawing",
-        `{\\an7\\pos(${number(browser.x + 18 + index * 21)},${number(browser.y + 18)})\\p1\\bord1\\3c&H2A2A2A&\\1c&${color}&}${circlePath(6)}`,
-      ),
-    );
+  const browserFrame = computeBrowserFrameLayout(browser);
+  for (const drawing of drawBrowserFrame(browserFrame, config.browserFrameTheme)) {
+    events.push(dialogue(drawing.layer, 0, durationSeconds, "Drawing", drawing.text));
   }
 
   let title = "Product demo";
@@ -161,19 +107,22 @@ export function generateTimedOverlayScript(input: {
     titleStartMs = event.timestampMs;
   }
   titleEvents.push({ startMs: titleStartMs, endMs: trimEndMs, text: title });
-  const titleClipWidth = browser.width * 0.55;
-  const titleCenterX = browser.x + browser.width / 2;
+  const address = browserFrame.address;
+  const addressText = browserFrame.addressText;
+  const addressCenterX = address.x + address.width / 2;
+  const includeAddressPath = address.width >= 320;
   for (const interval of titleEvents) {
     const start = Math.max(0, (interval.startMs - trimStartMs) / 1000);
     const end = Math.min(durationSeconds, (interval.endMs - trimStartMs) / 1000);
     if (end <= start) continue;
+    const displayAddress = formatBrowserAddress(interval.text, includeAddressPath);
     events.push(
       dialogue(
         30,
         start,
         end,
-        "Title",
-        `{\\an5\\pos(${number(titleCenterX)},${number(browser.y + 24)})\\clip(${number(titleCenterX - titleClipWidth / 2)},${browser.y},${number(titleCenterX + titleClipWidth / 2)},${browser.y + 48})\\q2}${safeText(interval.text)}`,
+        "BrowserAddress",
+        `{\\an5\\pos(${number(addressCenterX)},${number(address.y + address.height / 2)})\\clip(${number(addressText.x)},${number(addressText.y)},${number(addressText.x + addressText.width)},${number(addressText.y + addressText.height)})\\1c&${browserFrameAddressColor(config.browserFrameTheme)}&\\q2}${safeText(displayAddress)}`,
       ),
     );
   }
@@ -255,7 +204,7 @@ export function generateTimedOverlayScript(input: {
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    "Style: Title,Inter,14,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1",
+    "Style: BrowserAddress,Inter,14,&H002F2F2F,&H002F2F2F,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1",
     "Style: Drawing,Inter,16,&H00000000,&H00000000,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1",
     "",
     "[Events]",

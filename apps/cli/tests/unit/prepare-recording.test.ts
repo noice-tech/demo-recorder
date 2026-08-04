@@ -42,7 +42,7 @@ describe("prepareRecording", () => {
     expect(prepared.manifest.id).toBe("renderer-test");
     expect(prepared.input.timeline.zoomSegments).toHaveLength(0);
     expect(prepared.input.timeline.trimStartMs).toBe(80);
-    expect(prepared.input.config.fps).toBe(60);
+    expect(prepared.input.config).toMatchObject({ fps: 60, browserFrameTheme: "dark" });
     expect(prepared.videoPath).toBe(await realpath(join(directory, "browser.webm")));
   });
 
@@ -78,6 +78,7 @@ describe("prepareRecording", () => {
           padding: 72,
           background: { type: "color", color: "#123456" },
         },
+        browserFrame: { theme: "light" },
       }),
     );
 
@@ -87,6 +88,7 @@ describe("prepareRecording", () => {
       height: 1080,
       padding: 72,
       background: { type: "color", color: "#123456" },
+      browserFrameTheme: "light",
     });
     const explicit = await prepareRecording(directory, { width: 1600, height: 1000 });
     expect(explicit.input.config).toMatchObject({ width: 1600, height: 1000, padding: 72 });

@@ -118,3 +118,13 @@ The manifest records what was captured. It must not contain derived decisions su
 - output dimensions or styling.
 
 Those belong in `DemoTimeline` and render configuration. This separation permits repeated presentation changes without mutating or replaying the source recording.
+
+The Safari-inspired browser frame uses the dark theme by default. A plan or saved `presentation.json` can request the light variant without recapturing:
+
+```json
+{
+  "browserFrame": { "theme": "light" }
+}
+```
+
+Supported themes are `dark` and `light`.

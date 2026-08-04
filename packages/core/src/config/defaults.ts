@@ -10,6 +10,7 @@ export const defaultConfig: DemoVideoConfig = {
     padding: 97.2,
     paddingMode: "minimum",
     background: resolveBackground(),
+    browserFrameTheme: "dark",
   },
   cursor: { enabled: true },
   zoom: {
