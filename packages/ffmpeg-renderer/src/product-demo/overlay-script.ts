@@ -122,7 +122,7 @@ export function generateTimedOverlayScript(input: {
         start,
         end,
         "BrowserAddress",
-        `{\\an5\\pos(${number(addressCenterX)},${number(address.y + address.height / 2)})\\clip(${number(addressText.x)},${number(addressText.y)},${number(addressText.x + addressText.width)},${number(addressText.y + addressText.height)})\\1c&${browserFrameAddressColor(config.browserFrameTheme)}&\\q2}${safeText(displayAddress)}`,
+        `{\\an5\\pos(${number(addressCenterX)},${number(address.y + address.height / 2)})\\clip(${number(addressText.x)},${number(addressText.y)},${number(addressText.x + addressText.width)},${number(addressText.y + addressText.height)})\\b0\\bord0\\1c&${browserFrameAddressColor(config.browserFrameTheme)}&\\q2}${safeText(displayAddress)}`,
       ),
     );
   }
@@ -204,7 +204,7 @@ export function generateTimedOverlayScript(input: {
     "",
     "[V4+ Styles]",
     "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-    "Style: BrowserAddress,Inter,14,&H002F2F2F,&H002F2F2F,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1",
+    "Style: BrowserAddress,Inter Medium,14,&H002F2F2F,&H002F2F2F,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,5,0,0,0,1",
     "Style: Drawing,Inter,16,&H00000000,&H00000000,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1",
     "",
     "[Events]",

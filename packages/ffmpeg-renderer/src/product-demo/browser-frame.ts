@@ -248,6 +248,33 @@ function filledIconDrawing(
   );
 }
 
+function reloadIconDrawings(value: Rect, theme: BrowserFrameTheme): BrowserFrameDrawing[] {
+  // ASS drawings are filled shapes rather than SVG-style open strokes. Build a
+  // filled arc so libass cannot implicitly close the SVG path across its gap.
+  const point = (radius: number, degrees: number): string => {
+    const radians = (degrees * Math.PI) / 180;
+    return `${number(9 + radius * Math.cos(radians))} ${number(9 + radius * Math.sin(radians))}`;
+  };
+  const angles = Array.from({ length: 33 }, (_, index) => 15 + index * 10);
+  const outer = angles.map((angle) => point(6.65, angle));
+  const inner = angles.map((_, index) => point(5.05, angles[angles.length - index - 1] ?? 0));
+  const arc = [
+    `m ${outer[0]}`,
+    ...outer.slice(1).map((position) => `l ${position}`),
+    ...inner.map((position) => `l ${position}`),
+  ].join(" ");
+  const position = { x: value.x + value.width / 2 - 9, y: value.y + value.height / 2 - 9 };
+  const tags = `\\bord0\\1c&${framePalettes[theme].glyph}&`;
+
+  return [
+    { layer: 6, text: drawingAt(position, tags, arc) },
+    {
+      layer: 6,
+      text: drawingAt(position, tags, "m 11 5.2 l 15.8 6.3 l 14.9 1.5 l 11 5.2"),
+    },
+  ];
+}
+
 export function browserFrameAddressColor(theme: BrowserFrameTheme): string {
   return framePalettes[theme].addressText;
 }
@@ -306,7 +333,7 @@ export function drawBrowserFrame(
       layout.back,
       "m 11 2 l 5 8 l 11 14 l 13 12 l 9 8 l 13 4 l 11 2",
       theme,
-      -1.125,
+      -1.5,
     ),
   });
   drawings.push({
@@ -331,14 +358,25 @@ export function drawBrowserFrame(
   });
 
   if (layout.showAddressAccessories) {
-    drawings.push({
-      layer: 6,
-      text: iconDrawing(
-        rect(layout.address.x + 4, layout.address.y, 22, layout.address.height),
-        "m 8 3 l 12 5 l 12 9 b 12 12 10 14 8 15 b 6 14 4 12 4 9 l 4 5 l 8 3",
-        theme,
-      ),
-    });
+    const reload = rect(
+      layout.address.x + layout.address.width - 29,
+      layout.address.y + (layout.address.height - 28) / 2,
+      28,
+      28,
+    );
+    drawings.push(
+      {
+        layer: 6,
+        text: iconDrawing(
+          rect(layout.address.x + 4, layout.address.y, 22, layout.address.height),
+          "m 8 3 l 12 5 l 12 9 b 12 12 10 14 8 15 b 6 14 4 12 4 9 l 4 5 l 8 3",
+          theme,
+          0,
+          -1,
+        ),
+      },
+      ...reloadIconDrawings(reload, theme),
+    );
   }
 
   return drawings;

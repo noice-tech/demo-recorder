@@ -34,9 +34,12 @@ describe("browser frame layout", () => {
     const layout = computeBrowserFrameLayout({ x: 20, y: 30, width: 1340, height: 886 });
     const drawings = drawBrowserFrame(layout, "dark");
 
-    expect(drawings.length).toBeGreaterThanOrEqual(13);
+    expect(drawings.length).toBeGreaterThanOrEqual(14);
     expect(drawings.every((drawing) => drawing.text.includes("\\p1"))).toBe(true);
     expect(drawings.map((drawing) => drawing.layer)).toContain(6);
+    expect(drawings.map((drawing) => drawing.text).join("\n")).toContain(
+      "m 11 5.2 l 15.8 6.3 l 14.9 1.5",
+    );
   });
 
   it("supports dark and light frame palettes", () => {
