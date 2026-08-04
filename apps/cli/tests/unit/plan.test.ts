@@ -32,6 +32,7 @@ describe("demo plan", () => {
           padding: 72,
           background: { type: "preset", name: "prism" },
         },
+        browserFrame: { theme: "light" },
       },
     });
     expect(plan.capture.viewport).toEqual({ width: 1280, height: 720 });
@@ -40,6 +41,7 @@ describe("demo plan", () => {
       padding: 72,
       background: { type: "preset", name: "prism" },
     });
+    expect(plan.presentation.browserFrame).toEqual({ theme: "light" });
   });
 
   it("rejects invalid or conflicting canvas dimensions", () => {

@@ -42,6 +42,7 @@ export const demoVideoConfigSchema = z.object({
     padding: z.number().nonnegative(),
     paddingMode: z.enum(["minimum", "exact"]),
     background: resolvedBackgroundSchema,
+    browserFrameTheme: z.enum(["dark", "light"]),
   }),
   cursor: z.object({ enabled: z.boolean() }),
   zoom: zoomConfigSchema,

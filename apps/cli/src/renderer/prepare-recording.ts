@@ -10,7 +10,11 @@ import {
   type ProductDemoInput,
   type RecordingManifest,
 } from "@noice-tech/demo-recorder-core";
-import { plannedZoomSchema, presentationCanvasSchema } from "../demo-plan/index.js";
+import {
+  demoPlanBrowserFrameSchema,
+  plannedZoomSchema,
+  presentationCanvasSchema,
+} from "../demo-plan/index.js";
 
 export type PreparedRecording = {
   manifestPath: string;
@@ -71,6 +75,7 @@ export async function prepareRecording(
           trimStartMs?: unknown;
           trimEndMs?: unknown;
           canvas?: unknown;
+          browserFrame?: unknown;
         },
     )
     .catch((error: NodeJS.ErrnoException) => {
@@ -103,6 +108,9 @@ export async function prepareRecording(
       }
     : plannedCanvas;
   const canvas = resolveCanvas(mergedCanvas, manifest.viewport);
+  const browserFrame = presentationValue?.browserFrame
+    ? demoPlanBrowserFrameSchema.parse(presentationValue.browserFrame)
+    : undefined;
   const firstNavigationMs = manifest.events.find(
     (event) => event.type === "navigation" && event.timestampMs < manifest.durationMs,
   )?.timestampMs;
@@ -137,6 +145,7 @@ export async function prepareRecording(
         ...defaultConfig.render,
         ...canvas,
         background: resolveBackground(mergedCanvas?.background),
+        browserFrameTheme: browserFrame?.theme ?? defaultConfig.render.browserFrameTheme,
         cursorEnabled: defaultConfig.cursor.enabled,
         zoom: {
           enterDurationMs: defaultConfig.zoom.enterDurationMs,

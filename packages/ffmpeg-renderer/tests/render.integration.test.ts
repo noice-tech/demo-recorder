@@ -31,6 +31,7 @@ function renderInput() {
       padding: 97.2,
       paddingMode: "minimum" as const,
       background: resolveBackground({ type: "preset", name: "midnight" }),
+      browserFrameTheme: "dark" as const,
       cursorEnabled: true,
       zoom: { enterDurationMs: 350, exitDurationMs: 450 },
     },

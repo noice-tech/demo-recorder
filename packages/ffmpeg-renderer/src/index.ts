@@ -4,6 +4,7 @@ export * from "./process.js";
 export * from "./progress.js";
 export * from "./product-demo/background-raster.js";
 export * from "./product-demo/overlay-script.js";
+export * from "./product-demo/browser-frame.js";
 export * from "./product-demo/camera-expression.js";
 export * from "./product-demo/filter-graph.js";
 export * from "./product-demo/geometry.js";

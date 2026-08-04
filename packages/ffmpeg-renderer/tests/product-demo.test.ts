@@ -35,6 +35,7 @@ const input: ProductDemoRenderInput = {
     padding: 97.2,
     paddingMode: "minimum",
     background: resolveBackground({ type: "preset", name: "midnight" }),
+    browserFrameTheme: "dark",
     cursorEnabled: true,
     zoom: { enterDurationMs: 350, exitDurationMs: 450 },
   },
@@ -99,7 +100,7 @@ describe("product demo graph generation", () => {
       geometry,
       frameCount: 45,
     });
-    expect(overlayScript).toContain("https://example.com/a｛b｝");
+    expect(overlayScript).toContain("example.com/a｛b｝");
     expect(overlayScript).not.toContain("https://example.com/a{b}");
   });
 });

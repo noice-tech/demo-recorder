@@ -129,6 +129,10 @@ export const presentationCanvasSchema = z
     message: "Use either canvas aspectRatio or explicit width and height",
   });
 
+export const demoPlanBrowserFrameSchema = z.object({
+  theme: z.enum(["dark", "light"]),
+});
+
 export const demoPlanSchema = z.object({
   version: z.literal(1),
   name: nonempty.regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
@@ -158,6 +162,7 @@ export const demoPlanSchema = z.object({
       trimStartMs: z.number().nonnegative().optional(),
       trimEndMs: z.number().positive().optional(),
       canvas: presentationCanvasSchema.optional(),
+      browserFrame: demoPlanBrowserFrameSchema.optional(),
     })
     .refine(
       (presentation) =>
