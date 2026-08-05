@@ -39,6 +39,32 @@ export function locatorForMethod(page: Page, method: LocatorMethod): Locator {
   }
 }
 
+function cssAttributeValue(value: string): string {
+  return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\a ")}"`;
+}
+
+/** Prefer the visible label a user actually clicks for checkbox and radio controls. */
+export async function resolveVisibleClickTarget(page: Page, locator: Locator): Promise<Locator> {
+  const control = await locator
+    .evaluate((element) => {
+      if (!(element instanceof HTMLInputElement)) return undefined;
+      if (element.type !== "checkbox" && element.type !== "radio") return undefined;
+      const label = element.labels?.[0];
+      if (!label) return undefined;
+      return { id: element.id, wrapsControl: label.contains(element) };
+    })
+    .catch(() => undefined);
+  if (!control) return locator;
+
+  const label = control.wrapsControl
+    ? locator.locator("xpath=ancestor::label[1]")
+    : control.id
+      ? page.locator(`label[for=${cssAttributeValue(control.id)}]`)
+      : undefined;
+  if (!label || (await label.count()) !== 1 || !(await label.isVisible())) return locator;
+  return label;
+}
+
 export async function resolveUniqueLocator(
   page: Page,
   methods: LocatorMethod[],

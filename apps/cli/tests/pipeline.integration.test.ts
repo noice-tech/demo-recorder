@@ -10,9 +10,10 @@ import {
 import { probeVideo } from "@noice-tech/demo-recorder-ffmpeg";
 import { chromium } from "playwright";
 import { afterAll, describe, expect, it } from "vitest";
+import { resolveVisibleClickTarget } from "../src/browser/locator.js";
 import { recordDemoPlan, resolvePlanLocator } from "../src/capture/index.js";
 import { parseDemoPlan } from "../src/demo-plan/index.js";
-import { rehearseDemoPlan } from "../src/rehearsal.js";
+import { rehearsalHoldDuration, rehearseDemoPlan } from "../src/rehearsal.js";
 import { startFixtureServer } from "./support/fixture-server.js";
 
 const fixtureDirectory = fileURLToPath(new URL("fixtures/example-app", import.meta.url));
@@ -63,12 +64,19 @@ afterAll(async () => {
 });
 
 describe.sequential("capture pipeline", () => {
+  it("compresses editorial holds only in fast rehearsals", () => {
+    expect(rehearsalHoldDuration(2_000, true)).toBe(100);
+    expect(rehearsalHoldDuration(50, true)).toBe(50);
+    expect(rehearsalHoldDuration(2_000, false)).toBe(2_000);
+  });
+
   it("rejects ambiguous capture locators and accepts a unique fallback", async () => {
     const browser = await chromium.launch({ headless: true });
     const page = await browser.newPage();
     try {
       await page.setContent(
-        '<button id="primary">Open details</button><button>Open details</button>',
+        '<button id="primary">Open details</button><button>Open details</button>' +
+          '<input id="choice" type="radio"><label for="choice">Visible choice</label>',
       );
       await expect(
         resolvePlanLocator(page, {
@@ -80,6 +88,10 @@ describe.sequential("capture pipeline", () => {
         fallbacks: [{ by: "css", selector: "#primary" }],
       });
       expect(await resolved.getAttribute("id")).toBe("primary");
+
+      const input = page.locator("#choice");
+      const clickTarget = await resolveVisibleClickTarget(page, input);
+      expect(await clickTarget.evaluate((element) => element.tagName)).toBe("LABEL");
     } finally {
       await browser.close();
     }
@@ -97,6 +109,7 @@ describe.sequential("capture pipeline", () => {
         headless: true,
       });
       expect(report.status).toBe("passed");
+      expect(report.mode).toBe("full");
       expect(report.steps.every((step) => step.status === "passed")).toBe(true);
       await expect(access(join(outputDirectory, report.artifacts.report))).resolves.toBeUndefined();
       await expect(
