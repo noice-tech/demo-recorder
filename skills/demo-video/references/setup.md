@@ -3,8 +3,8 @@
 Use the exact runtime version required by the skill:
 
 ```text
-DR_VERSION = 0.0.1
-DR_PACKAGE = @noice-tech/demo-recorder@0.0.1
+DR_VERSION = 0.1.0
+DR_PACKAGE = @noice-tech/demo-recorder@0.1.0
 ```
 
 The commands in the other references use `node "$DR_CLI"` to mean the cached CLI path established here. Preserve that path for every command in the current task; never fall back to `npx`, a global installation, or a target-project dependency.
@@ -13,9 +13,9 @@ The commands in the other references use `node "$DR_CLI"` to mean the cached CLI
 
 Use a versioned directory under the platform's normal user cache:
 
-- macOS: `~/Library/Caches/noice-tech/demo-recorder/0.0.1`
-- Linux: `${XDG_CACHE_HOME:-$HOME/.cache}/noice-tech/demo-recorder/0.0.1`
-- Windows: `%LOCALAPPDATA%\noice-tech\demo-recorder\0.0.1`
+- macOS: `~/Library/Caches/noice-tech/demo-recorder/0.1.0`
+- Linux: `${XDG_CACHE_HOME:-$HOME/.cache}/noice-tech/demo-recorder/0.1.0`
+- Windows: `%LOCALAPPDATA%\noice-tech\demo-recorder\0.1.0`
 
 The CLI entry point is:
 
@@ -27,11 +27,11 @@ Set `DR_CLI` to that absolute path after choosing `RUNTIME_ROOT`. Do not rely on
 
 ## Reuse or install
 
-If the entry point exists, run `node <entry-point> --version`. Reuse it only when it prints exactly `0.0.1`. A valid existing installation needs no new package consent.
+If the entry point exists, run `node <entry-point> --version`. Reuse it only when it prints exactly `0.1.0`. A valid existing installation needs no new package consent.
 
 If it is absent, corrupt, or has a different version, tell the user:
 
-> Demo Recorder needs to install `@noice-tech/demo-recorder@0.0.1` and its npm dependencies in `<RUNTIME_ROOT>`. This is a versioned user cache: it will not change this project or install anything globally. npm lifecycle scripts will be disabled. May I continue?
+> Demo Recorder needs to install `@noice-tech/demo-recorder@0.1.0` and its npm dependencies in `<RUNTIME_ROOT>`. This is a versioned user cache: it will not change this project or install anything globally. npm lifecycle scripts will be disabled. May I continue?
 
 Do not run npm until the user agrees. Then run:
 
@@ -44,7 +44,7 @@ npm install \
   --package-lock=false \
   --no-audit \
   --no-fund \
-  @noice-tech/demo-recorder@0.0.1
+  @noice-tech/demo-recorder@0.1.0
 ```
 
 On PowerShell, pass the same options with `$RuntimeRoot`:
@@ -58,7 +58,7 @@ npm install `
   --package-lock=false `
   --no-audit `
   --no-fund `
-  "@noice-tech/demo-recorder@0.0.1"
+  "@noice-tech/demo-recorder@0.1.0"
 ```
 
 Verify `node "$DR_CLI" --version` before executing any other CLI command. Ask again before installing a different package version.

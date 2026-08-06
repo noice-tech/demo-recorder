@@ -65,7 +65,7 @@ Or ask it to record the result of a development task:
 
 ## Current status and plans
 
-The current release is **0.0.1 Alpha**. The complete workflow - from exploring a product to rendering an MP4 - is available today, but commands, plan formats, and behavior may still change.
+The current release is **0.1.0 Alpha**. The complete workflow - from exploring a product to rendering an MP4 - is available today, but commands, plan formats, and behavior may still change.
 
 The next areas of focus are:
 
