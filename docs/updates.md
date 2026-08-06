@@ -1,11 +1,11 @@
 # Updates and releases
 
-Demo Recorder uses one product version for the `demo-video` skill, npm runtime, GitHub release, and runtime cache directory. A release such as `0.0.1` consists of:
+Demo Recorder uses one product version for the `demo-video` skill, npm runtime, GitHub release, and runtime cache directory. A release such as `0.1.0` consists of:
 
-- skill metadata version `0.0.1`;
-- `@noice-tech/demo-recorder@0.0.1`;
-- Git tag and GitHub release `v0.0.1`;
-- stable `release-manifest.json` version `0.0.1`.
+- skill metadata version `0.1.0`;
+- `@noice-tech/demo-recorder@0.1.0`;
+- Git tag and GitHub release `v0.1.0`;
+- stable `release-manifest.json` version `0.1.0`.
 
 The skill always pins one exact runtime version. The runtime never updates itself, and update checks never install anything.
 

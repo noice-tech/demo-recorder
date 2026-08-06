@@ -14,13 +14,14 @@ Shipping features is fast. Recording demos usually isn't.
 
 You have to plan the walkthrough, record a clean take, edit it, and package everything for sharing. Then the product changes and the video is already out of date.
 
-Demo Recorder lets you automate this through your coding agent. Tell it the flow you want, and it walks through the product, records the demo, and renders the video.
+Demo Recorder lets you automate this through your coding agent. Tell it the flow you want, and it walks through the product, records the demo, and renders the video. It can also record a feature after an agent finishes building it, making the result easier to review without manually retracing the flow.
 
 Common use cases:
 
 - demos for product updates and release posts
 - short walkthroughs for documentation and tutorials
-- video previews for pull requests
+- video previews of features built by coding agents
+- visual context for pull requests and handoffs
 - clips for launch posts and social media
 - internal walkthroughs for teammates and stakeholders
 
@@ -58,9 +59,13 @@ Then ask your coding agent for the demo you want:
 
 On first use, the skill asks before installing its pinned runtime in a user cache. It also asks separately before downloading Playwright Chromium if it is not already available.
 
+Or ask it to record the result of a development task:
+
+> Implement the new sharing flow, then record a short demo showing how it works.
+
 ## Current status and plans
 
-The current release is **0.0.1 Alpha**. The complete workflow - from exploring a product to rendering an MP4 - is available today, but commands, plan formats, and behavior may still change.
+The current release is **0.1.0 Alpha**. The complete workflow - from exploring a product to rendering an MP4 - is available today, but commands, plan formats, and behavior may still change.
 
 The next areas of focus are:
 

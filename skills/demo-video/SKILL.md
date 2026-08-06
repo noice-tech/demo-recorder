@@ -3,14 +3,14 @@ name: demo-video
 description: Create polished product demo, feature walkthrough, app showcase, or product-tour videos from a public or staging URL, localhost app, or local repository. Safely explore the application, plan browser interactions, record them, render an MP4, and inspect the result. Use when the user asks to create or record a demo video, product walkthrough, feature showcase, app tour, or website presentation.
 compatibility: Requires Node.js 22+, user-installed ffmpeg and ffprobe, terminal and process access, and permission to download the Demo Recorder npm package and Playwright Chromium on first use.
 metadata:
-  version: "0.0.1"
+  version: "0.1.0"
 ---
 
 # Agent-Directed Demo Video
 
 Act as the explorer and director. Demo Recorder makes no model API calls; use repository tools for reasoning and the deterministic CLI for execution.
 
-Use the versioned, user-cached CLI described in [the first-run setup guide](references/setup.md) for every Demo Recorder command. Never use `npx` for the runtime, install it globally, or add it to the target project. In commands below, `node "$DR_CLI"` means the verified cached `@noice-tech/demo-recorder@0.0.1` entry point established by that guide.
+Use the versioned, user-cached CLI described in [the first-run setup guide](references/setup.md) for every Demo Recorder command. Never use `npx` for the runtime, install it globally, or add it to the target project. In commands below, `node "$DR_CLI"` means the verified cached `@noice-tech/demo-recorder@0.1.0` entry point established by that guide.
 
 1. Check Node before any npm command: `node -e 'const major=Number(process.versions.node.split(".")[0]); process.exit(major >= 22 ? 0 : 1)'`. If Node is absent or unsupported, stop and ask the user to install Node.js 22 or newer; never install a system Node runtime automatically.
 2. Follow [the first-run setup guide](references/setup.md): reuse an exact compatible cached runtime, or explain its package, version, destination, and disabled lifecycle scripts and obtain permission before installing it. Verify the runtime version, then run `node "$DR_CLI" doctor --json` and inspect every reported capability.
