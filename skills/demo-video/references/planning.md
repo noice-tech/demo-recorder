@@ -1,6 +1,33 @@
 # Planning
 
-Use a version 1 `demo-plan.json`. When a persistent exploration path passed verification, start from `explore export-plan` and preserve its representable interaction core instead of writing the plan from scratch. Manual authoring is the fallback for stories without a verified interactive path or for the specific portion export cannot represent. The agent supplies editorial reasoning; Demo Recorder supplies deterministic handoff, validation, and execution.
+Use a version 1 `demo-plan.json`. When a persistent exploration path passed verification, start from `explore export-plan` and preserve its representable interaction core instead of writing the plan from scratch. A suitable existing Playwright test can instead provide the initial flow through the static importer below. Manual authoring is the fallback for stories without either source. The agent supplies editorial reasoning; Demo Recorder supplies deterministic handoff, validation, and execution.
+
+## Playwright conversion
+
+Import one inline Playwright test without executing the spec or its configuration:
+
+```bash
+node "$DR_CLI" plan import-playwright tests/settings.spec.ts \
+  --test "settings opens profile" \
+  --base-url http://127.0.0.1:3000 \
+  --output .demo-recorder/plans/settings/demo-plan.json \
+  --json
+```
+
+The importer supports ordinary `page` navigation, accessible locators, click, hover, fill, press, selection, wheel scrolling, URL/visibility waits, and simple inline `beforeEach` and `test.step` blocks. It deliberately rejects helpers, page objects, computed locators, loops, conditionals, frames, and other behavior it cannot preserve. If several tests exist, its diagnostic lists their full titles so one can be selected with `--test`. Use `--allow-modify-data`, `--allow-submit-forms`, or `--allow-cross-origin` only when the requested demo explicitly permits those risks. Never treat imported auth setup as safe plan data.
+
+An imported plan is not verified exploration evidence. Review its flow, add only editorial holds and purposes needed for human pacing, validate it, and require the normal full rehearsal. Use focused browser exploration when an unsupported portion must be replaced from UI evidence.
+
+Export a validated plan as a Playwright test:
+
+```bash
+node "$DR_CLI" plan export-playwright \
+  .demo-recorder/plans/settings/demo-plan.json \
+  --output tests/settings-demo.spec.ts \
+  --json
+```
+
+The generated test uses the plan's base URL, viewport, primary locators, interactions, and URL/visibility checks. Presentation settings are not test behavior. Editorial holds are omitted unless `--preserve-holds` is set; locator fallbacks, auth profiles, and managed start commands are reported rather than embedded. Use `--test-import playwright/test` when the target project uses that import instead of `@playwright/test`.
 
 ```json
 {

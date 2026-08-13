@@ -33,6 +33,8 @@ Current capabilities:
 - record navigation, clicks, scrolling, and interface changes
 - add smooth cursor movement, clicks, zooms, and trim unused parts
 - save the walkthrough as a reusable plan that can be adjusted and recorded again
+- import common existing Playwright tests as demo plans
+- export validated demo plans as Playwright tests
 - render the finished video as an MP4
 
 ## Getting started
