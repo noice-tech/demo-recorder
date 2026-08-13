@@ -12,7 +12,7 @@ import type {
   RenderProductDemoResult,
 } from "../types.js";
 import { generateBackgroundRaster } from "./background-raster.js";
-import { generateTimedOverlayScript } from "./overlay-script.js";
+import { generateKeyboardOverlayScript, generateTimedOverlayScript } from "./overlay-script.js";
 import { buildProductDemoFilterGraph } from "./filter-graph.js";
 import { productDemoGeometry } from "./geometry.js";
 
@@ -66,13 +66,18 @@ export async function renderProductDemo(
   try {
     const graph = buildProductDemoFilterGraph(input);
     const geometry = productDemoGeometry(input.recording.viewport, input.config);
+    const composition = {
+      recording: input.recording,
+      timeline: input.timeline,
+      config: input.config,
+    };
     const overlayScript = generateTimedOverlayScript({
-      composition: {
-        recording: input.recording,
-        timeline: input.timeline,
-        config: input.config,
-      },
+      composition,
       geometry,
+      frameCount: graph.frameCount,
+    });
+    const keyboardOverlayScript = generateKeyboardOverlayScript({
+      composition,
       frameCount: graph.frameCount,
     });
     await mkdir(join(temporaryDirectory, "fonts"));
@@ -80,6 +85,7 @@ export async function renderProductDemo(
     await Promise.all([
       writeFile(join(temporaryDirectory, "filter.txt"), graph.script),
       writeFile(join(temporaryDirectory, "timed-overlays.subtitle"), overlayScript),
+      writeFile(join(temporaryDirectory, "keyboard-overlays.subtitle"), keyboardOverlayScript),
       writeFile(
         backgroundPath,
         generateBackgroundRaster(input.config.width, input.config.height, input.config.background),

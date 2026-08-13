@@ -30,8 +30,8 @@ Current capabilities:
 - explore a web application and prepare the recording flow
 - hand control back when login or CAPTCHA is required, then reuse the authenticated session
 - avoid destructive or unclear actions unless explicitly requested
-- record navigation, clicks, scrolling, and interface changes
-- add smooth cursor movement, clicks, zooms, and trim unused parts
+- record navigation, clicks, explicit keyboard shortcuts, scrolling, and interface changes
+- add smooth cursor movement, click feedback, Screen Studio-style key overlays, zooms, and trim unused parts
 - save the walkthrough as a reusable plan that can be adjusted and recorded again
 - render the finished video as an MP4
 

@@ -3,14 +3,17 @@ import { resolveBackground } from "@noice-tech/demo-recorder-core";
 import type { ProductDemoRenderInput } from "../src/index.js";
 import {
   buildProductDemoFilterGraph,
+  generateKeyboardOverlayScript,
   generateTimedOverlayScript,
+  keyDisplayLabel,
+  keyOverlayIntervals,
   productDemoGeometry,
 } from "../src/index.js";
 
 const input: ProductDemoRenderInput = {
   sourcePath: "/recording/browser.webm",
   recording: {
-    version: 1,
+    version: 2,
     id: "fixture",
     createdAt: "2026-07-26T00:00:00.000Z",
     durationMs: 2000,
@@ -21,6 +24,7 @@ const input: ProductDemoRenderInput = {
       { type: "cursor-move", timestampMs: 0, x: 100, y: 200 },
       { type: "click", timestampMs: 500, x: 400, y: 300, button: "left" },
       { type: "cursor-move", timestampMs: 1000, x: 800, y: 600 },
+      { type: "key-press", timestampMs: 1200, keys: ["Meta", "K"] },
     ],
   },
   timeline: {
@@ -51,6 +55,7 @@ describe("product demo graph generation", () => {
     expect(graph.frameCount).toBe(45);
     expect(graph.durationMs).toBe(1500);
     expect(graph.script).toContain("trim=start=0.25:end=1.75");
+    expect(graph.script).toContain("[composed]ass=filename=keyboard-overlays.subtitle");
   });
 
   it("computes geometry for square output and configurable padding", () => {
@@ -87,6 +92,25 @@ describe("product demo graph generation", () => {
         paddingMode: "exact",
       }),
     ).toThrow("requires a capture viewport ratio");
+  });
+
+  it("builds fixed-canvas keyboard HUD labels and intervals", () => {
+    expect(keyDisplayLabel("Meta")).toBe("⌘");
+    expect(keyDisplayLabel("Escape")).toBe("esc");
+    const keyEvent = { type: "key-press" as const, timestampMs: 1200, keys: ["Meta", "K"] };
+    expect(keyOverlayIntervals([keyEvent], 250, 1750)).toEqual([
+      { event: keyEvent, startMs: 1200, endMs: 1750 },
+    ]);
+    const script = generateKeyboardOverlayScript({
+      composition: {
+        recording: input.recording,
+        timeline: input.timeline,
+        config: input.config,
+      },
+      frameCount: 45,
+    });
+    expect(script).toContain("⌘");
+    expect(script).toContain("KeyboardLabel");
   });
 
   it("emits frame-sampled cursor and click drawings with safe title text", () => {

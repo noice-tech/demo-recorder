@@ -6,6 +6,7 @@ import {
   mutationActionPattern,
 } from "../browser/action-risk.js";
 import { scrollDurationMs } from "../browser/smooth-scroll.js";
+import { isReadOnlyKeyChord, normalizeKeyChord } from "../capture/key-chord.js";
 import { demoActionSchema, demoPlanSchema, locatorSchema } from "./schema.js";
 
 export type LocatorSpec = z.infer<typeof locatorSchema>;
@@ -55,7 +56,22 @@ export function parseDemoPlan(value: unknown): DemoPlan {
         );
       }
     }
-    if (!plan.brief.constraints.modifyData && ["fill", "press", "select"].includes(step.type)) {
+    if (step.type === "press") {
+      let keys: string[];
+      try {
+        keys = normalizeKeyChord(step.key);
+      } catch (error) {
+        throw new Error(`Step ${index + 1} has an invalid keyboard shortcut: ${step.key}`, {
+          cause: error,
+        });
+      }
+      if (!plan.brief.constraints.modifyData && !isReadOnlyKeyChord(keys)) {
+        throw new Error(
+          `Step ${index + 1} uses a potentially mutating key while modifyData is disabled`,
+        );
+      }
+    }
+    if (!plan.brief.constraints.modifyData && ["fill", "select"].includes(step.type)) {
       throw new Error(`Step ${index + 1} uses ${step.type} while modifyData is disabled`);
     }
   }
@@ -112,9 +128,11 @@ export function planStoryboard(plan: DemoPlan): string {
         ? step.url
         : step.type === "hold"
           ? `${step.durationMs}ms`
-          : "locator" in step
-            ? locatorText(step.locator)
-            : step.type;
+          : step.type === "press"
+            ? step.key
+            : "locator" in step
+              ? locatorText(step.locator)
+              : step.type;
     lines.push(`${index + 1}. **${step.type}** — ${step.purpose ?? detail}`);
   }
   if (plan.presentation.beats.length > 0) {

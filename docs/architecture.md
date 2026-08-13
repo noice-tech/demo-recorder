@@ -48,11 +48,11 @@ A detached loopback auth session opens headed Chromium while returning conversat
 
 `apps/cli/src/capture` owns Chromium video capture, the shared relative clock, interaction instrumentation, plan locator resolution, plan execution, media inspection, and finalization. Capture uses Chromium's public CDP screencast interface and streams JPEG frames into user-installed FFmpeg rather than relying on Playwright's built-in recorder. An absolute 60 Hz scheduler produces constant-frame-rate H.264 while duplicating the latest browser frame when Chromium does not paint a new frame. The interaction clock is anchored to receipt of the first CDP frame so synthetic cursor events and browser frames share the same video origin. Instrumented navigation, movement, click, fill, key, selection, scroll, visibility, URL, and hold actions execute a validated plan. Capture and rehearsal scroll actions use cross-platform, 60 Hz wheel gestures with brief acceleration and a longer momentum decay. Exploration uses a fast finite wheel action because it needs the resulting state rather than presentation-quality motion.
 
-The recorder executes validated plan actions through instrumented Playwright helpers so cursor and semantic metadata remain synchronized. Cursor gestures use deterministic, viewport-safe curved paths, minimum-jerk timing, and safely inset target points instead of repeatedly moving to exact element centers. Locator candidates must resolve to exactly one element; ambiguous matches are errors rather than implicit first-element selection. Resolved checkbox and radio controls are clicked through a unique visible associated label when available, matching normal pointer behavior and avoiding framework overlays on the underlying input. Incomplete recording directories are removed on failure.
+The recorder executes validated plan actions through instrumented Playwright helpers so cursor, keyboard, and semantic metadata remain synchronized. Cursor gestures use deterministic, viewport-safe curved paths, minimum-jerk timing, and safely inset target points instead of repeatedly moving to exact element centers. Explicit press actions record canonical key chords and can target a locator or the page's current focus; fill values and arbitrary page keyboard activity are never captured. Locator candidates must resolve to exactly one element; ambiguous matches are errors rather than implicit first-element selection. Resolved checkbox and radio controls are clicked through a unique visible associated label when available, matching normal pointer behavior and avoiding framework overlays on the underlying input. Incomplete recording directories are removed on failure.
 
 ## 7. Recording format
 
-A recording directory contains immutable `recording.json` capture facts and `browser.mp4`. Agent-authored `demo-plan.json` and `presentation.json` are separate inputs. This preserves the recording boundary: changing direction never rewrites what Playwright captured.
+A recording directory contains immutable `recording.json` capture facts and `browser.mp4`. Version 1 manifests contain navigation, cursor, and click events; version 2 adds canonical key-press events, and new captures use version 2 while old recordings remain readable. Agent-authored `demo-plan.json` and `presentation.json` are separate inputs. This preserves the recording boundary: changing direction never rewrites what Playwright captured.
 
 ## 8. Timeline processing
 
@@ -62,7 +62,7 @@ The renderer uses automatic click zooms unless a validated presentation file pro
 
 ## 9. Composition
 
-`packages/ffmpeg-renderer` builds a single FFmpeg filter graph for the browser frame, source WebM, synthetic cursor, click feedback, bundled Inter title, and shared camera transform. Timed overlays are generated from frame-sampled core timeline data and transformed with the video.
+`packages/ffmpeg-renderer` builds a single FFmpeg filter graph for the browser frame, source video, synthetic cursor, click feedback, keyboard HUD, bundled Inter title, and shared camera transform. Scene overlays are generated from frame-sampled core timeline data and transformed with the video. The Screen Studio-style keyboard HUD is applied afterward in final-canvas coordinates, keeping it fixed and readable through camera zooms.
 
 ## 10. Renderer
 

@@ -28,6 +28,14 @@ overviewTab.addEventListener("click", () => selectWorkspaceTab(overviewTab));
 activityTab.addEventListener("click", () => selectWorkspaceTab(activityTab));
 document.querySelector("#open-details").addEventListener("click", () => detailsDialog.showModal());
 document.querySelector("#close-details").addEventListener("click", () => detailsDialog.close());
+document.addEventListener("keydown", (event) => {
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    event.preventDefault();
+    detailsDialog.showModal();
+  } else if (event.key === "Escape" && detailsDialog.open) {
+    detailsDialog.close();
+  }
+});
 insightsButton.addEventListener("click", () => {
   insightsButton.disabled = true;
   insightsStatus.textContent = "Loading insights…";

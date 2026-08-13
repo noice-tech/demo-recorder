@@ -37,6 +37,12 @@ function examplePlan(baseUrl: string) {
     capture: {
       steps: [
         { type: "navigate", url: "/" },
+        { type: "press", key: "ControlOrMeta+K" },
+        {
+          type: "assert-visible",
+          locator: { primary: { by: "role", role: "dialog", name: "Project details" } },
+        },
+        { type: "press", key: "Escape" },
         {
           type: "click",
           locator: { primary: { by: "role", role: "button", name: "Create project" } },
@@ -184,7 +190,11 @@ describe.sequential("capture pipeline", () => {
       expect(diagnostics.emittedFrames).toBeGreaterThan(0);
       await expect(access(join(outputDirectory, "demo-plan.json"))).resolves.toBeUndefined();
       await expect(access(join(outputDirectory, "presentation.json"))).resolves.toBeUndefined();
+      expect(manifest.version).toBe(2);
       expect(manifest.events.some((event) => event.type === "click")).toBe(true);
+      expect(
+        manifest.events.filter((event) => event.type === "key-press").map((event) => event.keys),
+      ).toEqual([[process.platform === "darwin" ? "Meta" : "Control", "K"], ["Escape"]]);
       const initialCursor = manifest.events.find((event) => event.type === "cursor-move");
       expect(initialCursor).toMatchObject({ x: 32, y: 32 });
       expect(initialCursor?.timestampMs).toBeLessThan(10);

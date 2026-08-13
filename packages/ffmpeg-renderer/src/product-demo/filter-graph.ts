@@ -44,7 +44,8 @@ export function buildProductDemoFilterGraph(input: ProductDemoRenderInput): Prod
     `[decorated]scale=w='${camera.scaledWidth}':h='${camera.scaledHeight}':eval=frame:flags=bicubic,setsar=1[camera]`,
     `color=c=black:s=${output}:r=${config.fps},format=rgba[background_canvas]`,
     `[background_canvas][background_asset]overlay=x=0:y=0:eof_action=repeat:repeatlast=1:format=auto[background]`,
-    `[background][camera]overlay=x='${camera.overlayX}':y='${camera.overlayY}':eval=frame:eof_action=repeat:repeatlast=1:format=auto,fps=${config.fps},trim=end_frame=${frameCount},setpts=N/(${config.fps}*TB),colorspace=iall=bt709:all=bt709:format=yuv420p[output]`,
+    `[background][camera]overlay=x='${camera.overlayX}':y='${camera.overlayY}':eval=frame:eof_action=repeat:repeatlast=1:format=auto,fps=${config.fps},trim=end_frame=${frameCount},setpts=N/(${config.fps}*TB),format=rgba[composed]`,
+    `[composed]ass=filename=keyboard-overlays.subtitle:fontsdir=fonts:alpha=1,colorspace=iall=bt709:all=bt709:format=yuv420p[output]`,
   ].join(";\n");
   return { script, frameCount, durationMs };
 }

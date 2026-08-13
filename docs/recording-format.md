@@ -14,11 +14,13 @@ recordings/<recording-id>/
 
 `recording.json` is the versioned contract between Chromium capture and timeline/render processing. `metadata.json` is optional diagnostics and is not part of that contract. Plan-driven captures also preserve the validated plan and presentation direction as separate, non-manifest files.
 
-## Version 1
+## Versions
+
+Version 1 contains navigation, cursor movement, and click events. Version 2 keeps those fields and adds explicit keyboard press events. New captures use version 2; the renderer remains compatible with existing version 1 recordings.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "id": "2026-07-19T15-24-31-765Z-homepage-overview-bf2869d8",
   "createdAt": "2026-07-19T15:24:31.900Z",
   "durationMs": 6720,
@@ -39,7 +41,7 @@ Unknown versions are rejected. New incompatible contracts require a new version 
 
 The logical timeline begins at `0` with the first recorded CDP screencast frame. All event timestamps are milliseconds on that same video-aligned clock and are stored in nondecreasing order.
 
-In version 1, `durationMs` must equal `video.durationMs`; both describe the source video timeline. Events may occur exactly at the duration but never after it.
+In both versions, `durationMs` must equal `video.durationMs`; both describe the source video timeline. Events may occur exactly at the duration but never after it.
 
 ## Coordinates
 
@@ -97,9 +99,25 @@ Instrumented movement emits deterministic, frame-sampled points that can be inte
 }
 ```
 
-`target` is best-effort semantic capture metadata. It is optional; coordinates and button are authoritative for version 1 rendering.
+`target` is best-effort semantic capture metadata. It is optional; coordinates and button are authoritative for rendering.
 
-Version 1 records only navigation, cursor movement, and click events. Fill, press, selection, scroll, visibility checks, and waits are executed deterministically and remain visible in the source video where applicable, but they do not add separate manifest events. Additional interaction overlays require a future manifest version.
+### Keyboard press (version 2)
+
+```json
+{
+  "type": "key-press",
+  "timestampMs": 2420,
+  "keys": ["Meta", "K"]
+}
+```
+
+`keys` stores the canonical chord actually dispatched by the capture host, with modifiers in canonical order followed by at most one ordinary key. Host-dependent `ControlOrMeta` is resolved to `Meta` on macOS and `Control` elsewhere before it reaches the manifest.
+
+Only explicit plan `press` actions create keyboard events. Global presses use the page's current focus; targeted presses may retain a locator. Fill values and arbitrary physical/page keyboard activity are deliberately not observed or recorded, preventing typed values and passwords from leaking into the manifest or overlay.
+
+The renderer presents keyboard events as a lower-center, Screen Studio-style HUD. It is composed after the camera transform, so zooms do not move or scale it. Consecutive events replace the previous chord.
+
+Version 1 records only navigation, cursor movement, and click events. Fill, selection, scroll, visibility checks, and waits remain visible in the source video where applicable but do not add manifest events.
 
 ## Source video relationship
 
