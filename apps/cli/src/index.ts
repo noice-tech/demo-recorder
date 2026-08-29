@@ -17,7 +17,12 @@ import {
 import { doctorCommand, setupCommand } from "./environment.js";
 import { exploreCommand } from "./explore.js";
 import { inspectVideoCommand } from "./inspect-video.js";
-import { showPlanCommand, validatePlanCommand } from "./plan.js";
+import {
+  exportPlaywrightCommand,
+  importPlaywrightCommand,
+  showPlanCommand,
+  validatePlanCommand,
+} from "./plan.js";
 import { renderRecording } from "./render.js";
 import { rehearsePlanFile } from "./rehearsal.js";
 import { recordPlan, runPlan } from "./run-plan.js";
@@ -37,6 +42,8 @@ function usage(): string {
     "  demo-recorder plan validate <demo-plan.json>",
     "  demo-recorder plan show <demo-plan.json>",
     "  demo-recorder plan rehearse <demo-plan.json> [--attempt 1] [--fast] [--output PATH]",
+    "  demo-recorder plan import-playwright <spec> --base-url URL --output PATH [--test TITLE]",
+    "  demo-recorder plan export-playwright <demo-plan.json> --output PATH [--preserve-holds]",
     "  demo-recorder record --plan <demo-plan.json> [--headed]",
     "  demo-recorder run <demo-plan.json> [--headed]",
     "  demo-recorder auth <start|save|stop|verify|remove|list> [options]",
@@ -81,6 +88,15 @@ export const commandOptions: Record<string, OptionDefinitions> = {
     headed: { type: "boolean" },
     fast: { type: "boolean" },
     json: { type: "boolean" },
+    test: { type: "string" },
+    "base-url": { type: "string" },
+    name: { type: "string" },
+    goal: { type: "string" },
+    "allow-modify-data": { type: "boolean" },
+    "allow-submit-forms": { type: "boolean" },
+    "allow-cross-origin": { type: "boolean" },
+    "preserve-holds": { type: "boolean" },
+    "test-import": { type: "string" },
   },
   auth: { profile: { type: "string" }, url: { type: "string" } },
   record: { plan: { type: "string" }, headed: { type: "boolean" } },
@@ -123,6 +139,40 @@ async function runPlanCommand(parsed: ReturnType<typeof parseArguments>): Promis
   const [operation, path] = parsed.positionals;
   if (operation === "validate") return validatePlanCommand(requireArgument(path, "plan validate"));
   if (operation === "show") return showPlanCommand(requireArgument(path, "plan show"));
+  if (operation === "import-playwright") {
+    const test = stringOption(parsed, "test");
+    const name = stringOption(parsed, "name");
+    const goal = stringOption(parsed, "goal");
+    const result = await importPlaywrightCommand({
+      path: requireArgument(path, "plan import-playwright"),
+      output: requireArgument(stringOption(parsed, "output"), "--output"),
+      baseUrl: requireArgument(stringOption(parsed, "base-url"), "--base-url"),
+      ...(test ? { test } : {}),
+      ...(name ? { name } : {}),
+      ...(goal ? { goal } : {}),
+      allowModifyData: parsed.options.has("allow-modify-data"),
+      allowSubmitForms: parsed.options.has("allow-submit-forms"),
+      allowCrossOrigin: parsed.options.has("allow-cross-origin"),
+    });
+    if (parsed.options.has("json")) console.log(JSON.stringify({ ok: true, ...result }, null, 2));
+    else console.log(`[demo-recorder] Imported ${result.test}: ${result.output}`);
+    return;
+  }
+  if (operation === "export-playwright") {
+    const importSource = stringOption(parsed, "test-import");
+    const result = await exportPlaywrightCommand({
+      path: requireArgument(path, "plan export-playwright"),
+      output: requireArgument(stringOption(parsed, "output"), "--output"),
+      preserveHolds: parsed.options.has("preserve-holds"),
+      ...(importSource ? { importSource } : {}),
+    });
+    if (parsed.options.has("json")) console.log(JSON.stringify({ ok: true, ...result }, null, 2));
+    else {
+      console.log(`[demo-recorder] Playwright test: ${result.output}`);
+      for (const warning of result.warnings) console.warn(`[demo-recorder] Warning: ${warning}`);
+    }
+    return;
+  }
   if (operation !== "rehearse")
     throw new Error(`Unknown plan operation: ${operation ?? "missing"}\n${usage()}`);
 
