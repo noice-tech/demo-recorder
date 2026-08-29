@@ -32,6 +32,7 @@ Current capabilities:
 - avoid destructive or unclear actions unless explicitly requested
 - record navigation, clicks, scrolling, and interface changes
 - add smooth cursor movement, clicks, zooms, and trim unused parts
+- customize the output aspect ratio, padding, and background
 - save the walkthrough as a reusable plan that can be adjusted and recorded again
 - import common existing Playwright tests as demo plans
 - export validated demo plans as Playwright tests
@@ -64,6 +65,14 @@ On first use, the skill asks before installing its pinned runtime in a user cach
 Or ask it to record the result of a development task:
 
 > Implement the new sharing flow, then record a short demo showing how it works.
+
+### Customize the output
+
+Include presentation details in your request, for example:
+
+> Make it square for LinkedIn, use 72px padding, and a dark blue background.
+
+Aspect ratio, padding, and background are presentation settings. They can be changed and rendered again from an existing recording without repeating the browser flow.
 
 ## Current status and plans
 
