@@ -39,9 +39,9 @@ Plans use accessible locator specifications with controlled fallbacks. Locator r
 
 ### Recorder and renderer
 
-The CLI's `capture` module resolves plan locators and executes navigation, movement, click, fill, key, selection, scroll, visibility, URL, and hold steps. It stores the original plan and presentation direction beside immutable recording facts.
+The CLI's `capture` module resolves plan locators and executes navigation, movement, click, fill, key, selection, scroll, visibility, URL, and hold steps. Explicit targeted or global press steps become canonical key events; fills and arbitrary page keyboard activity do not. It stores the original plan and presentation direction beside immutable recording facts.
 
-The CLI's `renderer` module continues to derive click zooms automatically. A validated `presentation.json` can provide explicit zoom segments, while the source WebM and manifest remain unchanged.
+The CLI's `renderer` module continues to derive click zooms automatically and renders key events as a fixed lower-center keyboard HUD after the camera transform. A validated `presentation.json` can provide explicit zoom segments, while the source video and manifest remain unchanged.
 
 ## Safe autonomy
 

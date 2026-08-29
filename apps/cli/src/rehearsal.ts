@@ -86,6 +86,10 @@ async function executeRehearsalAction(
     case "wait-for-url":
       await page.waitForURL(step.urlPattern, step.timeoutMs ? { timeout: step.timeoutMs } : {});
       return;
+    case "press":
+      if (step.locator) await (await resolvePlanLocator(page, step.locator)).press(step.key);
+      else await page.keyboard.press(step.key);
+      return;
   }
 
   const locator = await resolvePlanLocator(page, step.locator);
@@ -103,9 +107,6 @@ async function executeRehearsalAction(
     }
     case "fill":
       await locator.fill(step.value);
-      return;
-    case "press":
-      await locator.press(step.key);
       return;
     case "select":
       await locator.selectOption(step.value);

@@ -33,7 +33,7 @@ export type DemoActions = {
   moveTo(locator: Locator, options?: MoveOptions): Promise<void>;
   click(locator: Locator, options?: ClickOptions): Promise<void>;
   fill(locator: Locator, value: string, options?: FillOptions): Promise<void>;
-  press(locator: Locator, key: string, options?: MoveOptions): Promise<void>;
+  press(key: string, locator?: Locator, options?: MoveOptions): Promise<void>;
   select(locator: Locator, value: string, options?: MoveOptions): Promise<void>;
   scroll(deltaY: number, deltaX?: number): Promise<void>;
   waitFor(locator: Locator, options?: WaitForOptions): Promise<void>;

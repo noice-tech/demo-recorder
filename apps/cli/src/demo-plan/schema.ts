@@ -33,7 +33,7 @@ export const demoActionSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("press"),
-    locator: locatorSchema,
+    locator: locatorSchema.optional(),
     key: nonempty.max(100),
     ...actionBase,
   }),

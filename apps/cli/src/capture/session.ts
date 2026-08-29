@@ -121,7 +121,7 @@ export async function createRecordingSession(
         timestampMs: Math.min(event.timestampMs, durationMs),
       }));
       const manifest = parseRecordingManifest({
-        version: 1,
+        version: 2,
         id: basename(outputDirectory),
         createdAt,
         durationMs,

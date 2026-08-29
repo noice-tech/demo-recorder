@@ -8,6 +8,7 @@ import {
   type CursorViewport,
 } from "./cursor-motion.js";
 import type { InteractionTracker } from "./interaction-tracker.js";
+import { normalizeKeyChord } from "./key-chord.js";
 import type {
   ClickOptions,
   DemoActions,
@@ -146,12 +147,14 @@ async function fill(
 
 async function press(
   context: ActionContext,
-  locator: Locator,
   key: string,
+  locator?: Locator,
   options?: MoveOptions,
 ): Promise<void> {
-  await moveTo(context, locator, options);
-  await locator.press(key);
+  if (locator) await moveTo(context, locator, options);
+  context.tracker.push({ type: "key-press", keys: normalizeKeyChord(key) });
+  if (locator) await locator.press(key);
+  else await context.page.keyboard.press(key);
 }
 
 async function select(
@@ -216,7 +219,7 @@ export function createActions(context: ActionContext): DemoActions {
     moveTo: (locator, options) => moveTo(context, locator, options),
     click: (locator, options) => click(context, locator, options),
     fill: (locator, value, options) => fill(context, locator, value, options),
-    press: (locator, key, options) => press(context, locator, key, options),
+    press: (key, locator, options) => press(context, key, locator, options),
     select: (locator, value, options) => select(context, locator, value, options),
     scroll: (deltaY, deltaX) => scroll(context, deltaY, deltaX),
     waitFor: (locator, options) => waitFor(locator, options),

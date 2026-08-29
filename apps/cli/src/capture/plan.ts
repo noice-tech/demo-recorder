@@ -23,6 +23,10 @@ async function executeAction(page: Page, actions: DemoActions, step: DemoAction)
       step.urlPattern,
       step.timeoutMs === undefined ? undefined : { timeoutMs: step.timeoutMs },
     );
+  if (step.type === "press") {
+    const locator = step.locator ? await resolvePlanLocator(page, step.locator) : undefined;
+    return actions.press(step.key, locator);
+  }
   const locator = await resolvePlanLocator(page, step.locator);
   if (step.type === "move")
     return actions.moveTo(
@@ -37,7 +41,6 @@ async function executeAction(page: Page, actions: DemoActions, step: DemoAction)
     );
   }
   if (step.type === "fill") return actions.fill(locator, step.value);
-  if (step.type === "press") return actions.press(locator, step.key);
   if (step.type === "select") return actions.select(locator, step.value);
   return actions.waitFor(
     locator,

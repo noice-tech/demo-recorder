@@ -83,6 +83,29 @@ describe("demo plan", () => {
     ).toThrow(/must click a visible link or button/);
   });
 
+  it("allows conservative global keyboard shortcuts in a read-only plan", () => {
+    const plan = parseDemoPlan({
+      ...basePlan,
+      capture: {
+        steps: [
+          { type: "navigate", url: "/" },
+          { type: "press", key: "ControlOrMeta+K" },
+          { type: "press", key: "Escape" },
+        ],
+      },
+    });
+    expect(plan.capture.steps[1]).toMatchObject({ type: "press", key: "ControlOrMeta+K" });
+  });
+
+  it("rejects mutating keyboard actions in a read-only plan", () => {
+    expect(() =>
+      parseDemoPlan({
+        ...basePlan,
+        capture: { steps: [{ type: "press", key: "Enter" }] },
+      }),
+    ).toThrow(/potentially mutating/);
+  });
+
   it("rejects likely mutations in a read-only plan", () => {
     expect(() =>
       parseDemoPlan({

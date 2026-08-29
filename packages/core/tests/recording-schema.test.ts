@@ -16,6 +16,30 @@ describe("recordingManifestSchema", () => {
     expect(recordingManifestSchema.parse(valid)).toEqual(valid);
   });
 
+  it("accepts v2 keyboard events while keeping v1 strict", () => {
+    const keyEvent = { type: "key-press", timestampMs: 500, keys: ["Meta", "K"] };
+    expect(
+      recordingManifestSchema.safeParse({ ...valid, version: 2, events: [keyEvent] }).success,
+    ).toBe(true);
+    expect(recordingManifestSchema.safeParse({ ...valid, events: [keyEvent] }).success).toBe(false);
+  });
+
+  it("rejects malformed or non-canonical keyboard chords", () => {
+    for (const keys of [
+      ["K", "Meta"],
+      ["Meta", "Meta", "K"],
+      ["K", "P"],
+    ]) {
+      expect(
+        recordingManifestSchema.safeParse({
+          ...valid,
+          version: 2,
+          events: [{ type: "key-press", timestampMs: 500, keys }],
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it("accepts empty events and events exactly at the duration boundary", () => {
     expect(recordingManifestSchema.safeParse({ ...valid, events: [] }).success).toBe(true);
     expect(
@@ -63,7 +87,7 @@ describe("recordingManifestSchema", () => {
     }
   });
 
-  it("requires video and recording duration to share the V1 timeline", () => {
+  it("requires video and recording duration to share the manifest timeline", () => {
     const result = recordingManifestSchema.safeParse({
       ...valid,
       video: { ...valid.video, durationMs: 999 },
