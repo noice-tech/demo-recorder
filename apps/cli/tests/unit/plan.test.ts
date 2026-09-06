@@ -1,4 +1,12 @@
+import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import {
+  rehearsalFingerprint,
+  rehearsalReceiptPath,
+  requireRehearsalReceipt,
+  saveRehearsalReceipt,
+} from "../../src/rehearsal-receipt.js";
 import { estimatePlanDurationMs, parseDemoPlan } from "../../src/demo-plan/index.js";
 
 const basePlan = {
@@ -15,6 +23,26 @@ const basePlan = {
 };
 
 describe("demo plan", () => {
+  it("requires matching rehearsal readiness but allows presentation-only changes", async () => {
+    const path = `receipt-test-${randomUUID()}.json`;
+    const plan = parseDemoPlan(basePlan);
+    try {
+      await expect(requireRehearsalReceipt(path, plan, true)).rejects.toThrow("Missing or stale");
+      await saveRehearsalReceipt(path, rehearsalFingerprint(plan, true), "report.json");
+      await expect(requireRehearsalReceipt(path, plan, true)).resolves.toBeUndefined();
+      await expect(requireRehearsalReceipt(path, plan, false)).rejects.toThrow("stale");
+      const changed = parseDemoPlan({ ...basePlan, target: { baseUrl: "https://other.example" } });
+      await expect(requireRehearsalReceipt(path, changed, true)).rejects.toThrow("stale");
+      const restyled = parseDemoPlan({
+        ...basePlan,
+        presentation: { canvas: { aspectRatio: "1:1" } },
+      });
+      await expect(requireRehearsalReceipt(path, restyled, true)).resolves.toBeUndefined();
+    } finally {
+      await rm(rehearsalReceiptPath(path), { force: true });
+    }
+  });
+
   it("parses a safe same-origin plan and estimates its duration", () => {
     const plan = parseDemoPlan(basePlan);
     expect(estimatePlanDurationMs(plan)).toBe(2500);

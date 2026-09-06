@@ -27,6 +27,7 @@ pnpm package:cli
 pnpm test:integration
 pnpm demo-recorder explore --url https://example.com
 pnpm demo-recorder plan validate <demo-plan.json>
+pnpm demo-recorder plan rehearse <demo-plan.json>
 pnpm demo-recorder run <demo-plan.json>
 pnpm clean
 ```
@@ -52,8 +53,11 @@ Site demos use a declarative plan:
 ```bash
 pnpm demo-recorder explore --url https://example.com
 pnpm demo-recorder plan validate .demo-recorder/plans/example/demo-plan.json
+pnpm demo-recorder plan rehearse .demo-recorder/plans/example/demo-plan.json
 pnpm demo-recorder run .demo-recorder/plans/example/demo-plan.json
 ```
+
+`run` and `record` require the saved result of a matching full rehearsal. The check reads a small local receipt; it never automatically repeats rehearsal. If capture uses `--headed`, rehearse with `--headed` too. Changes to capture steps, constraints, viewport, target, or runtime/browser identity invalidate the receipt; presentation-only edits do not. `--skip-rehearsal` is an explicit expert bypass, reported in `capture-readiness.json` beside the recording. A failed or fast rehearsal invalidates previous readiness for that plan path.
 
 For a local app, add `--repo`, `--start`, and `--url` during exploration, then put the same repository/start/readiness facts in the plan target. Use `skills/demo-video` when a coding agent directs the demo. See [`agent-first-workflow.md`](agent-first-workflow.md).
 
@@ -65,6 +69,7 @@ A successful command prints the exact recording directory. Check:
 recording.json   validated capture facts and events
 browser.mp4      raw 1440×900 CDP/FFmpeg video
 metadata.json    non-contract recorder diagnostics
+capture-readiness.json verified/bypassed rehearsal status for CLI captures
 demo-plan.json   agent-authored capture direction for plan recordings
 presentation.json presentation choices kept outside the manifest
 artifacts/       optional capture artifacts

@@ -1,6 +1,8 @@
 import type { InteractionTarget } from "@noice-tech/demo-recorder-core";
 import type { Locator, Page } from "playwright";
 import { smoothScroll } from "../browser/smooth-scroll.js";
+import { assertPlanPolicy, assertSafePlanTarget } from "../browser/plan-policy.js";
+import type { DemoPlan } from "../demo-plan/index.js";
 import {
   generateCursorPath,
   targetPointWithinBounds,
@@ -8,7 +10,7 @@ import {
   type CursorViewport,
 } from "./cursor-motion.js";
 import type { InteractionTracker } from "./interaction-tracker.js";
-import { normalizeKeyChord } from "./key-chord.js";
+import { isReadOnlyKeyChord, normalizeKeyChord } from "./key-chord.js";
 import type {
   ClickOptions,
   DemoActions,
@@ -21,7 +23,9 @@ export type CursorState = CursorPoint;
 
 type ActionContext = {
   page: Page;
-  tracker: InteractionTracker;
+  tracker: Pick<InteractionTracker, "now" | "push">;
+  fast?: boolean;
+  plan?: DemoPlan;
   cursor: CursorState;
   viewport: CursorViewport;
   movementIndex: number;
@@ -77,6 +81,11 @@ async function moveToPoint(
   point: CursorState,
   options: MoveOptions & { targetSizePx?: number } = {},
 ): Promise<void> {
+  if (context.fast) {
+    await context.page.mouse.move(point.x, point.y);
+    Object.assign(context.cursor, point);
+    return;
+  }
   const { points, durationMs } = generateCursorPath(context.cursor, point, {
     ...options,
     seed: context.movementIndex,
@@ -85,6 +94,7 @@ async function moveToPoint(
   context.movementIndex += 1;
   const startedAtMs = context.tracker.now();
   for (const [index, next] of points.entries()) {
+    assertPlanPolicy(context.page);
     const scheduledAtMs = startedAtMs + (durationMs * (index + 1)) / points.length;
     const delayMs = scheduledAtMs - context.tracker.now();
     if (delayMs > 0) await context.page.waitForTimeout(delayMs);
@@ -118,9 +128,34 @@ async function click(
     targetSizePx: resolved.targetSizePx,
   });
   const button = options.button ?? "left";
+  if (context.plan) await assertSafePlanTarget(locator, context.plan);
+  if (!(await locator.isEnabled())) throw new Error("Click target is disabled");
+  const hitsTarget = await locator.evaluate(
+    (element, point) => {
+      let root: Document | ShadowRoot = document;
+      let hit = root.elementFromPoint(point.x, point.y);
+      while (hit?.shadowRoot) {
+        root = hit.shadowRoot;
+        const inner = root.elementFromPoint(point.x, point.y);
+        if (!inner || inner === hit) break;
+        hit = inner;
+      }
+      for (
+        let node: Node | null = hit;
+        node;
+        node = node.parentNode ?? (node instanceof ShadowRoot ? node.host : null)
+      ) {
+        if (node === element) return true;
+      }
+      return false;
+    },
+    { x: resolved.x, y: resolved.y },
+  );
+  if (!hitsTarget) throw new Error("Click target moved or is covered at the intended click point");
 
+  assertPlanPolicy(context.page);
   await context.page.mouse.down({ button });
-  await context.page.waitForTimeout(options.delayMs ?? 90);
+  await context.page.waitForTimeout(context.fast ? 0 : (options.delayMs ?? 90));
   await context.page.mouse.up({ button });
   context.tracker.push({
     type: "click",
@@ -152,7 +187,11 @@ async function press(
   options?: MoveOptions,
 ): Promise<void> {
   if (locator) await moveTo(context, locator, options);
-  context.tracker.push({ type: "key-press", keys: normalizeKeyChord(key) });
+  const keys = normalizeKeyChord(key);
+  const focused = locator ?? context.page.locator(":focus");
+  if (context.plan && !isReadOnlyKeyChord(keys) && (await focused.count()) === 1)
+    await assertSafePlanTarget(focused, context.plan);
+  context.tracker.push({ type: "key-press", keys });
   if (locator) await locator.press(key);
   else await context.page.keyboard.press(key);
 }
@@ -164,11 +203,15 @@ async function select(
   options?: MoveOptions,
 ): Promise<void> {
   await moveTo(context, locator, options);
+  if (context.plan) await assertSafePlanTarget(locator, context.plan);
   await locator.selectOption(value);
 }
 
 async function scroll(context: ActionContext, deltaY: number, deltaX = 0): Promise<void> {
-  await smoothScroll(context.page, deltaY, deltaX, { now: () => context.tracker.now() });
+  await smoothScroll(context.page, deltaY, deltaX, {
+    now: () => context.tracker.now(),
+    ...(context.fast ? { durationMs: 150 } : {}),
+  });
 }
 
 async function waitFor(locator: Locator, options: WaitForOptions = {}): Promise<void> {
@@ -213,6 +256,10 @@ async function goto(context: ActionContext, url: string): Promise<void> {
   }
 }
 
+export function rehearsalHoldDuration(durationMs: number, fast: boolean): number {
+  return fast ? Math.min(durationMs, 100) : durationMs;
+}
+
 export function createActions(context: ActionContext): DemoActions {
   return {
     goto: (url) => goto(context, url),
@@ -224,6 +271,7 @@ export function createActions(context: ActionContext): DemoActions {
     scroll: (deltaY, deltaX) => scroll(context, deltaY, deltaX),
     waitFor: (locator, options) => waitFor(locator, options),
     waitForUrl: (urlPattern, options) => waitForUrl(context, urlPattern, options),
-    wait: (durationMs) => wait(context.page, durationMs),
+    wait: (durationMs) =>
+      wait(context.page, rehearsalHoldDuration(durationMs, context.fast ?? false)),
   };
 }

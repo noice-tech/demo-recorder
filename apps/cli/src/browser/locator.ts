@@ -71,23 +71,25 @@ export async function resolveUniqueLocator(
   options: { timeoutMs?: number; description: string },
 ): Promise<{ locator: Locator; method: LocatorMethod }> {
   const timeoutMs = options.timeoutMs ?? 3_000;
-  const failures: string[] = [];
-  for (const method of methods) {
-    const locator = locatorForMethod(page, method);
-    try {
-      await locator.first().waitFor({ state: "attached", timeout: timeoutMs });
+  const deadline = Date.now() + timeoutMs;
+  const candidates = methods.map((method) => ({ method, locator: locatorForMethod(page, method) }));
+  let failures: string[] = [];
+  do {
+    failures = [];
+    let allAmbiguous = true;
+    for (const { method, locator } of candidates) {
       const count = await locator.count();
-      if (count !== 1) {
-        failures.push(`${method.by} matched ${count} elements; expected exactly one`);
-        continue;
-      }
-      await locator.waitFor({ state: "visible", timeout: timeoutMs });
-      return { locator, method };
-    } catch (error) {
-      failures.push(`${method.by}: ${error instanceof Error ? error.message : String(error)}`);
+      allAmbiguous &&= count > 1;
+      if (count === 1 && (await locator.isVisible())) return { locator, method };
+      failures.push(
+        `${method.by} matched ${count} elements${count === 1 ? "; target is not visible" : "; expected exactly one"}`,
+      );
     }
-  }
-  throw new Error(`${options.description} (${methods.map((method) => method.by).join(", ")})`, {
+    const remaining = deadline - Date.now();
+    if (allAmbiguous || remaining <= 0) break;
+    await page.waitForTimeout(Math.min(50, remaining));
+  } while (Date.now() <= deadline);
+  throw new Error(`${options.description} (no unique visible target within ${timeoutMs}ms)`, {
     cause: new Error(failures.join("\n")),
   });
 }

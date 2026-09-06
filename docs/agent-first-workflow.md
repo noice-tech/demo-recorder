@@ -35,7 +35,7 @@ A passing verified interactive path is exported as the default planner handoff. 
 
 Plans use accessible locator specifications with controlled fallbacks. Locator resolution requires exactly one visible match and never silently selects `.first()`. Generated TypeScript is unnecessary; the recorder executes validated JSON directly.
 
-`plan rehearse` executes the validated plan in a fresh browser without video capture. It writes per-step timing and, on failure, the exact step, current URL, ARIA snapshot, screenshot, trace, and focused repair hints. `--fast` compresses editorial holds and scroll animation for functional preflight, but its report is marked `mode: "fast"` and `captureReady: false`; a full-speed passing rehearsal remains the capture-quality gate. Checkbox and radio actions target their visible associated labels so rehearsal and capture follow the surface a user clicks. The agent can make a targeted edit and use attempts 2 or 3; the runtime rejects later attempts. Final capture never invokes this repair workflow.
+`plan rehearse` executes the validated plan in a fresh browser without video capture. It writes per-step timing and, on failure, the exact step, current URL, ARIA snapshot, screenshot, trace, and focused repair hints. Full rehearsal shares capture's action runner, including cursor movement and click checks. `--fast` compresses holds, cursor gestures, and scroll animation for functional preflight, but its report is marked `mode: "fast"` and `captureReady: false`; a full-speed passing rehearsal remains the capture-quality gate. Checkbox and radio actions target their visible associated labels so rehearsal and capture follow the surface a user clicks. The agent can make a targeted edit and use attempts 2 or 3; the runtime rejects later attempts. Final capture never invokes this repair workflow. A full passing rehearsal saves an ignored local receipt; `run` and `record` check it without repeating browser work. Changed capture instructions, constraints, target, viewport, runtime/browser identity, or headed/headless mode require a new rehearsal. Presentation-only changes do not. `--skip-rehearsal` explicitly bypasses readiness and is recorded in `capture-readiness.json`; agents should not use it to hide a failed rehearsal. The receipt does not prove that a remote app or login session remains unchanged.
 
 ### Recorder and renderer
 
@@ -48,7 +48,8 @@ The CLI's `renderer` module continues to derive click zooms automatically and re
 Plans do not require an approval prompt. Instead, defaults are deliberately restrictive:
 
 - same-origin navigation only;
-- same-origin main-frame navigation enforcement in persistent exploration;
+- same-origin main-frame navigation enforcement in persistent exploration and in rehearsal/capture (including HTTP redirects);
+- shared rehearsal/capture rejection of popups, dialogs, downloads, risky resolved targets, and disallowed form submissions;
 - no form submission during exploration;
 - no destructive, external-side-effect, or unknown exploration actions by default;
 - no fill, press, or selection in plans where `modifyData` is false;

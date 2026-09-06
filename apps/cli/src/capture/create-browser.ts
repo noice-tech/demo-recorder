@@ -1,6 +1,7 @@
-import { readFile } from "node:fs/promises";
 import { chromium, type Browser, type BrowserContext } from "playwright";
 import type { RecordingSessionOptions } from "./types.js";
+import { createPlanBrowserContext } from "../browser/plan-policy.js";
+import { installSessionStorage, loadSessionStorage } from "../explorer/session-storage.js";
 
 export type RecordingBrowser = {
   browser: Browser;
@@ -21,23 +22,19 @@ export async function createRecordingBrowser(
   }
 
   try {
-    const context = await browser.newContext({
-      viewport: options.viewport,
-      ...(options.storageStatePath ? { storageState: options.storageStatePath } : {}),
-    });
-    if (options.sessionStoragePath) {
-      const sessionState = JSON.parse(await readFile(options.sessionStoragePath, "utf8")) as Record<
-        string,
-        Record<string, string>
-      >;
-      await context.addInitScript((state: Record<string, Record<string, string>>) => {
-        const values = state[window.location.origin];
-        if (!values) return;
-        for (const [key, value] of Object.entries(values)) {
-          window.sessionStorage.setItem(key, value);
-        }
-      }, sessionState);
-    }
+    const context =
+      options.baseUrl && options.plan
+        ? await createPlanBrowserContext(browser, {
+            ...options,
+            baseUrl: options.baseUrl,
+            constraints: options.plan.brief.constraints,
+          })
+        : await browser.newContext({
+            viewport: options.viewport,
+            ...(options.storageStatePath ? { storageState: options.storageStatePath } : {}),
+          });
+    if (options.sessionStoragePath && !options.plan)
+      await installSessionStorage(context, await loadSessionStorage(options.sessionStoragePath));
     await context.addInitScript(() => {
       // This function must remain inside the serialized browser init script.
       // oxlint-disable-next-line unicorn/consistent-function-scoping

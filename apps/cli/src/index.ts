@@ -37,8 +37,8 @@ function usage(): string {
     "  demo-recorder plan validate <demo-plan.json>",
     "  demo-recorder plan show <demo-plan.json>",
     "  demo-recorder plan rehearse <demo-plan.json> [--attempt 1] [--fast] [--output PATH]",
-    "  demo-recorder record --plan <demo-plan.json> [--headed]",
-    "  demo-recorder run <demo-plan.json> [--headed]",
+    "  demo-recorder record --plan <demo-plan.json> [--headed] [--skip-rehearsal]",
+    "  demo-recorder run <demo-plan.json> [--headed] [--skip-rehearsal]",
     "  demo-recorder auth <start|save|stop|verify|remove|list> [options]",
     "  demo-recorder render <recording> [--aspect-ratio RATIO | --size WIDTHxHEIGHT] [--padding PX] [--padding-mode minimum|exact] [--background preset:NAME|#RRGGBB]",
   ].join("\n");
@@ -83,8 +83,12 @@ export const commandOptions: Record<string, OptionDefinitions> = {
     json: { type: "boolean" },
   },
   auth: { profile: { type: "string" }, url: { type: "string" } },
-  record: { plan: { type: "string" }, headed: { type: "boolean" } },
-  run: { headed: { type: "boolean" } },
+  record: {
+    plan: { type: "string" },
+    headed: { type: "boolean" },
+    "skip-rehearsal": { type: "boolean" },
+  },
+  run: { headed: { type: "boolean" }, "skip-rehearsal": { type: "boolean" } },
   render: {
     "aspect-ratio": { type: "string" },
     size: { type: "string" },
@@ -169,7 +173,10 @@ function runAuthCommand(parsed: ParsedArguments): Promise<void> {
 function runRecordCommand(parsed: ParsedArguments): Promise<unknown> {
   const plan = stringOption(parsed, "plan");
   if (!plan) throw new Error(`Missing --plan for record\n${usage()}`);
-  return recordPlan(plan, { headless: !parsed.options.has("headed") });
+  return recordPlan(plan, {
+    headless: !parsed.options.has("headed"),
+    skipRehearsal: parsed.options.has("skip-rehearsal"),
+  });
 }
 
 const commandHandlers = new Map<string, CommandHandler>([
@@ -189,6 +196,7 @@ const commandHandlers = new Map<string, CommandHandler>([
     (parsed) =>
       runPlan(requireArgument(parsed.positionals[0], "run"), {
         headless: !parsed.options.has("headed"),
+        skipRehearsal: parsed.options.has("skip-rehearsal"),
       }),
   ],
   [

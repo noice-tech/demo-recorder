@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { basename, join, resolve } from "node:path";
+import { writeFile } from "node:fs/promises";
+import { rehearsalFingerprint, requireRehearsalReceipt } from "./rehearsal-receipt.js";
 import { recordDemoPlan } from "./capture/index.js";
 import { loadDemoPlan } from "./demo-plan/index.js";
 import { authProfilePaths, startManagedApp } from "./explorer/index.js";
@@ -12,10 +14,12 @@ function recordingId(name: string): string {
 
 export async function recordPlan(
   planArgument: string,
-  options: { headless?: boolean; recordingsDirectory?: string } = {},
+  options: { headless?: boolean; recordingsDirectory?: string; skipRehearsal?: boolean } = {},
 ): Promise<string> {
   const planPath = resolve(workingDirectory, planArgument);
   const plan = await loadDemoPlan(planPath);
+  if (!options.skipRehearsal)
+    await requireRehearsalReceipt(planPath, plan, options.headless ?? true);
   const repositoryPath = resolve(workingDirectory, plan.target.repositoryPath ?? ".");
   let managed: Awaited<ReturnType<typeof startManagedApp>> | undefined;
   try {
@@ -49,6 +53,18 @@ export async function recordPlan(
           }
         : {}),
     });
+    await writeFile(
+      join(outputDirectory, "capture-readiness.json"),
+      JSON.stringify(
+        {
+          version: 1,
+          rehearsal: options.skipRehearsal ? "bypassed" : "verified",
+          fingerprint: rehearsalFingerprint(plan, options.headless ?? true),
+        },
+        null,
+        2,
+      ),
+    );
     console.log(`[demo-recorder] Recording saved: ${outputDirectory}`);
     return outputDirectory;
   } finally {
@@ -61,7 +77,7 @@ export async function recordPlan(
 
 export async function runPlan(
   planArgument: string,
-  options: { headless?: boolean } = {},
+  options: { headless?: boolean; skipRehearsal?: boolean } = {},
 ): Promise<RenderDemoVideoResult> {
   const recordingDirectory = await recordPlan(planArgument, options);
   const id = basename(recordingDirectory);
