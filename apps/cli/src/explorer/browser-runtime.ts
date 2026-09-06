@@ -10,6 +10,7 @@ export async function createGuardedBrowserContext(
     storageStatePath?: string;
     sessionStoragePath?: string;
     onBlockedNavigation?: (url: string) => void;
+    sameOriginOnly?: boolean;
     viewport?: { width: number; height: number };
   },
 ): Promise<BrowserContext> {
@@ -22,20 +23,28 @@ export async function createGuardedBrowserContext(
     if (options.sessionStoragePath)
       await installSessionStorage(context, await loadSessionStorage(options.sessionStoragePath));
     const allowedOrigin = new URL(options.baseUrl).origin;
-    await context.route("**/*", async (route) => {
-      const request = route.request();
-      if (
-        request.isNavigationRequest() &&
-        request.frame().parentFrame() === null &&
-        /^https?:/.test(request.url()) &&
-        new URL(request.url()).origin !== allowedOrigin
-      ) {
-        options.onBlockedNavigation?.(request.url());
-        await route.abort("blockedbyclient");
-        return;
-      }
-      await route.continue();
-    });
+    if (options.sameOriginOnly !== false)
+      await context.route("**/*", async (route) => {
+        const request = route.request();
+        // Popup navigation can precede creation of its frame.
+        let mainFrame = true;
+        try {
+          mainFrame = request.frame().parentFrame() === null;
+        } catch {
+          /* Treat unknown frames conservatively. */
+        }
+        if (
+          request.isNavigationRequest() &&
+          mainFrame &&
+          /^https?:/.test(request.url()) &&
+          new URL(request.url()).origin !== allowedOrigin
+        ) {
+          options.onBlockedNavigation?.(request.url());
+          await route.abort("blockedbyclient");
+          return;
+        }
+        await route.continue();
+      });
     return context;
   } catch (error) {
     await context.close().catch(() => undefined);

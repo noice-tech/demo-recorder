@@ -1,11 +1,13 @@
 import type { RecordingManifest, Viewport } from "@noice-tech/demo-recorder-core";
 import type { Locator, Page } from "playwright";
+import type { DemoPlan } from "../demo-plan/index.js";
 
 export type RecordingSessionOptions = {
   outputDirectory: string;
   viewport: Pick<Viewport, "width" | "height">;
   headless?: boolean;
   baseUrl?: string;
+  plan?: DemoPlan;
   storageStatePath?: string;
   sessionStoragePath?: string;
 };

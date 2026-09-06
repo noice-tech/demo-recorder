@@ -70,6 +70,7 @@ export async function createRecordingSession(
     cursor,
     viewport: options.viewport,
     movementIndex: 0,
+    ...(options.plan ? { plan: options.plan } : {}),
     ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl }),
   };
   const actions = createActions(actionContext);

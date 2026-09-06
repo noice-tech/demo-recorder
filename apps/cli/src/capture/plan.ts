@@ -2,19 +2,29 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Locator, Page } from "playwright";
 import { resolveUniqueLocator, resolveVisibleClickTarget } from "../browser/locator.js";
+import { withPlanPolicy } from "../browser/plan-policy.js";
 import type { DemoAction, DemoPlan, LocatorSpec } from "../demo-plan/index.js";
 import { createRecordingSession } from "./session.js";
 import type { DemoActions, RecordingSessionOptions } from "./types.js";
 
-export async function resolvePlanLocator(page: Page, spec: LocatorSpec): Promise<Locator> {
+export async function resolvePlanLocator(
+  page: Page,
+  spec: LocatorSpec,
+  timeoutMs?: number,
+): Promise<Locator> {
   return (
     await resolveUniqueLocator(page, [spec.primary, ...(spec.fallbacks ?? [])], {
       description: "No unique plan locator matched",
+      ...(timeoutMs === undefined ? {} : { timeoutMs }),
     })
   ).locator;
 }
 
-async function executeAction(page: Page, actions: DemoActions, step: DemoAction): Promise<void> {
+export async function executeAction(
+  page: Page,
+  actions: DemoActions,
+  step: DemoAction,
+): Promise<void> {
   if (step.type === "navigate") return actions.goto(step.url);
   if (step.type === "scroll") return actions.scroll(step.deltaY, step.deltaX);
   if (step.type === "hold") return actions.wait(step.durationMs);
@@ -27,7 +37,13 @@ async function executeAction(page: Page, actions: DemoActions, step: DemoAction)
     const locator = step.locator ? await resolvePlanLocator(page, step.locator) : undefined;
     return actions.press(step.key, locator);
   }
-  const locator = await resolvePlanLocator(page, step.locator);
+  const locator = await resolvePlanLocator(
+    page,
+    step.locator,
+    "timeoutMs" in step ? step.timeoutMs : undefined,
+  );
+  // Resolution already waits for one visible target using the action's entire budget.
+  if (step.type === "wait-for" || step.type === "assert-visible") return;
   if (step.type === "move")
     return actions.moveTo(
       locator,
@@ -42,10 +58,8 @@ async function executeAction(page: Page, actions: DemoActions, step: DemoAction)
   }
   if (step.type === "fill") return actions.fill(locator, step.value);
   if (step.type === "select") return actions.select(locator, step.value);
-  return actions.waitFor(
-    locator,
-    step.timeoutMs === undefined ? undefined : { timeoutMs: step.timeoutMs },
-  );
+  const unsupported: never = step;
+  throw new Error(`Unsupported plan action: ${String(unsupported)}`);
 }
 
 export async function executeDemoPlan(
@@ -55,7 +69,7 @@ export async function executeDemoPlan(
 ): Promise<void> {
   for (const [index, step] of plan.capture.steps.entries()) {
     try {
-      await executeAction(page, actions, step);
+      await withPlanPolicy(page, () => executeAction(page, actions, step));
     } catch (error) {
       throw new Error(
         `Plan step ${index + 1} (${step.type}) failed${step.purpose ? `: ${step.purpose}` : ""}`,
@@ -66,7 +80,7 @@ export async function executeDemoPlan(
 }
 
 export async function recordDemoPlan(plan: DemoPlan, options: RecordingSessionOptions) {
-  const session = await createRecordingSession({ ...options, baseUrl: plan.target.baseUrl });
+  const session = await createRecordingSession({ ...options, baseUrl: plan.target.baseUrl, plan });
   let manifest;
   try {
     await executeDemoPlan(plan, session.page, session.actions);

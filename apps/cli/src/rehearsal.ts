@@ -1,19 +1,21 @@
 import { randomUUID } from "node:crypto";
+import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { chromium, type BrowserContext, type Page } from "playwright";
-import { resolveVisibleClickTarget } from "./browser/locator.js";
-import { smoothScroll } from "./browser/smooth-scroll.js";
-import { resolvePlanLocator } from "./capture/plan.js";
+import { chromium, type BrowserContext } from "playwright";
+import { createPlanBrowserContext, withPlanPolicy } from "./browser/plan-policy.js";
+import { createActions } from "./capture/actions.js";
+import { executeAction } from "./capture/plan.js";
 import { loadDemoPlan, type DemoAction, type DemoPlan } from "./demo-plan/index.js";
 import { ExplorationArtifactStore, explorationArtifactLimits } from "./explorer/artifacts.js";
-import {
-  attachBlockedInteractionHandlers,
-  createGuardedBrowserContext,
-} from "./explorer/browser-runtime.js";
 import { authProfilePaths } from "./explorer/auth.js";
 import { startManagedApp } from "./explorer/managed-app.js";
 import { sanitizeExplorationError, sanitizeExplorationUrl } from "./explorer/privacy.js";
 import { workingDirectory } from "./paths.js";
+import {
+  rehearsalFingerprint,
+  rehearsalReceiptPath,
+  saveRehearsalReceipt,
+} from "./rehearsal-receipt.js";
 
 export type RehearsalStepResult = {
   index: number;
@@ -32,6 +34,7 @@ export type RehearsalReport = {
   attempt: number;
   maxAttempts: 3;
   mode: "fast" | "full";
+  captureReady: boolean;
   status: "passed" | "failed";
   createdAt: string;
   finishedAt: string;
@@ -52,72 +55,7 @@ export type RehearsalReport = {
   };
 };
 
-const fastHoldLimitMs = 100;
-const fastScrollDurationMs = 150;
-
-export function rehearsalHoldDuration(durationMs: number, fast: boolean): number {
-  return fast ? Math.min(durationMs, fastHoldLimitMs) : durationMs;
-}
-
-async function executeRehearsalAction(
-  plan: DemoPlan,
-  page: Page,
-  step: DemoAction,
-  fast: boolean,
-): Promise<void> {
-  switch (step.type) {
-    case "navigate":
-      await page.goto(new URL(step.url, plan.target.baseUrl).href, {
-        waitUntil: "domcontentloaded",
-        timeout: 30_000,
-      });
-      return;
-    case "scroll":
-      await smoothScroll(
-        page,
-        step.deltaY,
-        step.deltaX ?? 0,
-        fast ? { durationMs: fastScrollDurationMs } : {},
-      );
-      return;
-    case "hold":
-      await page.waitForTimeout(rehearsalHoldDuration(step.durationMs, fast));
-      return;
-    case "wait-for-url":
-      await page.waitForURL(step.urlPattern, step.timeoutMs ? { timeout: step.timeoutMs } : {});
-      return;
-    case "press":
-      if (step.locator) await (await resolvePlanLocator(page, step.locator)).press(step.key);
-      else await page.keyboard.press(step.key);
-      return;
-  }
-
-  const locator = await resolvePlanLocator(page, step.locator);
-  switch (step.type) {
-    case "move": {
-      const bounds = await locator.boundingBox();
-      if (!bounds) throw new Error("Move target has no visible bounding box");
-      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-      return;
-    }
-    case "click": {
-      const clickTarget = await resolveVisibleClickTarget(page, locator);
-      await clickTarget.click({ button: step.button ?? "left" });
-      return;
-    }
-    case "fill":
-      await locator.fill(step.value);
-      return;
-    case "select":
-      await locator.selectOption(step.value);
-      return;
-    case "wait-for":
-      await locator.waitFor({
-        state: "visible",
-        ...(step.timeoutMs ? { timeout: step.timeoutMs } : {}),
-      });
-  }
-}
+export { rehearsalHoldDuration } from "./capture/actions.js";
 
 function errorWithCauses(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
@@ -198,20 +136,31 @@ export async function rehearseDemoPlan(options: {
   let finalEvidence = false;
 
   try {
-    context = await createGuardedBrowserContext(browser, {
+    context = await createPlanBrowserContext(browser, {
       baseUrl: options.plan.target.baseUrl,
+      constraints: options.plan.brief.constraints,
       viewport: options.plan.capture.viewport ?? { width: 1440, height: 900 },
       ...(options.storageStatePath ? { storageStatePath: options.storageStatePath } : {}),
       ...(options.sessionStoragePath ? { sessionStoragePath: options.sessionStoragePath } : {}),
     });
     await context.tracing.start({ screenshots: true, snapshots: true, sources: false });
     const page = await context.newPage();
-    attachBlockedInteractionHandlers(page);
+    const start = performance.now();
+    const actions = createActions({
+      page,
+      tracker: { now: () => performance.now() - start, push: () => undefined },
+      cursor: { x: 32, y: 32 },
+      viewport: options.plan.capture.viewport ?? { width: 1440, height: 900 },
+      movementIndex: 0,
+      baseUrl: options.plan.target.baseUrl,
+      plan: options.plan,
+      fast: options.fast ?? false,
+    });
 
     for (const [index, step] of options.plan.capture.steps.entries()) {
       const startedAt = Date.now();
       try {
-        await executeRehearsalAction(options.plan, page, step, options.fast ?? false);
+        await withPlanPolicy(page, () => executeAction(page, actions, step));
         steps.push({
           index: index + 1,
           type: step.type,
@@ -286,6 +235,7 @@ export async function rehearseDemoPlan(options: {
     attempt: options.attempt,
     maxAttempts: 3,
     mode: options.fast ? "fast" : "full",
+    captureReady: !failure && !options.fast,
     status: failure ? "failed" : "passed",
     createdAt,
     finishedAt: new Date().toISOString(),
@@ -314,6 +264,8 @@ export async function rehearsePlanFile(options: {
   const attempt = options.attempt ?? 1;
   if (!Number.isInteger(attempt) || attempt < 1 || attempt > 3)
     throw new Error("Rehearsal attempt must be between 1 and 3");
+  const fingerprint = rehearsalFingerprint(plan, options.headless ?? true);
+  await rm(rehearsalReceiptPath(planPath), { force: true });
   const id = `${new Date().toISOString().replaceAll(":", "-").replaceAll(".", "-")}-${plan.name}-attempt-${attempt}-${randomUUID().slice(0, 8)}`;
   const outputDirectory = resolve(
     workingDirectory,
@@ -345,6 +297,12 @@ export async function rehearsePlanFile(options: {
           }
         : {}),
     });
+    if (report.captureReady)
+      await saveRehearsalReceipt(
+        planPath,
+        fingerprint,
+        join(outputDirectory, report.artifacts.report),
+      );
     return { outputDirectory, report };
   } finally {
     await managed?.close().catch(() => undefined);

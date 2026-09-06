@@ -1,4 +1,15 @@
-import { cp, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import {
+  cp,
+  link,
+  lstat,
+  mkdir,
+  mkdtemp,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,6 +40,20 @@ export async function renderProductDemo(
   input: ProductDemoRenderInput,
   options: RenderProductDemoOptions,
 ): Promise<RenderProductDemoResult> {
+  const outputPath = resolve(options.outputPath);
+  const [sourceIdentity, outputIdentity] = await Promise.all([
+    realpath(input.sourcePath).catch(() => resolve(input.sourcePath)),
+    realpath(outputPath).catch(() => outputPath),
+  ]);
+  if (outputIdentity === sourceIdentity)
+    throw new Error("Render output must differ from the source recording");
+  if (options.overwrite === false) {
+    const existing = await lstat(outputPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+      return undefined;
+    });
+    if (existing) throw new Error(`Render output already exists: ${outputPath}`);
+  }
   const ffmpegPath = options.ffmpegPath ?? process.env.DEMO_RECORDER_FFMPEG ?? "ffmpeg";
   const ffprobePath = options.ffprobePath ?? process.env.DEMO_RECORDER_FFPROBE ?? "ffprobe";
   const capabilities = await inspectFfmpegCapabilities({ ffmpegPath, ffprobePath });
@@ -59,11 +84,13 @@ export async function renderProductDemo(
   const assetPaths = ASSET_FILES.map((name) => join(assetsDirectory, name));
   const fontPath = join(assetsDirectory, FONT_FILE);
   await Promise.all([...assetPaths.map(requireFile), requireFile(fontPath)]);
-  const outputPath = resolve(options.outputPath);
   await mkdir(dirname(outputPath), { recursive: true });
   const temporaryDirectory = await mkdtemp(join(tmpdir(), "demo-recorder-ffmpeg-"));
-  let completed = false;
+  let pendingDirectory: string | undefined;
   try {
+    // Same filesystem as the destination: publication is atomic, and cleanup never owns it.
+    pendingDirectory = await mkdtemp(join(dirname(outputPath), ".demo-recorder-render-"));
+    const pendingOutput = join(pendingDirectory, "video.mp4");
     const graph = buildProductDemoFilterGraph(input);
     const geometry = productDemoGeometry(input.recording.viewport, input.config);
     const composition = {
@@ -143,8 +170,8 @@ export async function renderProductDemo(
         "-progress",
         "pipe:3",
         "-nostats",
-        options.overwrite === false ? "-n" : "-y",
-        outputPath,
+        "-n",
+        pendingOutput,
       ],
       {
         cwd: temporaryDirectory,
@@ -152,11 +179,15 @@ export async function renderProductDemo(
         onProgress: parseProgress,
       },
     );
-    completed = true;
+    if (options.signal?.aborted) throw new Error("Rendering cancelled");
+    if ((await stat(pendingOutput)).size === 0) throw new Error("Rendered video is empty");
+    if (options.overwrite === false) await link(pendingOutput, outputPath);
+    else await rename(pendingOutput, outputPath);
     reportProgress(1);
     return { outputPath, frameCount: graph.frameCount, durationMs: graph.durationMs };
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
-    if (!completed) await rm(outputPath, { force: true }).catch(() => undefined);
+    if (pendingDirectory)
+      await rm(pendingDirectory, { recursive: true, force: true }).catch(() => undefined);
   }
 }

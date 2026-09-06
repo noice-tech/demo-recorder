@@ -300,6 +300,10 @@ try {
         2,
       )}\n`,
     );
+    await runNpm(
+      ["exec", "--", "demo-recorder", "plan", "rehearse", "demo-plan.json", "--json"],
+      workspace,
+    );
     await runNpm(["exec", "--", "demo-recorder", "run", "demo-plan.json"], workspace);
   } finally {
     await fixture.close();

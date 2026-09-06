@@ -1,4 +1,4 @@
-import { access, copyFile, mkdtemp, readFile, rm } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -136,8 +136,17 @@ describe.sequential("FFmpeg product-demo render", () => {
     }
   });
 
-  it("terminates FFmpeg and removes partial output when cancelled", async () => {
+  it("preserves an existing video when overwrite is disabled", async () => {
+    const original = await readFile(outputPath);
+    await expect(
+      renderProductDemo(renderInput(), { outputPath, assetsDirectory, overwrite: false }),
+    ).rejects.toThrow("already exists");
+    expect((await readFile(outputPath)).equals(original)).toBe(true);
+  });
+
+  it("terminates FFmpeg and preserves existing output when cancelled", async () => {
     const interruptedOutput = join(temporaryDirectory, "interrupted render.mp4");
+    await copyFile(outputPath, interruptedOutput);
     const controller = new AbortController();
     const rendering = renderProductDemo(renderInput(), {
       outputPath: interruptedOutput,
@@ -148,6 +157,9 @@ describe.sequential("FFmpeg product-demo render", () => {
       },
     });
     await expect(rendering).rejects.toThrow();
-    await expect(access(interruptedOutput)).rejects.toThrow();
+    expect((await readFile(interruptedOutput)).equals(await readFile(outputPath))).toBe(true);
+    expect(
+      (await readdir(temporaryDirectory)).some((name) => name.startsWith(".demo-recorder-render-")),
+    ).toBe(false);
   }, 120_000);
 });
