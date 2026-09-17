@@ -1,18 +1,18 @@
 {
   "schemaVersion": 1,
   "channel": "stable",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "skill": {
     "name": "demo-video",
     "repository": "noice-tech/demo-recorder",
-    "tag": "v0.0.1"
+    "tag": "v0.2.0"
   },
   "runtime": {
     "package": "@noice-tech/demo-recorder",
-    "version": "0.0.1"
+    "version": "0.2.0"
   },
   "requirements": {
     "node": ">=22"
   },
-  "releaseNotes": "https://github.com/noice-tech/demo-recorder/releases/tag/v0.0.1"
+  "releaseNotes": "https://github.com/noice-tech/demo-recorder/releases/tag/v0.2.0"
 }

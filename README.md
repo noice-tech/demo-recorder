@@ -6,7 +6,7 @@ Describe the demo you need, and your coding agent explores the web app, records 
 
 ![Example](docs/demo.gif)
 
-> **Alpha:** Demo Recorder is under active development. Expect rough edges and changes before the first stable release.
+> Actively developed. Commands and file formats may change between minor releases.
 
 ## What it's for
 
@@ -65,16 +65,14 @@ Or ask it to record the result of a development task:
 
 ## Current status and plans
 
-The current release is **0.1.0 Alpha**. The complete workflow - from exploring a product to rendering an MP4 - is available today, but commands, plan formats, and behavior may still change.
+**0.2.0** introduces a simplified, project-scoped workflow: persistent exploration,
+reusable plans with expected states, fresh-browser rehearsal, capture, and
+step-anchored zooms and trim.
 
-The next areas of focus are:
+Playwright Chromium is the default for exploration and recording. When the user
+requests their existing Chrome, Playwright CDP supports exploration only.
 
-- additional canvas styles and export formats
-- smoother animations and transitions
-- tooltips for pressed keys
-- ready-made templates for socials
-
-See [Updates and releases](docs/updates.md) for information about versioning and updates.
+Future work includes attached real-browser recording and additional export formats.
 
 ## Contributing
 

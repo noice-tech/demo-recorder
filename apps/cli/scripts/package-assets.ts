@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const cliRoot = fileURLToPath(new URL("..", import.meta.url));
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const assetsRoot = join(cliRoot, "assets");
-const rendererSource = join(repositoryRoot, "packages/ffmpeg-renderer/assets");
+const rendererSource = join(repositoryRoot, "packages/renderer/assets");
 const rendererTarget = join(assetsRoot, "ffmpeg");
 const rendererAssets = [
   "browser-underlay.png",

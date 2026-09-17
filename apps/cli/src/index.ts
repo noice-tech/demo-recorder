@@ -4,105 +4,80 @@ import { backgroundPresetNames, type BackgroundOptions } from "@noice-tech/demo-
 import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { authCommand } from "./auth.js";
 import {
+  exploreAct,
+  exploreFinish,
+  exploreObserve,
+  exploreOptions,
+  explorePages,
+  exploreStart,
+} from "./commands/explore.js";
+import { runBrowserServer } from "./driver/runtime.js";
+import {
+  authOptions,
+  authList,
+  authRemove,
+  authSave,
+  authStart,
+  authStop,
+  authVerify,
+} from "./commands/auth.js";
+import { runDoctor } from "./commands/doctor.js";
+import { inspectOptions, runInspect } from "./commands/inspect.js";
+import { recordOptions, runRecord } from "./commands/record.js";
+import { planRehearse, planShow, planValidate, rehearseOptions } from "./commands/rehearse.js";
+import { runSetup, setupOptions } from "./commands/setup.js";
+import { renderRecording } from "./commands/render.js";
+import {
+  booleanOption,
   dimensionsOption,
   nonNegativeNumberOption,
-  numberOption,
   parseArguments,
+  requireStringOption,
   stringOption,
   type OptionDefinitions,
   type ParsedArguments,
-} from "./arguments.js";
-import { doctorCommand, setupCommand } from "./environment.js";
-import { exploreCommand } from "./explore.js";
-import { inspectVideoCommand } from "./inspect-video.js";
-import { showPlanCommand, validatePlanCommand } from "./plan.js";
-import { renderRecording } from "./render.js";
-import { rehearsePlanFile } from "./rehearsal.js";
-import { recordPlan, runPlan } from "./run-plan.js";
-import { updateCommand } from "./updates.js";
+} from "./support/args.js";
 import { cliVersion } from "./version.js";
 
 function usage(): string {
   return [
     "Usage:",
-    "  demo-recorder doctor [--json]",
-    "  demo-recorder setup --chromium [--accept-downloads] [--json]",
-    "  demo-recorder update check [--json]",
-    "  demo-recorder explore --url URL [--repo PATH --start COMMAND] [--auth PROFILE] [--viewport WIDTHxHEIGHT]",
-    "  demo-recorder explore start --url URL [--session ID] [--policy read-only|reversible] [--viewport WIDTHxHEIGHT]",
-    "  demo-recorder explore <observe|current|find|act|verify|export-plan|finish|abort|status> [SESSION] [options]",
-    "  demo-recorder inspect <video.mp4> [--contact-sheet[=PATH]]",
-    "  demo-recorder plan validate <demo-plan.json>",
-    "  demo-recorder plan show <demo-plan.json>",
-    "  demo-recorder plan rehearse <demo-plan.json> [--attempt 1] [--fast] [--output PATH]",
-    "  demo-recorder record --plan <demo-plan.json> [--headed] [--skip-rehearsal]",
-    "  demo-recorder run <demo-plan.json> [--headed] [--skip-rehearsal]",
-    "  demo-recorder auth <start|save|stop|verify|remove|list> [options]",
-    "  demo-recorder render <recording> [--aspect-ratio RATIO | --size WIDTHxHEIGHT] [--padding PX] [--padding-mode minimum|exact] [--background preset:NAME|#RRGGBB]",
+    "  demo-recorder explore start --url URL [--project DIR] [--driver NAME] [--headed] [--viewport WxH] [--policy read-only|reversible]",
+    "  demo-recorder explore pages [--project DIR | --driver cdp --target URL]",
+    "  demo-recorder explore observe [--project DIR]",
+    "  demo-recorder explore act --input FILE [--project DIR]",
+    "  demo-recorder explore finish [--project DIR]",
+    "  demo-recorder plan rehearse [plan.json] [--project DIR] [--headed] [--storage-state FILE]",
+    "  demo-recorder record [plan.json] [--project DIR] [--allow-unguarded] [--skip-rehearsal] [--headed] [--storage-state FILE] [--output FILE]",
+    "  demo-recorder inspect <video> [--contact-sheet] [--output FILE]",
+    "  demo-recorder doctor",
+    "  demo-recorder setup --chromium --accept-downloads",
+    "  demo-recorder auth start|save|remove [--project DIR]",
+    "  demo-recorder render [recording] [--project DIR] [--output FILE] [--overwrite] [--aspect-ratio RATIO | --size WxH] [--padding PX] [--padding-mode minimum|exact] [--background preset:NAME|#RRGGBB]",
   ].join("\n");
 }
 
-export const commandOptions: Record<string, OptionDefinitions> = {
-  doctor: { json: { type: "boolean" } },
-  setup: {
-    chromium: { type: "boolean" },
-    "accept-downloads": { type: "boolean" },
-    json: { type: "boolean" },
-  },
-  update: { json: { type: "boolean" } },
-  explore: {
-    url: { type: "string" },
-    repo: { type: "string" },
-    start: { type: "string" },
-    "readiness-url": { type: "string" },
-    output: { type: "string" },
-    auth: { type: "string" },
-    "max-pages": { type: "string" },
-    "max-depth": { type: "string" },
-    "max-actions": { type: "string" },
-    "max-duration-ms": { type: "string" },
-    "allow-cross-origin": { type: "boolean" },
-    session: { type: "string" },
-    input: { type: "string" },
-    text: { type: "string" },
-    regex: { type: "string" },
-    goal: { type: "string" },
-    policy: { type: "string" },
-    json: { type: "boolean" },
-    headed: { type: "boolean" },
-    viewport: { type: "string" },
-  },
-  inspect: { "contact-sheet": { type: "string", optionalValue: true } },
-  plan: {
-    output: { type: "string" },
-    attempt: { type: "string" },
-    headed: { type: "boolean" },
-    fast: { type: "boolean" },
-    json: { type: "boolean" },
-  },
-  auth: { profile: { type: "string" }, url: { type: "string" } },
-  record: {
-    plan: { type: "string" },
-    headed: { type: "boolean" },
-    "skip-rehearsal": { type: "boolean" },
-  },
-  run: { headed: { type: "boolean" }, "skip-rehearsal": { type: "boolean" } },
-  render: {
-    "aspect-ratio": { type: "string" },
-    size: { type: "string" },
-    padding: { type: "string" },
-    "padding-mode": { type: "string" },
-    background: { type: "string" },
-  },
-  create: {},
+const renderOptions: OptionDefinitions = {
+  project: { type: "string" },
+  output: { type: "string" },
+  "aspect-ratio": { type: "string" },
+  size: { type: "string" },
+  padding: { type: "string" },
+  "padding-mode": { type: "string" },
+  background: { type: "string" },
+  overwrite: { type: "boolean" },
 };
 
-function requireArgument(value: string | undefined, command: string): string {
-  if (!value) throw new Error(`Missing argument for ${command}\n${usage()}`);
-  return value;
-}
+const serverOptions: OptionDefinitions = {
+  viewport: { type: "string" },
+  "ready-file": { type: "string" },
+  "touch-file": { type: "string" },
+  "idle-timeout": { type: "string" },
+  "max-duration": { type: "string" },
+  "storage-state": { type: "string" },
+  headless: { type: "boolean" },
+};
 
 function backgroundOption(value: string | undefined): BackgroundOptions | undefined {
   if (!value) return undefined;
@@ -110,6 +85,107 @@ function backgroundOption(value: string | undefined): BackgroundOptions | undefi
   const preset = backgroundPresetNames.find((name) => value === `preset:${name}`);
   if (preset) return { type: "preset", name: preset };
   throw new Error(`--background must be #RRGGBB or preset:${backgroundPresetNames.join("|")}`);
+}
+
+async function runRender(rest: string[]): Promise<unknown> {
+  const parsed = parseArguments(rest, renderOptions);
+  const size = dimensionsOption(parsed, "size");
+  const aspectRatio = stringOption(parsed, "aspect-ratio");
+  if (size && aspectRatio) throw new Error("Use either --aspect-ratio or --size, not both");
+  const padding = nonNegativeNumberOption(parsed, "padding");
+  const paddingMode = stringOption(parsed, "padding-mode");
+  if (paddingMode && !["minimum", "exact"].includes(paddingMode)) {
+    throw new Error("--padding-mode must be minimum or exact");
+  }
+  const background = backgroundOption(stringOption(parsed, "background"));
+  const project = stringOption(parsed, "project");
+  const output = stringOption(parsed, "output");
+  return renderRecording(parsed.positionals[0], {
+    ...(project ? { project } : {}),
+    ...(output ? { output } : {}),
+    overwrite: booleanOption(parsed, "overwrite"),
+    ...size,
+    ...(aspectRatio ? { aspectRatio } : {}),
+    ...(padding !== undefined ? { padding } : {}),
+    ...(paddingMode ? { paddingMode: paddingMode as "minimum" | "exact" } : {}),
+    ...(background ? { background } : {}),
+  });
+}
+
+async function runExplore(rest: string[]): Promise<unknown> {
+  const [subcommand, ...subRest] = rest;
+  const parsed = parseArguments(subRest, exploreOptions);
+  switch (subcommand) {
+    case "start":
+      return exploreStart(parsed);
+    case "pages":
+      return explorePages(parsed);
+    case "observe":
+      return exploreObserve(parsed);
+    case "act":
+      return exploreAct(parsed);
+    case "finish":
+      return exploreFinish(parsed);
+    default:
+      throw new Error(`Unknown explore subcommand: ${subcommand ?? "(missing)"}\n${usage()}`);
+  }
+}
+
+async function runPlan(rest: string[]): Promise<unknown> {
+  const [subcommand, ...subRest] = rest;
+  const parsed = parseArguments(subRest, rehearseOptions);
+  switch (subcommand) {
+    case "rehearse":
+      return planRehearse(parsed);
+    case "validate":
+      console.error("[demo-recorder] `plan validate` is deprecated; use `plan rehearse`");
+      return planValidate(parsed);
+    case "show":
+      console.error("[demo-recorder] `plan show` is deprecated; read plan.json directly");
+      return planShow(parsed);
+    default:
+      throw new Error(`Unknown plan subcommand: ${subcommand ?? "(missing)"}\n${usage()}`);
+  }
+}
+
+async function runAuth(rest: string[]): Promise<unknown> {
+  const [subcommand, ...subRest] = rest;
+  const parsed = parseArguments(subRest, authOptions);
+  switch (subcommand) {
+    case "start":
+      return authStart(parsed);
+    case "save":
+      return authSave(parsed);
+    case "remove":
+      return authRemove(parsed);
+    case "verify":
+      console.error("[demo-recorder] `auth verify` is deprecated; use `auth save`");
+      return authVerify(parsed);
+    case "stop":
+      console.error("[demo-recorder] `auth stop` is deprecated; run `auth save` first");
+      return authStop(parsed);
+    case "list":
+      console.error("[demo-recorder] `auth list` is deprecated; use `auth verify`");
+      return authList(parsed);
+    default:
+      throw new Error(`Unknown auth subcommand: ${subcommand ?? "(missing)"}\n${usage()}`);
+  }
+}
+
+async function runBrowserServerCommand(rest: string[]): Promise<unknown> {
+  const parsed: ParsedArguments = parseArguments(rest, serverOptions);
+  const readyFile = requireStringOption(parsed, "ready-file");
+  const storageStatePath = stringOption(parsed, "storage-state");
+  await runBrowserServer({
+    viewport: dimensionsOption(parsed, "viewport") ?? { width: 1440, height: 900 },
+    headless: booleanOption(parsed, "headless"),
+    readyFile,
+    touchFile: stringOption(parsed, "touch-file") ?? readyFile,
+    idleTimeoutMs: nonNegativeNumberOption(parsed, "idle-timeout") ?? 300_000,
+    maxDurationMs: nonNegativeNumberOption(parsed, "max-duration") ?? 1_200_000,
+    ...(storageStatePath ? { storageStatePath } : {}),
+  });
+  return undefined;
 }
 
 function formatError(error: unknown): string {
@@ -123,114 +199,18 @@ function formatError(error: unknown): string {
   return messages.join("\n  caused by: ");
 }
 
-async function runPlanCommand(parsed: ReturnType<typeof parseArguments>): Promise<void> {
-  const [operation, path] = parsed.positionals;
-  if (operation === "validate") return validatePlanCommand(requireArgument(path, "plan validate"));
-  if (operation === "show") return showPlanCommand(requireArgument(path, "plan show"));
-  if (operation !== "rehearse")
-    throw new Error(`Unknown plan operation: ${operation ?? "missing"}\n${usage()}`);
-
-  const rehearsalOutput = stringOption(parsed, "output");
-  const result = await rehearsePlanFile({
-    planArgument: requireArgument(path, "plan rehearse"),
-    ...(rehearsalOutput ? { outputDirectory: rehearsalOutput } : {}),
-    attempt: numberOption(parsed, "attempt", 1),
-    headless: !parsed.options.has("headed"),
-    fast: parsed.options.has("fast"),
-  });
-  const captureReady = result.report.status === "passed" && result.report.mode === "full";
-  if (parsed.options.has("json")) {
-    console.log(
-      JSON.stringify({ ok: result.report.status === "passed", captureReady, ...result }, null, 2),
-    );
-  } else {
-    console.log(
-      `[demo-recorder] Rehearsal ${result.report.status} (${result.report.mode}): ${result.report.planName}`,
-    );
-    console.log(
-      `[demo-recorder] Report: ${resolve(result.outputDirectory, result.report.artifacts.report)}`,
-    );
-    if (result.report.status === "passed" && result.report.mode === "fast")
-      console.log("[demo-recorder] Fast preflight passed; run a full rehearsal before capture.");
-    if (result.report.failure)
-      console.log(
-        `[demo-recorder] Failed at step ${result.report.failure.stepIndex}: ${result.report.failure.error}`,
-      );
-  }
-  if (result.report.status === "failed")
-    throw new Error(
-      `Plan rehearsal failed at step ${result.report.failure?.stepIndex ?? "unknown"}`,
-    );
-}
-
-type CommandHandler = (parsed: ParsedArguments) => unknown | Promise<unknown>;
-
-function runAuthCommand(parsed: ParsedArguments): Promise<void> {
-  const [operation, ...positionals] = parsed.positionals;
-  return authCommand(operation, { ...parsed, positionals });
-}
-
-function runRecordCommand(parsed: ParsedArguments): Promise<unknown> {
-  const plan = stringOption(parsed, "plan");
-  if (!plan) throw new Error(`Missing --plan for record\n${usage()}`);
-  return recordPlan(plan, {
-    headless: !parsed.options.has("headed"),
-    skipRehearsal: parsed.options.has("skip-rehearsal"),
-  });
-}
-
-const commandHandlers = new Map<string, CommandHandler>([
-  ["doctor", doctorCommand],
-  ["setup", setupCommand],
-  ["update", updateCommand],
-  ["explore", (parsed) => exploreCommand(parsed)],
-  [
-    "inspect",
-    (parsed) => inspectVideoCommand(requireArgument(parsed.positionals[0], "inspect"), parsed),
-  ],
-  ["plan", runPlanCommand],
-  ["auth", runAuthCommand],
-  ["record", runRecordCommand],
-  [
-    "run",
-    (parsed) =>
-      runPlan(requireArgument(parsed.positionals[0], "run"), {
-        headless: !parsed.options.has("headed"),
-        skipRehearsal: parsed.options.has("skip-rehearsal"),
-      }),
-  ],
-  [
-    "render",
-    (parsed) => {
-      const size = dimensionsOption(parsed, "size");
-      const aspectRatio = stringOption(parsed, "aspect-ratio");
-      if (size && aspectRatio) throw new Error("Use either --aspect-ratio or --size, not both");
-      const padding = nonNegativeNumberOption(parsed, "padding");
-      const paddingMode = stringOption(parsed, "padding-mode");
-      if (paddingMode && !["minimum", "exact"].includes(paddingMode))
-        throw new Error("--padding-mode must be minimum or exact");
-      const background = backgroundOption(stringOption(parsed, "background"));
-      return renderRecording(requireArgument(parsed.positionals[0], "render"), {
-        ...size,
-        ...(aspectRatio ? { aspectRatio } : {}),
-        ...(padding !== undefined ? { padding } : {}),
-        ...(paddingMode ? { paddingMode: paddingMode as "minimum" | "exact" } : {}),
-        ...(background ? { background } : {}),
-      });
-    },
-  ],
-  [
-    "create",
-    () => {
-      throw new Error(
-        "`create` is an agent workflow, not an embedded model command. Ask your coding agent to load the demo-video skill, explore the target, write a plan, and run it.",
-      );
-    },
-  ],
-]);
-
 export async function runCli(arguments_: string[]): Promise<void> {
-  const [command, ...rest] = arguments_;
+  const cleaned = arguments_.filter((argument) => argument !== "--json");
+  let command = cleaned[0];
+  let rest = cleaned.slice(1);
+  if (command === "run") {
+    console.error("[demo-recorder] `run` is deprecated; use `record`");
+    command = "record";
+  }
+  if (command === "explore" && rest[0]?.startsWith("--")) {
+    console.error("[demo-recorder] `explore --url` is deprecated; use `explore start --url`");
+    rest = ["start", ...rest];
+  }
   if (["--help", "-h", "help"].includes(command ?? "")) {
     console.log(usage());
     return;
@@ -240,12 +220,40 @@ export async function runCli(arguments_: string[]): Promise<void> {
     return;
   }
 
-  const commandName = command ?? "";
-  const parsed = parseArguments(rest, commandOptions[commandName] ?? {});
-  const handler = commandHandlers.get(commandName);
-  if (!handler)
-    throw new Error(`${command ? `Unknown command: ${command}` : "Missing command"}\n${usage()}`);
-  await handler(parsed);
+  let result: unknown;
+  switch (command) {
+    case "render":
+      result = await runRender(rest);
+      break;
+    case "explore":
+      result = await runExplore(rest);
+      break;
+    case "plan":
+      result = await runPlan(rest);
+      break;
+    case "record":
+      result = await runRecord(parseArguments(rest, recordOptions));
+      break;
+    case "inspect":
+      result = await runInspect(parseArguments(rest, inspectOptions));
+      break;
+    case "doctor":
+      result = await runDoctor();
+      break;
+    case "setup":
+      result = await runSetup(parseArguments(rest, setupOptions));
+      break;
+    case "auth":
+      result = await runAuth(rest);
+      break;
+    case "__browser-server":
+      result = await runBrowserServerCommand(rest);
+      break;
+    default:
+      throw new Error(`${command ? `Unknown command: ${command}` : "Missing command"}\n${usage()}`);
+  }
+
+  if (result !== undefined) console.log(JSON.stringify(result, null, 2));
 }
 
 function isMainModule(): boolean {
@@ -258,8 +266,14 @@ function isMainModule(): boolean {
 }
 
 if (isMainModule()) {
-  runCli(process.argv.slice(2)).catch((error: unknown) => {
-    console.error(`[demo-recorder] ${formatError(error)}`);
-    process.exitCode = 1;
-  });
+  runCli(process.argv.slice(2))
+    .then(() => {
+      // A connected Playwright client keeps the event loop alive; exit once output drains.
+      process.stdout.write("", () => process.exit(0));
+      setTimeout(() => process.exit(0), 1_000);
+    })
+    .catch((error: unknown) => {
+      console.error(`[demo-recorder] ${formatError(error)}`);
+      process.exit(1);
+    });
 }

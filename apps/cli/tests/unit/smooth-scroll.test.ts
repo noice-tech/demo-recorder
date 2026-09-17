@@ -1,10 +1,6 @@
-import type { Page } from "playwright";
+import type { WheelSink } from "../../src/motion/scroll.js";
 import { describe, expect, it } from "vitest";
-import {
-  generateScrollGesture,
-  scrollDurationMs,
-  smoothScroll,
-} from "../../src/browser/smooth-scroll.js";
+import { generateScrollGesture, scrollDurationMs, smoothScroll } from "../../src/motion/scroll.js";
 
 describe("generateScrollGesture", () => {
   it("preserves the requested distance across 60 FPS wheel samples", () => {
@@ -48,20 +44,18 @@ describe("smoothScroll", () => {
   it("uses absolute scheduling and leaves a frame for the final wheel event", async () => {
     let clockMs = 0;
     const calls: Array<{ deltaX: number; deltaY: number; atMs: number }> = [];
-    const page = {
-      mouse: {
-        wheel: (deltaX: number, deltaY: number) => {
-          calls.push({ deltaX, deltaY, atMs: clockMs });
-          return Promise.resolve();
-        },
+    const sink = {
+      wheel: (deltaX: number, deltaY: number) => {
+        calls.push({ deltaX, deltaY, atMs: clockMs });
+        return Promise.resolve();
       },
       waitForTimeout: (durationMs: number) => {
         clockMs += durationMs;
         return Promise.resolve();
       },
-    } as unknown as Page;
+    } as unknown as WheelSink;
 
-    await smoothScroll(page, 600, 60, { durationMs: 400, now: () => clockMs });
+    await smoothScroll(sink, 600, 60, { durationMs: 400, now: () => clockMs });
 
     expect(calls.length).toBeGreaterThan(0);
     expect(calls[0]?.atMs).toBe(0);

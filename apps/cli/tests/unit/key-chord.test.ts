@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isReadOnlyKeyChord, normalizeKeyChord } from "../../src/capture/key-chord.js";
+import { isReadOnlyKeyChord, normalizeKeyChord } from "../../src/motion/keys.js";
 
 describe("keyboard chords", () => {
   it("normalizes aliases and canonical modifier order", () => {

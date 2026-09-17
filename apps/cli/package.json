@@ -1,6 +1,6 @@
 {
   "name": "@noice-tech/demo-recorder",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Create product demo videos for web apps with coding agents",
   "keywords": [
     "agent-skill",
@@ -47,7 +47,6 @@
     "package": "tsdown && tsx scripts/package-assets.ts",
     "prepack": "pnpm -C ../.. package:cli",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "record": "tsx src/index.ts record",
     "render": "tsx src/index.ts render"
   },
   "dependencies": {
@@ -55,7 +54,7 @@
   },
   "devDependencies": {
     "@noice-tech/demo-recorder-core": "workspace:*",
-    "@noice-tech/demo-recorder-ffmpeg": "workspace:*",
+    "@noice-tech/demo-recorder-renderer": "workspace:*",
     "@types/node": "22.20.1",
     "tsx": "4.23.1",
     "zod": "4.4.3"

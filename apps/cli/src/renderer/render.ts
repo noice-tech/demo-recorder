@@ -1,6 +1,6 @@
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { CanvasOptions } from "@noice-tech/demo-recorder-core";
-import { renderProductDemo } from "@noice-tech/demo-recorder-ffmpeg";
+import { renderProductDemo } from "@noice-tech/demo-recorder-renderer";
 import { prepareRecording } from "./prepare-recording.js";
 
 export type RenderDemoVideoOptions = {
@@ -12,6 +12,8 @@ export type RenderDemoVideoOptions = {
   signal?: AbortSignal;
   log?: (message: string) => void;
   canvas?: CanvasOptions;
+  presentationPath?: string;
+  overwrite?: boolean;
 };
 
 export type RenderDemoVideoResult = {
@@ -32,8 +34,12 @@ export async function renderDemoVideo(
   recordingPath: string,
   options: RenderDemoVideoOptions,
 ): Promise<RenderDemoVideoResult> {
-  const log = options.log ?? ((message: string) => console.log(`[demo-recorder] ${message}`));
-  const prepared = await prepareRecording(recordingPath, options.canvas).catch((error: unknown) => {
+  const log = options.log ?? ((message: string) => console.error(`[demo-recorder] ${message}`));
+  const prepared = await prepareRecording(
+    recordingPath,
+    options.canvas,
+    options.presentationPath,
+  ).catch((error: unknown) => {
     throw stageError("Recording preparation", error);
   });
   const zoomSegmentCount = prepared.input.timeline.zoomSegments.length;
@@ -49,10 +55,9 @@ export async function renderDemoVideo(
 
   const outputPath = resolve(
     options.outputPath ??
-      join(
-        options.outputDirectory ?? join(process.cwd(), "output"),
-        `${safeOutputName(prepared.manifest.id)}.mp4`,
-      ),
+      (options.outputDirectory
+        ? join(options.outputDirectory, `${safeOutputName(prepared.manifest.id)}.mp4`)
+        : join(dirname(prepared.recordingDirectory), "output.mp4")),
   );
   const signalController = options.signal ? undefined : new AbortController();
   const abortRender = () => signalController?.abort(new Error("Render interrupted"));
@@ -73,6 +78,7 @@ export async function renderDemoVideo(
       {
         outputPath,
         assetsDirectory: options.assetsDirectory,
+        overwrite: options.overwrite ?? false,
         ...(options.ffmpegPath ? { ffmpegPath: options.ffmpegPath } : {}),
         ...(options.ffprobePath ? { ffprobePath: options.ffprobePath } : {}),
         ...(renderSignal ? { signal: renderSignal } : {}),

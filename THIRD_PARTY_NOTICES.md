@@ -9,7 +9,7 @@ subject to its own license terms.
 The FFmpeg renderer bundles the Inter variable font, copyright 2020 The Inter
 Project Authors, under the SIL Open Font License 1.1. The complete license is
 distributed at `assets/ffmpeg/fonts/OFL.txt` in the CLI package and at
-`packages/ffmpeg-renderer/assets/fonts/OFL.txt` in the source repository.
+`packages/renderer/assets/fonts/OFL.txt` in the source repository.
 
 Project: https://github.com/rsms/inter
 
