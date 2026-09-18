@@ -1,81 +1,103 @@
 # Demo Recorder Architecture
 
-Demo Recorder separates agent reasoning, application exploration, browser capture, and media presentation. The host coding agent acts as explorer/director; Demo Recorder itself makes no model API calls.
+Demo Recorder separates agent reasoning, browser control, capture, and media
+presentation. The host coding agent is the explorer and director. The tool makes
+no model API calls.
 
 ```text
-User brief → Coding agent + skill
-                    ↓
-     Repository tools + Explorer
-                    ↓
-          Validated DemoPlan
-                    ↓
-       Recorder → recording.json + browser.mp4
-                    ↓
-            Timeline Processing
-                    ↓
-       Composition ← Renderer → MP4
+brief → agent + skill
+          ↓
+   drivers + session (observe / act)
+          ↓
+        plan.json
+          ↓
+        plan rehearse (fresh browser)
+          ↓
+   record → browser.mp4 + events.json
+          ↓
+   render → output.mp4
 ```
 
-## 1. Agent skill
+The full interface contract is [contract.md](contract.md). This file is the short
+technical overview.
 
-`skills/demo-video` is a portable Agent Skills workflow for Pi, Claude Code, Codex, and similar terminal-capable agents. It teaches source inspection, safe browser exploration, auth handoff, directorial planning, execution, rendering, and output inspection. Runtime modules remain deterministic and provider-neutral.
+## Layers
 
-## 2. Explorer
+### Agent skill
 
-`apps/cli/src/explorer` owns bounded Playwright exploration, persistent agent-directed browser sessions, ARIA snapshots, screenshots, observation-scoped control refs, conservative state/transition graphs, managed local app processes, and local auth profiles.
+`skills/demo-video` teaches an agent to inspect source, explore safely, handle
+login, write a plan, verify, record, render, and inspect the result. Runtime
+behavior stays deterministic and provider-neutral.
 
-The one-shot mapper follows ordinary links. Persistent sessions expose an `observe → one bounded action → resulting observation` protocol so an agent can inspect tabs, menus, dialogs, drawers, and other same-URL state without a redundant recapture. `explore current` returns a compact viewport-first summary of the authoritative observation already in memory, while complete evidence remains on disk. Target collection batches DOM facts, prioritizes viewport controls for browser-derived accessible identity, and defers locator uniqueness checks until replay. Snapshot-backed `find` searches controls, headings, layers, and accessible text without another browser observation. Every accepted action records policy, an explicit semantic diff, and before/after evidence in append-only journals and an atomically materialized graph. Temporary refs are valid only for their observation; durable role/test-ID/text/CSS target recipes are stored with transitions.
+### Browser drivers
 
-An agent can select a connected sequence of successful transition IDs and invoke `explore verify`. Verification starts a fresh authenticated context, reproduces the initial state, resolves each durable candidate only when it uniquely identifies a visible element, replays the bounded action, and checks the expected semantic fingerprint and sanitized URL. Reports, step screenshots, and a separate Playwright trace remain exploration evidence; verification does not improvise or reuse temporary refs. Main-frame locators pierce open shadow roots through Playwright's public locator behavior. Cross-origin and child-frame controls are intentionally not assigned main-frame refs in this version; agents can observe the iframe boundary but must treat frame-specific interaction as unsupported rather than guessing.
+The CLI talks to a **driver**, not to Playwright directly. A driver either
+launches a browser the tool owns or attaches to a browser the user already has,
+such as their own Chrome. Every driver declares capabilities: `launch`, `attach`,
+`ownLifecycle`, `isolatedContext`, `listPages`, `authState`, `capture`, and
+`guarded`. The tool refuses a request a driver cannot satisfy and never closes a
+browser it does not own. In 0.2.0, launched Chromium supports capture; attached
+CDP supports exploration only. `explore pages --driver cdp --target URL` discovers
+tabs before a session starts. Playwriter extension recording remains deferred.
 
-Exploration is same-origin and uses a conservative `read-only` policy by default. Destructive, external-side-effect, form, and unknown controls are blocked; an explicit `reversible` profile can permit mutation-like controls in disposable environments. These are runtime guardrails rather than a guarantee that arbitrary application code has no server-side effects.
+### Session and observation
 
-## 3. Planner protocol
+A live explore session keeps one browser between commands so same-page state
+(tabs, menus, dialogs, drawers) survives. Each command observes the page,
+performs one bounded action, and returns the resulting observation. Elements get
+temporary `ref`s; durable `target` recipes are what plans use. Observations are
+plain files, not a graph.
 
-`apps/cli/src/demo-plan` owns the versioned `DemoBrief`, locator, action, presentation, and `DemoPlan` schemas. It validates origin and safety constraints, estimates duration, and renders storyboards. A passing verified interactive path is the default planner handoff: export preserves the locator candidate proven during replay and adds ordinary URL/visibility assertions as postconditions. The exported interactions form the verified core instead of being manually reconstructed. It contains no semantic model: the coding agent remains responsible for editorial planning and narrowly scoped unsupported interactions.
+### Plan
 
-`plan rehearse` executes the deterministic plan without video capture and produces bounded failure evidence for up to three agent-directed repair attempts. Full rehearsal and capture share the same action runner and cursor gestures. Fast mode shortens holds, cursor gestures, and scrolling for functional preflight; it never qualifies a plan as capture-ready. A passing full rehearsal saves a local receipt tied to execution instructions, constraints, target, viewport, runtime/browser identity, and headed/headless mode. `run` and `record` check this receipt without launching another rehearsal. Presentation-only changes do not invalidate it; `--skip-rehearsal` is an explicit expert bypass recorded in capture metadata. Final recording contains no explorer or repair fallback. Declarative JSON is the default execution format because it is inspectable, schema validated, portable, and safer than arbitrary generated code.
+A plan is versioned JSON: brief, target, viewport, constraints, and ordered
+steps. Steps use durable targets and may carry an `expect` block. Waiting and
+checking are part of `expect`; there are no separate assertion step types.
 
-## 4. Target environments
+### Rehearse
 
-A plan can point to an external URL, an existing local server, or an agent-selected managed process. Managed commands have explicit working directories, readiness URLs, captured logs, and guaranteed shutdown. Tests use an isolated local fixture that is never included in the published package.
+`plan rehearse` runs the plan from a clean, isolated browser and checks every
+`expect`. It proves the plan completed in that context with those expectations. It does not prove safety, quality, or
+pixel-identical output. Verification is required before capture unless explicitly
+bypassed. Approval includes a digest of the parsed plan; changing the plan requires
+another rehearsal, while presentation-only changes do not.
 
-## 5. Authentication
+### Capture
 
-A detached loopback auth session opens headed Chromium while returning conversational control to the agent. After manual login/MFA/CAPTCHA, the daemon saves Playwright cookies and local storage plus same-origin session storage as ignored local JSON. Profiles are passed into exploration and recording contexts and never enter plans or captures.
+Capture uses Chromium's CDP screencast and streams frames into user-installed
+FFmpeg. It produces immutable facts: `browser.mp4` and `events.json`. The event
+set is `navigation`, `cursor-move`, `click`, `key-press`, and `scroll`, and each
+event carries the plan step that caused it so presentation can anchor to it.
 
-## 6. Recorder
+### Render
 
-`apps/cli/src/capture` owns Chromium video capture, the shared relative clock, interaction instrumentation, plan locator resolution, plan execution, media inspection, and finalization. Capture uses Chromium's public CDP screencast interface and streams JPEG frames into user-installed FFmpeg rather than relying on Playwright's built-in recorder. An absolute 60 Hz scheduler produces constant-frame-rate H.264 while duplicating the latest browser frame when Chromium does not paint a new frame. The interaction clock is anchored to receipt of the first CDP frame so synthetic cursor events and browser frames share the same video origin. Instrumented navigation, movement, click, fill, key, selection, scroll, visibility, URL, and hold actions execute a validated plan. Capture and rehearsal scroll actions use cross-platform, 60 Hz wheel gestures with brief acceleration and a longer momentum decay. Exploration uses a fast finite wheel action because it needs the resulting state rather than presentation-quality motion.
+`packages/core` holds framework-free schemas and pure cursor, clustering, layout,
+and camera math. `packages/renderer` builds the filter graph for the
+browser frame, cursor, click feedback, keyboard HUD, zooms, and background.
+Rendering reads the recording and presentation and never changes them.
+Presentation anchors to plan steps, so a re-record still frames the right
+actions. The `record` command captures and then renders; `render` re-renders an
+existing recording with new presentation.
 
-The recorder executes validated plan actions through instrumented Playwright helpers so cursor, keyboard, and semantic metadata remain synchronized. Cursor gestures use deterministic, viewport-safe curved paths, minimum-jerk timing, and safely inset target points instead of repeatedly moving to exact element centers. Explicit press actions record canonical key chords and can target a locator or the page's current focus; fill values and arbitrary page keyboard activity are never captured. Locator candidates must resolve to exactly one element; ambiguous matches are errors rather than implicit first-element selection. Resolved checkbox and radio controls are clicked through a unique visible associated label when available, matching normal pointer behavior and avoiding framework overlays on the underlying input. Locator lookup shares one timeout across all candidates and checks available fallbacks immediately. Before mouse-down, the recorder checks the resolved control's policy, enabled state, and hit target without adding settling delays. Rehearsal and capture share navigation guards: CDP intercepts document requests, including redirects, without routing every asset request. Popups, dialogs, downloads, and disallowed form submissions fail explicitly. These guardrails cannot prove that application code has no hidden server-side effects. Incomplete recording directories are removed on failure.
+## Project folder
 
-## 7. Recording format
+```text
+session.json          live browser + selected tab + limits
+observations/*.json   what the page looked like
+plan.json             steps + expect
+recording/*           browser.mp4 + events.json (facts)
+presentation.json     zooms, trim, canvas, frame
+output.mp4            final video
+```
 
-A recording directory contains immutable `recording.json` capture facts and `browser.mp4`. Version 1 manifests contain navigation, cursor, and click events; version 2 adds canonical key-press events, and new captures use version 2 while old recordings remain readable. Agent-authored `demo-plan.json` and `presentation.json` are separate inputs. This preserves the recording boundary: changing direction never rewrites what Playwright captured.
-
-## 8. Timeline processing
-
-`packages/core` contains framework-independent schemas and pure calculations. It clusters clicks, derives zooms, interpolates cursors, projects viewport coordinates, and computes camera state.
-
-The renderer uses automatic click zooms unless a validated presentation file provides explicit viewport/timeline-safe zoom segments.
-
-## 9. Composition
-
-`packages/ffmpeg-renderer` builds a single FFmpeg filter graph for the browser frame, source video, synthetic cursor, click feedback, keyboard HUD, bundled Inter title, and shared camera transform. Scene overlays are generated from frame-sampled core timeline data and transformed with the video. The Screen Studio-style keyboard HUD is applied afterward in final-canvas coordinates, keeping it fixed and readable through camera zooms.
-
-## 10. Renderer
-
-`apps/cli/src/renderer` validates recording and presentation paths, prepares immutable capture inputs, and delegates to the FFmpeg renderer. The renderer probes user-installed FFmpeg and ffprobe capabilities, invokes `libx264` directly, reports progress, and renders into a temporary sibling directory. Successful output is published by rename (overwrite) or a no-clobber hard link (no overwrite); failures and interruptions remove only invocation-owned temporary files and preserve any previous output. It never changes source media or starts a media server.
+Every command reads files, does one thing, and writes files. Files are the API
+between stages.
 
 ## Dependency direction
 
 ```text
-core ← cli capture + ffmpeg renderer
-ffmpeg renderer ← cli renderer
-demo-plan ← cli capture + renderer
-explorer + capture + renderer ← CLI commands
-agent skill → CLI commands
+core ← renderer ← cli renderer
+core ← cli capture
+drivers + session + plan + verify + capture + renderer ← cli commands
+skill → cli commands
 ```
-
-`packages/core` contains framework-independent contracts and pure timeline logic. `packages/ffmpeg-renderer` is the private media implementation package and depends on core, while Node-only exploration, planning, capture, and orchestration remain source modules inside `apps/cli`. Rendering has no browser or React dependency.

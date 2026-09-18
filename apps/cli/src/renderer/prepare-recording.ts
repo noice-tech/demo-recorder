@@ -1,26 +1,23 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
-  defaultConfig,
-  generateZoomSegments,
-  loadRecordingManifest,
-  resolveBackground,
-  resolveCanvas,
+  buildTimeline,
+  canvasToOptions,
+  parsePresentation,
+  parseRecording,
+  resolveRenderConfig,
   type CanvasOptions,
+  type Presentation,
   type ProductDemoInput,
-  type RecordingManifest,
+  type Recording,
 } from "@noice-tech/demo-recorder-core";
-import {
-  demoPlanBrowserFrameSchema,
-  plannedZoomSchema,
-  presentationCanvasSchema,
-} from "../demo-plan/index.js";
 
 export type PreparedRecording = {
   manifestPath: string;
   recordingDirectory: string;
   videoPath: string;
-  manifest: RecordingManifest;
+  manifest: Recording;
+  presentation: Presentation | undefined;
   input: Omit<ProductDemoInput, "videoUrl">;
 };
 
@@ -29,129 +26,104 @@ function isInside(parent: string, child: string): boolean {
   return path === "" || (!path.startsWith(`..${sep}`) && path !== ".." && !isAbsolute(path));
 }
 
+async function firstExisting(paths: string[], message: string): Promise<string> {
+  for (const path of paths) {
+    if (
+      await stat(path).then(
+        (value) => value.isFile(),
+        () => false,
+      )
+    )
+      return path;
+  }
+  throw new Error(message);
+}
+
+async function loadPresentation(paths: string[]): Promise<Presentation | undefined> {
+  for (const path of paths) {
+    try {
+      return parsePresentation(JSON.parse(await readFile(path, "utf8")) as unknown);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw new Error(`Invalid presentation at ${path}`, { cause: error });
+    }
+  }
+  return undefined;
+}
+
+function mergeCanvas(
+  base: CanvasOptions | undefined,
+  override: CanvasOptions | undefined,
+): CanvasOptions | undefined {
+  if (!override) return base;
+  return {
+    ...base,
+    ...override,
+    ...(override.aspectRatio ? { width: undefined, height: undefined } : {}),
+    ...(override.width !== undefined || override.height !== undefined
+      ? { aspectRatio: undefined }
+      : {}),
+  };
+}
+
 export async function prepareRecording(
   recordingPath: string,
   canvasOverride?: CanvasOptions,
+  presentationOverride?: string,
 ): Promise<PreparedRecording> {
   const resolvedInput = resolve(recordingPath);
   const inputStats = await stat(resolvedInput).catch((error: unknown) => {
     throw new Error(`Recording path does not exist: ${resolvedInput}`, { cause: error });
   });
   const manifestPath = inputStats.isDirectory()
-    ? join(resolvedInput, "recording.json")
+    ? await firstExisting(
+        [join(resolvedInput, "events.json"), join(resolvedInput, "recording.json")],
+        `No events.json or recording.json in ${resolvedInput}`,
+      )
     : resolvedInput;
   const recordingDirectory = await realpath(dirname(manifestPath));
-  const manifest = await loadRecordingManifest(manifestPath);
+  const recording = parseRecording(JSON.parse(await readFile(manifestPath, "utf8")) as unknown);
 
-  if (isAbsolute(manifest.video.path)) {
-    throw new Error("Recording video path must be relative to recording.json");
+  if (isAbsolute(recording.video.path)) {
+    throw new Error("Recording video path must be relative to its manifest");
   }
 
-  const unresolvedVideoPath = resolve(recordingDirectory, manifest.video.path);
+  const unresolvedVideoPath = resolve(recordingDirectory, recording.video.path);
   if (!isInside(recordingDirectory, unresolvedVideoPath)) {
-    throw new Error(`Recording video path escapes its directory: ${manifest.video.path}`);
+    throw new Error(`Recording video path escapes its directory: ${recording.video.path}`);
   }
 
   const videoPath = await realpath(unresolvedVideoPath).catch((error: unknown) => {
     throw new Error(`Recording video is missing: ${unresolvedVideoPath}`, { cause: error });
   });
   if (!isInside(recordingDirectory, videoPath)) {
-    throw new Error(`Recording video resolves outside its directory: ${manifest.video.path}`);
+    throw new Error(`Recording video resolves outside its directory: ${recording.video.path}`);
   }
-  const videoStats = await stat(videoPath);
-  if (!videoStats.isFile()) throw new Error(`Recording video is not a file: ${videoPath}`);
+  if (!(await stat(videoPath)).isFile()) {
+    throw new Error(`Recording video is not a file: ${videoPath}`);
+  }
 
-  const automaticZoomSegments = generateZoomSegments(
-    manifest.events,
-    manifest.durationMs,
-    defaultConfig.zoom,
-  );
-  const presentationPath = join(recordingDirectory, "presentation.json");
-  const presentationValue = await readFile(presentationPath, "utf8")
-    .then(
-      (text) =>
-        JSON.parse(text) as {
-          zoomSegments?: unknown[];
-          trimStartMs?: unknown;
-          trimEndMs?: unknown;
-          canvas?: unknown;
-          browserFrame?: unknown;
-        },
-    )
-    .catch((error: NodeJS.ErrnoException) => {
-      if (error.code === "ENOENT") return undefined;
-      throw new Error(`Unable to read presentation plan: ${presentationPath}`, { cause: error });
-    });
-  const plannedZoomSegments = presentationValue?.zoomSegments?.map((segment) =>
-    plannedZoomSchema.parse(segment),
-  );
-  if (
-    plannedZoomSegments?.some(
-      (segment) =>
-        segment.endMs > manifest.durationMs ||
-        segment.focusX > manifest.viewport.width ||
-        segment.focusY > manifest.viewport.height,
-    )
-  ) {
-    throw new Error("Presentation zoom segment is outside the recording timeline or viewport");
-  }
-  const zoomSegments = plannedZoomSegments ?? automaticZoomSegments;
-  const plannedCanvas = presentationValue?.canvas
-    ? presentationCanvasSchema.parse(presentationValue.canvas)
-    : undefined;
-  const mergedCanvas = canvasOverride
-    ? {
-        ...plannedCanvas,
-        ...(canvasOverride.aspectRatio ? { width: undefined, height: undefined } : {}),
-        ...(canvasOverride.width ? { aspectRatio: undefined } : {}),
-        ...canvasOverride,
-      }
-    : plannedCanvas;
-  const canvas = resolveCanvas(mergedCanvas, manifest.viewport);
-  const browserFrame = presentationValue?.browserFrame
-    ? demoPlanBrowserFrameSchema.parse(presentationValue.browserFrame)
-    : undefined;
-  const firstNavigationMs = manifest.events.find(
-    (event) => event.type === "navigation" && event.timestampMs < manifest.durationMs,
-  )?.timestampMs;
-  const automaticTrimStartMs = firstNavigationMs && firstNavigationMs > 0 ? firstNavigationMs : 0;
-  const trimStartMs = presentationValue?.trimStartMs ?? automaticTrimStartMs;
-  const trimEndMs = presentationValue?.trimEndMs ?? manifest.durationMs;
-  if (
-    typeof trimStartMs !== "number" ||
-    !Number.isFinite(trimStartMs) ||
-    trimStartMs < 0 ||
-    typeof trimEndMs !== "number" ||
-    !Number.isFinite(trimEndMs) ||
-    trimEndMs > manifest.durationMs ||
-    trimEndMs <= trimStartMs
-  ) {
-    throw new Error("Presentation trim range is outside the recording timeline");
-  }
+  const presentationCandidates = [
+    ...(presentationOverride ? [resolve(presentationOverride)] : []),
+    join(recordingDirectory, "presentation.json"),
+    join(dirname(recordingDirectory), "presentation.json"),
+  ];
+  const presentation = await loadPresentation(presentationCandidates);
+
+  const timeline = buildTimeline(presentation, recording);
+  const canvas = mergeCanvas(canvasToOptions(presentation?.canvas), canvasOverride);
+  const config = resolveRenderConfig({
+    viewport: recording.viewport,
+    canvas,
+    ...(presentation?.browserFrame ? { browserFrameTheme: presentation.browserFrame.theme } : {}),
+  });
 
   return {
     manifestPath,
     recordingDirectory,
     videoPath,
-    manifest,
-    input: {
-      recording: manifest,
-      timeline: {
-        zoomSegments,
-        ...(trimStartMs === 0 ? {} : { trimStartMs }),
-        ...(trimEndMs === manifest.durationMs ? {} : { trimEndMs }),
-      },
-      config: {
-        ...defaultConfig.render,
-        ...canvas,
-        background: resolveBackground(mergedCanvas?.background),
-        browserFrameTheme: browserFrame?.theme ?? defaultConfig.render.browserFrameTheme,
-        cursorEnabled: defaultConfig.cursor.enabled,
-        zoom: {
-          enterDurationMs: defaultConfig.zoom.enterDurationMs,
-          exitDurationMs: defaultConfig.zoom.exitDurationMs,
-        },
-      },
-    },
+    manifest: recording,
+    presentation,
+    input: { recording, timeline, config },
   };
 }

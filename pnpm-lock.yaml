@@ -51,9 +51,9 @@ importers:
       '@noice-tech/demo-recorder-core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@noice-tech/demo-recorder-ffmpeg':
+      '@noice-tech/demo-recorder-renderer':
         specifier: workspace:*
-        version: link:../../packages/ffmpeg-renderer
+        version: link:../../packages/renderer
       '@types/node':
         specifier: 22.20.1
         version: 22.20.1
@@ -74,7 +74,7 @@ importers:
         specifier: 22.20.1
         version: 22.20.1
 
-  packages/ffmpeg-renderer:
+  packages/renderer:
     dependencies:
       '@noice-tech/demo-recorder-core':
         specifier: workspace:*

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { recordingFps, targetFrameCount } from "../../src/capture/cdp-recorder.js";
+import { recordingFps, targetFrameCount } from "../../src/recorder/cdp.js";
 
 describe("CDP recorder frame scheduling", () => {
   it("starts with one frame and advances on absolute 60 FPS boundaries", () => {

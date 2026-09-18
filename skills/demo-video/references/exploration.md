@@ -1,133 +1,90 @@
 # Exploration
 
-## Agent-directed session
+## Persistent session
 
-Use a persistent session when the feature depends on same-page controls such as tabs, menus, dialogs, drawers, or other SPA state:
+Default to launched Playwright Chromium. Use CDP only when the user requests their existing browser; do not load or invoke Playwriter unless explicitly requested.
+
+Explore with a persistent session. It is the only exploration path, and it keeps same-page controls such as tabs, menus, dialogs, drawers, or other SPA state alive between commands:
 
 ```bash
 node "$DR_CLI" explore start \
+  --project ./demo \
   --url https://example.com \
-  --session product-demo \
-  --goal "Find the feature requested by the user" \
+  --viewport 1440x900 \
   --json
 ```
 
-The response contains a compact observation summary with viewport control refs, risk classifications, total/returned control counts, and paths to the complete observation, ARIA snapshot, and viewport screenshot. Refs are valid only for that observation. Use `find` or read the full observation artifact when an offscreen control is omitted from the summary.
+The response contains the session summary and the first observation: URL, title, viewport, scroll, headings, element refs with risk and durable `target` recipes, and paths to the complete observation, ARIA snapshot, and screenshot. Refs (`e1`, `e2`, …) are valid only for that observation.
 
-Propose one bounded action at a time in a JSON file:
+Propose one bounded action at a time as JSON:
 
 ```json
-{
-  "type": "click",
-  "observationId": "obs-0001",
-  "ref": "e4",
-  "reason": "Open the templates tab"
-}
+{ "type": "click", "observationId": "obs-0001", "ref": "e4", "purpose": "open templates" }
 ```
 
 Then execute it:
 
 ```bash
-node "$DR_CLI" explore act product-demo \
-  --input action.json \
-  --json
+node "$DR_CLI" explore act --project ./demo --input action.json --json
 ```
 
-A successful `act` response includes both the transition and the already-captured resulting observation with fresh refs. Continue from that observation instead of issuing a redundant `observe` command.
+A successful `act` response already includes the next observation with fresh refs. Continue from it instead of issuing a redundant `observe`.
 
-Supported session actions are `click`, `hover`, `goto`, `back`, finite `scroll`, and bounded `wait`. Use `find` to identify content and a small number of direct exploration scrolls to inspect it. `goto` and `back` are discovery tools: do not select them for a final visible story transition when the interface offers a link, card, tab, or button a human can click. Explore and verify that visible click instead, including any scroll or overlay dismissal needed to expose it. Do not copy incremental exploratory scrolls into the final plan; combine them into the fewest directed capture scrolls that preserve the intended story.
+## Actions
 
-The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked. Open shadow-root controls are discoverable through Playwright locators. Child-frame controls do not receive main-frame refs in this version; treat them as unsupported and report the limitation rather than guessing a selector.
+Exploration actions use `observationId` plus `ref`:
 
-Use `--policy reversible` only when the user explicitly requested it and the target is a disposable local or staging environment. It still does not permit destructive or external-side-effect controls. These policies are conservative guardrails, not proof that an application cannot produce a server-side side effect.
+| type       | selector                                |
+| ---------- | --------------------------------------- |
+| `navigate` | `url`                                   |
+| `click`    | `observationId`, `ref`                  |
+| `fill`     | `observationId`, `ref`, `value`         |
+| `press`    | `key`, optional `observationId` + `ref` |
+| `select`   | `observationId`, `ref`, `value`         |
+| `scroll`   | `deltaY`, optional `deltaX`             |
+| `hold`     | `durationMs`                            |
 
-Search controls, headings, layers, and accessible page text without loading the whole snapshot, or retrieve the existing compact observation without recapturing it:
+`click`, `fill`, `select`, and `press` with a `ref` must resolve to exactly one visible element. Waiting and assertions are not exploration actions.
+
+Before performing an action, the tool derives the element's durable `target` recipe and reports `recordable: true | false`. A target that is ambiguous or missing marks the step `recordable: false`. The action still runs so exploration is not blocked, but a non-recordable step cannot go into a plan; find a unique identifier or choose a different path. The result also reports the classified `risk` and the policy `reason`.
+
+## Policy
+
+The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked, and a blocked action fails with the reason.
+
+Use `--policy reversible` only when the user explicitly requested it and the target is a disposable local or staging environment. It still blocks destructive and external-side-effect controls. These policies are conservative guardrails, not proof that an application cannot produce a server-side side effect.
+
+## Observation and limits
+
+Use `explore observe` only for pages that changed without an explorer action, such as externally updated or time-driven UI:
 
 ```bash
-node "$DR_CLI" explore find product-demo --text "Templates" --json
-node "$DR_CLI" explore find product-demo --regex "template|gallery" --json
-node "$DR_CLI" explore current product-demo --json
+node "$DR_CLI" explore observe --project ./demo --json
 ```
 
-Reserve `explore observe` for pages that changed without an explorer action, such as externally updated or time-driven UI.
+Each observation is written as `observations/<id>.json` plus `<id>.yml` (ARIA snapshot) and `<id>.png` (screenshot).
 
-For an ordinary directed request, use one persistent session and usually no more than 6–10 actions. Stop when the requested targets, routes, and approximate scroll deltas are known. Do not restart merely to create a cleaner journal.
-
-After selecting a connected sequence of successful transitions, verify it once in a fresh browser context before using it for planning:
-
-```json
-{
-  "version": 1,
-  "transitionIds": ["transition-0001", "transition-0002"]
-}
-```
+A session ends itself after 5 minutes idle, 20 minutes total, or 200 actions. Override at start with `--idle-timeout`, `--max-duration` (never above 60 minutes), and `--max-actions`. Always close it:
 
 ```bash
-node "$DR_CLI" explore verify product-demo \
-  --input verification-path.json \
-  --json
+node "$DR_CLI" explore finish --project ./demo --json
 ```
 
-Verification never reuses temporary element refs. It resolves the recorded durable locator candidates, requires a unique visible match, checks each expected semantic state and URL, and writes a report, screenshots, and Playwright trace under `verification/`. If verification fails, inspect the report and make at most one focused clean retry. Do not fan out into several exploratory sessions or locator strategies.
+`finish` closes the browser only when the Tool owns it and removes `session.json`.
 
-A passing verification must be exported as the default planner handoff while the session is active whenever the requested story is representable by the verified path:
+## Attached browser
 
-```json
-{
-  "version": 1,
-  "verificationId": "verification-0001",
-  "name": "product-demo",
-  "goal": "Show the verified product workflow",
-  "audience": "Prospective users",
-  "targetDurationMs": 20000
-}
-```
-
-If the verified initial route or an explicit `goto` transition depends on a query string or
-fragment, export refuses to persist that URL state by default. Add `"includeUrlState": true` to
-the request only after confirming those values contain no credentials, tokens, or private data.
+The Playwriter extension driver is not available in this build; explain this limitation if requested. When the user requests their existing browser, use Chrome configured with a remote debugging port and attach through Playwright CDP. Discover tabs before starting a session, then select one explicitly. Discovery reads tab metadata only. Exploration drives only the selected tab and never closes the user's browser:
 
 ```bash
-node "$DR_CLI" explore export-plan product-demo \
-  --input draft-request.json \
-  --output .demo-recorder/plans/product-demo/demo-plan.json \
-  --json
+node "$DR_CLI" explore pages --driver cdp --target http://127.0.0.1:9222 --json
+node "$DR_CLI" explore start --project ./demo --driver cdp --target http://127.0.0.1:9222 --page <tab-id> --json
 ```
 
-The exporter uses the locator candidate actually proven during replay, retains bounded fallbacks, and compiles observed URL/heading changes into ordinary plan assertions. Treat its click, move, scroll, locator, URL, and generated assertion steps as the verified interaction core. Do not manually reconstruct those steps. The initial `navigate` establishes the recording, but a mid-story `navigate` exported from an exploration `goto` is not presentation-ready: return to exploration and verify the visible click path rather than shipping a cursorless route change. Editorial edits may change the brief, purposes, timing holds, beats, and presentation. If the story needs an interaction export cannot represent, change only that unsupported portion and require rehearsal to prove it. Write a plan from scratch only when there is no verified interactive path. The exporter is a deterministic handoff, not semantic story generation.
-
-Always close the session:
-
-```bash
-node "$DR_CLI" explore finish product-demo --json
-```
-
-Use `explore abort product-demo` after an unrecoverable failure. `explore status` lists active sessions.
-
-## One-shot surface map
-
-Use the bounded mapper for ordinary link-based sites:
-
-```bash
-node "$DR_CLI" explore \
-  --url https://example.com \
-  --max-pages 10 \
-  --max-depth 2
-```
+If more than one tab is open and no `--page` was given, `explore start` fails and asks for a selection. Tab ids remain tied to their tabs rather than list positions. Once started, `explore pages --project ./demo` lists tabs through the session. Attached sessions default to `read-only` and cannot record video. Their login state is not automatically reused by launched rehearsal or recording; use the [authentication guide](authentication.md).
 
 ## Local repository
 
-First inspect startup documentation and scripts. A persistent session owns the managed process until `finish` or `abort`:
+This build does not manage an app process. Start the app yourself (for example `pnpm dev`) and point `--url` at it. Inspect startup documentation and scripts first, and never expose values from `.env` or runtime output.
 
-```bash
-node "$DR_CLI" explore start \
-  --repo /path/to/app \
-  --start 'pnpm dev' \
-  --url http://localhost:3000 \
-  --session local-demo \
-  --json
-```
-
-Use `--auth <profile>` for saved authentication and `--headed` only for diagnosis.
-
-Never upload, purchase, publish, delete, send, invite, deploy, grant OAuth consent, or expose secrets during exploration. Read `exploration.json`, `summary.md`, observations, ARIA snapshots, and relevant screenshots before writing a plan. When a local repository is available, inspect relevant source and startup scripts with the agent's repository tools; never expose values from `.env` or runtime output.
+Never upload, purchase, publish, delete, send, invite, deploy, grant OAuth consent, or expose secrets during exploration. Read the observation, ARIA snapshot, and screenshots before writing a plan.

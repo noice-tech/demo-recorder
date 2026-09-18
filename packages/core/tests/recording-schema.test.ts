@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { recordingManifestSchema } from "../src/index.js";
+import { recordingSchema } from "../src/index.js";
+
+const click = {
+  type: "click" as const,
+  timestampMs: 500,
+  step: 1,
+  x: 20,
+  y: 30,
+  button: "left" as const,
+};
 
 const valid = {
   version: 1 as const,
@@ -7,21 +16,49 @@ const valid = {
   createdAt: "2026-07-11T10:00:00.000Z",
   durationMs: 1000,
   viewport: { width: 1440, height: 900 },
-  video: { path: "browser.webm", width: 1440, height: 900, durationMs: 1000 },
-  events: [{ type: "click" as const, timestampMs: 500, x: 20, y: 30, button: "left" as const }],
+  guarded: true,
+  cursor: "synthetic" as const,
+  video: { path: "browser.mp4", width: 1440, height: 900 },
+  events: [click],
 };
 
-describe("recordingManifestSchema", () => {
-  it("accepts a valid v1 manifest", () => {
-    expect(recordingManifestSchema.parse(valid)).toEqual(valid);
+describe("recordingSchema", () => {
+  it("accepts a valid recording with a step-tagged click", () => {
+    expect(recordingSchema.parse(valid)).toEqual(valid);
   });
 
-  it("accepts v2 keyboard events while keeping v1 strict", () => {
-    const keyEvent = { type: "key-press", timestampMs: 500, keys: ["Meta", "K"] };
-    expect(
-      recordingManifestSchema.safeParse({ ...valid, version: 2, events: [keyEvent] }).success,
-    ).toBe(true);
-    expect(recordingManifestSchema.safeParse({ ...valid, events: [keyEvent] }).success).toBe(false);
+  it("accepts every event type and optional steps", () => {
+    const result = recordingSchema.safeParse({
+      ...valid,
+      events: [
+        { type: "navigation", timestampMs: 0, url: "https://example.test/" },
+        { type: "cursor-move", timestampMs: 10, step: 1, x: 1, y: 2 },
+        { type: "click", timestampMs: 20, step: 1, x: 1, y: 2 },
+        { type: "key-press", timestampMs: 30, step: 2, keys: ["Meta", "K"] },
+        { type: "scroll", timestampMs: 40, step: 3, deltaX: 0, deltaY: 480 },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an unknown top-level version", () => {
+    expect(recordingSchema.safeParse({ ...valid, version: 2 }).success).toBe(false);
+  });
+
+  it("requires guarded and cursor facts", () => {
+    const { guarded: _guarded, ...withoutGuarded } = valid;
+    expect(recordingSchema.safeParse(withoutGuarded).success).toBe(false);
+    const { cursor: _cursor, ...withoutCursor } = valid;
+    expect(recordingSchema.safeParse(withoutCursor).success).toBe(false);
+  });
+
+  it("ignores unknown event types instead of failing", () => {
+    const result = recordingSchema.safeParse({
+      ...valid,
+      events: [click, { type: "future-event", timestampMs: 600 }],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.events).toHaveLength(1);
   });
 
   it("rejects malformed or non-canonical keyboard chords", () => {
@@ -31,47 +68,36 @@ describe("recordingManifestSchema", () => {
       ["K", "P"],
     ]) {
       expect(
-        recordingManifestSchema.safeParse({
+        recordingSchema.safeParse({
           ...valid,
-          version: 2,
           events: [{ type: "key-press", timestampMs: 500, keys }],
         }).success,
       ).toBe(false);
     }
   });
 
-  it("accepts empty events and events exactly at the duration boundary", () => {
-    expect(recordingManifestSchema.safeParse({ ...valid, events: [] }).success).toBe(true);
+  it("accepts events exactly at the duration boundary and rejects the next one", () => {
     expect(
-      recordingManifestSchema.safeParse({
-        ...valid,
-        events: [{ ...valid.events[0], timestampMs: valid.durationMs }],
-      }).success,
+      recordingSchema.safeParse({ ...valid, events: [{ ...click, timestampMs: 1000 }] }).success,
     ).toBe(true);
-  });
-
-  it("rejects events beyond the duration", () => {
-    expect(() =>
-      recordingManifestSchema.parse({
-        ...valid,
-        events: [{ ...valid.events[0], timestampMs: 1001 }],
-      }),
-    ).toThrow();
+    expect(
+      recordingSchema.safeParse({ ...valid, events: [{ ...click, timestampMs: 1001 }] }).success,
+    ).toBe(false);
   });
 
   it("rejects unordered events", () => {
     expect(
-      recordingManifestSchema.safeParse({
+      recordingSchema.safeParse({
         ...valid,
         events: [
-          { ...valid.events[0], timestampMs: 600 },
-          { ...valid.events[0], timestampMs: 400 },
+          { ...click, timestampMs: 600 },
+          { ...click, timestampMs: 400 },
         ],
       }).success,
     ).toBe(false);
   });
 
-  it("rejects non-finite and out-of-viewport interaction coordinates", () => {
+  it("rejects non-finite or out-of-viewport interaction coordinates", () => {
     for (const coordinates of [
       { x: Number.NaN, y: 10 },
       { x: -1, y: 10 },
@@ -79,22 +105,8 @@ describe("recordingManifestSchema", () => {
       { x: 10, y: valid.viewport.height + 1 },
     ]) {
       expect(
-        recordingManifestSchema.safeParse({
-          ...valid,
-          events: [{ ...valid.events[0], ...coordinates }],
-        }).success,
+        recordingSchema.safeParse({ ...valid, events: [{ ...click, ...coordinates }] }).success,
       ).toBe(false);
-    }
-  });
-
-  it("requires video and recording duration to share the manifest timeline", () => {
-    const result = recordingManifestSchema.safeParse({
-      ...valid,
-      video: { ...valid.video, durationMs: 999 },
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues[0]?.path).toEqual(["video", "durationMs"]);
     }
   });
 });

@@ -6,7 +6,7 @@ Describe the demo you need, and your coding agent explores the web app, records 
 
 ![Example](https://raw.githubusercontent.com/noice-tech/demo-recorder/main/docs/demo.gif)
 
-> **Alpha:** Demo Recorder is under active development. Expect rough edges and changes before the first stable release.
+> Actively developed. Commands and file formats may change between minor releases.
 
 ## What it's for
 

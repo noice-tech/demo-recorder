@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateCursorPath, targetPointWithinBounds } from "../../src/capture/index.js";
+import { generateCursorPath, targetPointWithinBounds } from "../../src/motion/cursor.js";
 
 describe("generateCursorPath", () => {
   it("is deterministic, curved, and ends exactly on the target", () => {
