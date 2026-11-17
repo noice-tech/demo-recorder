@@ -72,6 +72,7 @@ function summarizeSession(file: SessionFile) {
   };
 }
 
+/** What the agent reads: the AI snapshot carries every element with its ref. */
 function summarizeObservation(observation: Observation) {
   return {
     id: observation.id,
@@ -79,19 +80,9 @@ function summarizeObservation(observation: Observation) {
     title: observation.title,
     viewport: observation.viewport,
     scroll: observation.scroll,
-    headings: observation.headings,
-    elements: observation.elements.map((element) => ({
-      ref: element.ref,
-      role: element.role,
-      name: element.name,
-      enabled: element.enabled,
-      visible: element.visible,
-      bounds: element.bounds,
-      risk: element.risk,
-      target: element.target,
-    })),
+    snapshot: observation.snapshot,
     errors: observation.errors,
-    artifacts: observation.artifacts,
+    screenshot: observation.artifacts.screenshot,
   };
 }
 

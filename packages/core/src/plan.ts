@@ -1,18 +1,38 @@
 import { z } from "zod";
 import { viewportSchema } from "./recording.js";
 
-/** A durable, replayable way to find one element. Never contains a temporary `ref`. */
+/** A named container that narrows a target, such as a dialog, region, or row. */
+export const scopeSchema = z.strictObject({
+  role: z.string().min(1),
+  name: z.string().min(1),
+});
+
+/**
+ * A durable, replayable way to find one element. Never contains a temporary `ref`.
+ * `role` plus `name` matches the exact accessible name; `within` narrows it to
+ * the named container when the same control appears more than once.
+ */
 export const targetSchema = z
   .object({
     role: z.string().min(1).optional(),
     name: z.string().min(1).optional(),
     selector: z.string().min(1).optional(),
+    within: scopeSchema.optional(),
   })
   .refine((target) => target.role ?? target.name ?? target.selector, {
     message: "A target must include role, name, or selector",
   });
 
 export type Target = z.infer<typeof targetSchema>;
+
+/** A short human description such as `button "Save" in dialog "Settings"`. */
+export function describeTarget(target: Target): string {
+  const self =
+    target.role && target.name
+      ? `${target.role} "${target.name}"`
+      : (target.selector ?? (target.name ? `"${target.name}"` : (target.role ?? "target")));
+  return target.within ? `${self} in ${target.within.role} "${target.within.name}"` : self;
+}
 
 /** Conditions that must all hold after a step runs. */
 export const expectSchema = z.object({

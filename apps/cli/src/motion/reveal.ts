@@ -1,4 +1,4 @@
-import type { Action, Target } from "@noice-tech/demo-recorder-core";
+import { describeTarget, type Action, type Target } from "@noice-tech/demo-recorder-core";
 import { settleAfterChange } from "../support/settle.js";
 
 export type Rect = { x: number; y: number; width: number; height: number };
@@ -53,11 +53,6 @@ function sameRect(left: Rect, right: Rect): boolean {
     Math.abs(left.width - right.width) <= SETTLE_TOLERANCE_PX &&
     Math.abs(left.height - right.height) <= SETTLE_TOLERANCE_PX
   );
-}
-
-function describeTarget(target: Target): string {
-  if (target.role && target.name) return `${target.role} "${target.name}"`;
-  return target.selector ?? target.name ?? target.role ?? "target";
 }
 
 /**

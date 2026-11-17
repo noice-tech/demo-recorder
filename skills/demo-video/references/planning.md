@@ -34,7 +34,13 @@ Put both files in the project folder (`--project DIR`): `DIR/plan.json` and `DIR
 
 `target` at the plan root is the app entry point (`baseUrl`). `target` inside a step is the durable element recipe. They are different fields with the same name; read them by position.
 
-A step target uses `role`, `name`, and/or `selector`. Prefer `role` plus accessible `name`. To be recordable a target must resolve to exactly one visible element; the tool refuses to pick the first of several matches.
+A step target uses `role`, `name`, and/or `selector`, optionally narrowed by `within`. Prefer `role` plus accessible `name`, copied from exploration: names match exactly, so `"Create"` does not match a button named `"Create project"`. When the same control appears more than once, exploration narrows it to its nearest named container:
+
+```json
+{ "role": "button", "name": "Choose plan", "within": { "role": "region", "name": "Pro plan" } }
+```
+
+To be recordable a target must resolve to exactly one element, in the page or any of its iframes; the tool refuses to pick the first of several matches. A target with no exact match fails at once and names the closest matches.
 
 Step types are `navigate`, `click`, `fill`, `press`, `select`, `scroll`, and `hold`:
 
