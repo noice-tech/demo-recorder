@@ -14,7 +14,18 @@ node "$DR_CLI" explore start \
   --json
 ```
 
-The response contains the session summary and the first observation: URL, title, viewport, scroll, headings, element refs with risk and durable `target` recipes, and paths to the complete observation, ARIA snapshot, and screenshot. Refs (`e1`, `e2`, …) are valid only for that observation.
+The response contains the session summary and the first observation: URL, title, viewport, scroll, console errors, the path of a screenshot, and `snapshot`, Playwright's accessibility tree of the page:
+
+```yaml
+- banner [ref=e2]:
+    - button "Create project" [ref=e5] [cursor=pointer]
+- region "Pricing" [ref=e11]:
+    - button "Choose plan" [ref=e20]
+    - iframe [ref=e26]:
+        - button "Preview action" [ref=f1e2]
+```
+
+Every element carries a ref, including elements in open shadow roots and iframes. Refs are valid only for that observation.
 
 Propose one bounded action at a time as JSON:
 
@@ -46,11 +57,11 @@ Exploration actions use `observationId` plus `ref`:
 
 `click`, `fill`, `select`, and `press` with a `ref` must resolve to exactly one visible element. Waiting and assertions are not exploration actions.
 
-Before performing an action, the tool derives the element's durable `target` recipe and reports `recordable: true | false`. A target that is ambiguous or missing marks the step `recordable: false`. The action still runs so exploration is not blocked, but a non-recordable step cannot go into a plan; find a unique identifier or choose a different path. The result also reports the classified `risk` and the policy `reason`.
+Before performing an action, the tool derives the element's durable `target` recipe (role plus exact accessible name, narrowed by `within` to the nearest named container when the control is repeated) and reports `recordable: true | false`. A target that is still ambiguous marks the step `recordable: false`. If the page changed since the observation, for example through a timer, `act` refuses the stale ref and asks for `explore observe`. The action still runs so exploration is not blocked, but a non-recordable step cannot go into a plan; find a unique identifier or choose a different path. The result also reports the classified `risk` and the policy `reason`.
 
 ## Policy
 
-The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked, and a blocked action fails with the reason.
+The policy classifies the live element when an action runs; observations do not list risk. The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked, and a blocked action fails with the reason.
 
 Use `--policy reversible` only when the user explicitly requested it and the target is a disposable local or staging environment. It still blocks destructive and external-side-effect controls. These policies are conservative guardrails, not proof that an application cannot produce a server-side side effect.
 
@@ -62,7 +73,7 @@ Use `explore observe` only for pages that changed without an explorer action, su
 node "$DR_CLI" explore observe --project ./demo --json
 ```
 
-Each observation is written as `observations/<id>.json` plus `<id>.yml` (ARIA snapshot) and `<id>.png` (screenshot).
+Each observation is written as `observations/<id>.json` plus `<id>.yml` (the same snapshot) and `<id>.png` (screenshot).
 
 A session ends itself after 5 minutes idle, 20 minutes total, or 200 actions. Override at start with `--idle-timeout`, `--max-duration` (never above 60 minutes), and `--max-actions`. Always close it:
 
@@ -87,4 +98,4 @@ If more than one tab is open and no `--page` was given, `explore start` fails an
 
 This build does not manage an app process. Start the app yourself (for example `pnpm dev`) and point `--url` at it. Inspect startup documentation and scripts first, and never expose values from `.env` or runtime output.
 
-Never upload, purchase, publish, delete, send, invite, deploy, grant OAuth consent, or expose secrets during exploration. Read the observation, ARIA snapshot, and screenshots before writing a plan.
+Never upload, purchase, publish, delete, send, invite, deploy, grant OAuth consent, or expose secrets during exploration. Read the observation snapshots, and screenshots where layout matters, before writing a plan.

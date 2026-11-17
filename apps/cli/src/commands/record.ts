@@ -9,7 +9,8 @@ import {
   type OptionDefinitions,
   type ParsedArguments,
 } from "../support/args.js";
-import { readJson } from "../support/files.js";
+import { readJson, writeJsonAtomic } from "../support/files.js";
+import { readRunLog, runIdFor, summarizeRun } from "../support/run-log.js";
 import { planDigest } from "../support/rehearsal.js";
 import { requireFfmpegAssets } from "../support/ffmpeg.js";
 
@@ -50,6 +51,7 @@ async function requireRehearsal(project: string, planPath: string, plan: Plan): 
 }
 
 export async function runRecord(args: ParsedArguments): Promise<unknown> {
+  const startedAt = new Date();
   const project = resolve(stringOption(args, "project") ?? ".");
   const planPath = resolve(
     stringOption(args, "plan") ?? args.positionals[0] ?? join(project, "plan.json"),
@@ -58,6 +60,8 @@ export async function runRecord(args: ParsedArguments): Promise<unknown> {
 
   if (!booleanOption(args, "skip-rehearsal")) await requireRehearsal(project, planPath, plan);
 
+  // Capture time includes launching the browser for the recording.
+  const captureStart = performance.now();
   const driver = selectDriver(stringOption(args, "driver") ?? "playwright");
   const storageStatePath = stringOption(args, "storage-state");
   const session = await driver.connect({
@@ -75,18 +79,35 @@ export async function runRecord(args: ParsedArguments): Promise<unknown> {
       );
     }
     const captured = await recordPlan({ plan, session, project, guarded });
+    const renderStart = performance.now();
     const rendered = await renderDemoVideo(join(project, "recording"), {
       assetsDirectory: requireFfmpegAssets(),
       outputPath: resolve(stringOption(args, "output") ?? join(project, "output.mp4")),
       presentationPath: join(project, "presentation.json"),
       overwrite: true,
     });
+    const renderEnd = performance.now();
+
+    const run = summarizeRun({
+      runId: await runIdFor(project, "record", startedAt),
+      entries: await readRunLog(project),
+      record: {
+        startedAt,
+        finishedAt: new Date(),
+        captureMs: Math.round(renderStart - captureStart),
+        renderMs: Math.round(renderEnd - renderStart),
+      },
+    });
+    const runPath = join(project, "run.json");
+    await writeJsonAtomic(runPath, run);
     return {
       recording: captured.videoPath,
       events: captured.eventsPath,
       output: rendered.outputPath,
       steps: captured.steps.length,
       zooms: rendered.zoomSegmentCount,
+      run: runPath,
+      metrics: run.metrics,
     };
   } finally {
     await session.close();

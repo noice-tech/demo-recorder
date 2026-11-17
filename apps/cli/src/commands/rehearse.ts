@@ -2,7 +2,8 @@ import { join, resolve } from "node:path";
 import { parsePlan } from "@noice-tech/demo-recorder-core";
 import { selectDriver } from "../driver/index.js";
 import type { Session } from "../driver/types.js";
-import { PlanRunError, executePlan } from "../runner.js";
+import { actionTarget, revealTarget, type RevealSurface } from "../motion/reveal.js";
+import { PlanRunError, executePlan, type PlanSession } from "../runner.js";
 import {
   booleanOption,
   stringOption,
@@ -62,9 +63,26 @@ export async function planRehearse(args: ParsedArguments): Promise<unknown> {
     ...(storageStatePath ? { storageStatePath } : {}),
   });
 
+  // Reveal targets the same way the recorder does, so a target that cannot be
+  // scrolled into view fails here instead of after a full capture.
+  const revealSurface: RevealSurface = {
+    bounds: (target) => session.bounds(target),
+    scroll: (deltaX, deltaY) => session.perform({ type: "scroll", deltaX, deltaY }),
+    wait: (durationMs) => new Promise((done) => setTimeout(done, durationMs)),
+  };
+  const planSession: PlanSession = {
+    perform: async (action) => {
+      const target = actionTarget(action);
+      if (target) await revealTarget(revealSurface, target, plan.viewport);
+      await session.perform(action);
+    },
+    waitFor: (expect) => session.waitFor(expect),
+    url: () => session.url(),
+  };
+
   try {
     await session.goto(plan.target.baseUrl);
-    const steps = await executePlan({ plan, session });
+    const steps = await executePlan({ plan, session: planSession });
     const report = {
       ok: true,
       captureReady: true,

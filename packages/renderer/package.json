@@ -17,7 +17,7 @@
   },
   "devDependencies": {
     "@types/node": "22.20.1",
-    "playwright": "1.62.1",
+    "playwright": "1.65.1",
     "tsx": "4.23.1"
   }
 }
