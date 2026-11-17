@@ -241,10 +241,14 @@ function firstVersionLine(output: string): string | undefined {
   return value || undefined;
 }
 
+/**
+ * FFmpeg 7 and earlier print three flag columns (`TSC`); FFmpeg 8 dropped the
+ * command column and prints two (`TS`). Accept both.
+ */
 export function parseFfmpegFilters(output: string): Set<string> {
   const result = new Set<string>();
   for (const line of output.split(/\r?\n/)) {
-    const match = /^\s*[TSC.]{3}\s+(\S+)\s/.exec(line);
+    const match = /^\s*[TSC.]{2,3}\s+(\S+)\s/.exec(line);
     if (match?.[1] && match[1] !== "=") result.add(match[1]);
   }
   return result;

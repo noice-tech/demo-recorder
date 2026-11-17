@@ -4,6 +4,7 @@ import type { Action, Plan, Recording } from "@noice-tech/demo-recorder-core";
 import type { Session } from "../driver/types.js";
 import { generateCursorPath, type CursorPoint } from "../motion/cursor.js";
 import { normalizeKeyChord } from "../motion/keys.js";
+import { actionTarget, revealTarget, type RevealSurface } from "../motion/reveal.js";
 import { smoothScroll } from "../motion/scroll.js";
 import { executePlan, type PlanSession, type PlanStepReport } from "../runner.js";
 import { writeJsonAtomic } from "../support/files.js";
@@ -60,6 +61,24 @@ export async function recordPlan(input: {
     pointer = point;
   };
 
+  const scrollSmoothly = async (deltaX: number, deltaY: number): Promise<void> => {
+    log.push({ type: "scroll", deltaX, deltaY });
+    await smoothScroll(
+      {
+        wheel: (x, y) => session.perform({ type: "scroll", deltaX: x, deltaY: y }),
+        waitForTimeout: sleep,
+      },
+      deltaY,
+      deltaX,
+    );
+  };
+
+  const revealSurface: RevealSurface = {
+    bounds: (target) => session.bounds(target),
+    scroll: scrollSmoothly,
+    wait: sleep,
+  };
+
   const recordAction = async (action: Action): Promise<void> => {
     if (action.type === "navigate") {
       log.push({ type: "navigation", url: action.url });
@@ -71,21 +90,12 @@ export async function recordPlan(input: {
       return;
     }
     if (action.type === "scroll") {
-      const deltaX = action.deltaX ?? 0;
-      log.push({ type: "scroll", deltaX, deltaY: action.deltaY });
-      await smoothScroll(
-        {
-          wheel: (x, y) => session.perform({ type: "scroll", deltaX: x, deltaY: y }),
-          waitForTimeout: sleep,
-        },
-        action.deltaY,
-        deltaX,
-      );
+      await scrollSmoothly(action.deltaX ?? 0, action.deltaY);
       return;
     }
 
-    const target = "target" in action ? action.target : undefined;
-    const bounds = target ? await session.bounds(target) : undefined;
+    const target = actionTarget(action);
+    const bounds = target ? await revealTarget(revealSurface, target, plan.viewport) : undefined;
     if (bounds) await moveTo(centerOf(bounds));
     if (action.type === "click") {
       log.push({

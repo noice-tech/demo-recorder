@@ -2,6 +2,7 @@ import type { Action, ExplorationAction, Target } from "@noice-tech/demo-recorde
 import type { Session } from "../driver/types.js";
 import type { Risk } from "../driver/types.js";
 import { evaluatePolicy, type Policy } from "../policy.js";
+import { settleAfterChange } from "../support/settle.js";
 import { observe, readObservation, type Observation, type ObservationElement } from "./observe.js";
 
 export class PolicyError extends Error {
@@ -77,19 +78,23 @@ export async function act(input: {
   viewport: { width: number; height: number };
 }): Promise<ActResult> {
   const { project, session, policy, lastObservationId, action, viewport } = input;
-  if (!("observationId" in action) || action.observationId !== lastObservationId) {
-    throw new Error(
-      `Action observationId must match the current observation (${lastObservationId})`,
-    );
+  // Refs are observation-scoped, so only ref-based actions must name the current
+  // observation. navigate, scroll, hold, and a page-level press carry no ref.
+  const ref = "ref" in action ? action.ref : undefined;
+  if (ref !== undefined) {
+    const observationId = "observationId" in action ? action.observationId : undefined;
+    if (observationId !== lastObservationId) {
+      throw new Error(
+        `Action observationId must match the current observation (${lastObservationId})`,
+      );
+    }
   }
 
   const previous = await readObservation(project, lastObservationId);
   const element =
-    "ref" in action && action.ref
-      ? previous.elements.find((candidate) => candidate.ref === action.ref)
-      : undefined;
-  if ("ref" in action && action.ref && !element) {
-    throw new Error(`Element ${action.ref} is not part of observation ${lastObservationId}`);
+    ref === undefined ? undefined : previous.elements.find((candidate) => candidate.ref === ref);
+  if (ref !== undefined && !element) {
+    throw new Error(`Element ${ref} is not part of observation ${lastObservationId}`);
   }
 
   const { risk, sameOrigin: same } = elementRisk(action, element, previous.url);
@@ -105,7 +110,17 @@ export async function act(input: {
   }
 
   const recordable = element ? (await session.countMatches(element.target)) === 1 : true;
+  const scrollBefore = action.type === "scroll" ? await session.scrollPosition() : undefined;
   await session.perform(planAction);
+  if (scrollBefore) {
+    // Wheel scrolling finishes asynchronously; observe the page where it lands.
+    await settleAfterChange({
+      before: scrollBefore,
+      read: () => session.scrollPosition(),
+      same: (left, right) => left.x === right.x && left.y === right.y,
+      wait: (durationMs) => new Promise((done) => setTimeout(done, durationMs)),
+    });
+  }
 
   const next = await observe({
     project,

@@ -317,6 +317,12 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
     async mouseMove(x: number, y: number) {
       await page.mouse.move(x, y);
     },
+    async scrollPosition() {
+      return (await page.evaluate("({ x: window.scrollX, y: window.scrollY })")) as {
+        x: number;
+        y: number;
+      };
+    },
     async url() {
       return page.url();
     },
