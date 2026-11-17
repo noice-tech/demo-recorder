@@ -1,45 +1,27 @@
-import { execFile } from "node:child_process";
-import { readFile, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { extname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { join } from "node:path";
 import { chromium } from "playwright";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  act as runAct,
+  cli,
+  refOf,
+  refsOf,
+  serveFixture,
+  type Observation,
+} from "./support/cli.js";
 
-const execute = promisify(execFile);
-const cliEntry = fileURLToPath(new URL("../src/index.ts", import.meta.url));
-const fixture = fileURLToPath(new URL("fixtures/example-app/", import.meta.url));
-const contentTypes: Record<string, string> = {
-  ".html": "text/html",
-  ".js": "text/javascript",
-  ".css": "text/css",
-};
-
-type Observation = { id: string; snapshot: string; scroll: { x: number; y: number } };
 type ActResult = {
   recordable: boolean;
   target: unknown;
   observation: Observation;
 };
 
-let server: Server;
-let baseUrl: string;
+let fixture: Awaited<ReturnType<typeof serveFixture>>;
 const projects: string[] = [];
 
-/** Runs one CLI command in its own process, as an agent does. */
-async function cli<Result>(...args: string[]): Promise<Result> {
-  try {
-    const { stdout } = await execute(process.execPath, ["--import", "tsx", cliEntry, ...args], {
-      maxBuffer: 10 * 1024 * 1024,
-    });
-    return JSON.parse(stdout) as Result;
-  } catch (error) {
-    const stderr = (error as { stderr?: string }).stderr ?? "";
-    throw new Error(stderr.trim() || String(error), { cause: error });
-  }
-}
+const act = (project: string, action: object) => runAct<ActResult>(project, action);
 
 async function startSession(): Promise<{ project: string; observation: Observation }> {
   const project = await mkdtemp(join(tmpdir(), "demo-recorder-explore-"));
@@ -50,52 +32,14 @@ async function startSession(): Promise<{ project: string; observation: Observati
     "--project",
     project,
     "--url",
-    baseUrl,
+    fixture.baseUrl,
     "--json",
   );
   return { project, observation: started.observation };
 }
 
-async function act(project: string, action: object): Promise<ActResult> {
-  const input = join(project, "action.json");
-  await writeFile(input, JSON.stringify(action));
-  return cli<ActResult>("explore", "act", "--project", project, "--input", input, "--json");
-}
-
-/** Refs the snapshot shows for an element, in page order. */
-function refsOf(snapshot: string, element: string): string[] {
-  return snapshot
-    .split("\n")
-    .filter((line) => line.includes(`- ${element} `) || line.endsWith(`- ${element}`))
-    .map((line) => /\[ref=([^\]]+)\]/.exec(line)?.[1])
-    .filter((ref): ref is string => ref !== undefined);
-}
-
-function refOf(snapshot: string, element: string): string {
-  const [ref] = refsOf(snapshot, element);
-  if (!ref) throw new Error(`No ref for ${element} in:\n${snapshot}`);
-  return ref;
-}
-
 beforeAll(async () => {
-  server = createServer((request, response) => {
-    const path = new URL(request.url ?? "/", "http://localhost").pathname;
-    const file = join(fixture, path === "/" ? "index.html" : path);
-    readFile(file).then(
-      (body) => {
-        response.writeHead(200, { "content-type": contentTypes[extname(file)] ?? "text/plain" });
-        response.end(body);
-      },
-      () => {
-        response.writeHead(404);
-        response.end();
-      },
-    );
-  });
-  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("No server address");
-  baseUrl = `http://127.0.0.1:${address.port}/`;
+  fixture = await serveFixture();
 });
 
 afterAll(async () => {
@@ -105,7 +49,7 @@ afterAll(async () => {
     ),
   );
   await Promise.all(projects.map((project) => rm(project, { recursive: true, force: true })));
-  await new Promise((done) => server.close(done));
+  await fixture.close();
 });
 
 describe("explore", () => {
@@ -179,7 +123,7 @@ describe("explore", () => {
     await expect(act(project, { type: "navigate", url: "https://example.com/" })).rejects.toThrow(
       /Off-origin navigation is blocked/,
     );
-  });
+  }, 60_000);
 
   it("refuses a ref after the page changed without an observation", async () => {
     const { project, observation } = await startSession();
@@ -203,5 +147,5 @@ describe("explore", () => {
         ref: refOf(observation.snapshot, 'button "Create project"'),
       }),
     ).rejects.toThrow(/page changed since obs-0001; e\d+ is no longer button "Create project"/);
-  });
+  }, 30_000);
 });

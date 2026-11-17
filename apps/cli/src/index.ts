@@ -38,6 +38,7 @@ import {
   type OptionDefinitions,
   type ParsedArguments,
 } from "./support/args.js";
+import { appendRunLog, RUN_COMMANDS, runIdFor } from "./support/run-log.js";
 import { cliVersion } from "./version.js";
 
 function usage(): string {
@@ -199,6 +200,68 @@ function formatError(error: unknown): string {
   return messages.join("\n  caused by: ");
 }
 
+async function dispatch(command: string | undefined, rest: string[]): Promise<unknown> {
+  switch (command) {
+    case "render":
+      return runRender(rest);
+    case "explore":
+      return runExplore(rest);
+    case "plan":
+      return runPlan(rest);
+    case "record":
+      return runRecord(parseArguments(rest, recordOptions));
+    case "inspect":
+      return runInspect(parseArguments(rest, inspectOptions));
+    case "doctor":
+      return runDoctor();
+    case "setup":
+      return runSetup(parseArguments(rest, setupOptions));
+    case "auth":
+      return runAuth(rest);
+    case "__browser-server":
+      return runBrowserServerCommand(rest);
+    default:
+      throw new Error(`${command ? `Unknown command: ${command}` : "Missing command"}\n${usage()}`);
+  }
+}
+
+/** The value of `--project`, which every run command accepts (default `.`). */
+function projectArgument(rest: string[]): string {
+  const index = rest.indexOf("--project");
+  if (index !== -1 && rest[index + 1]) return rest[index + 1] as string;
+  const inline = rest.find((argument) => argument.startsWith("--project="));
+  return inline ? inline.slice("--project=".length) : ".";
+}
+
+/**
+ * Runs a command; run commands also append their timing to the project's run
+ * log. Logging never fails the command.
+ */
+async function runLogged(command: string | undefined, rest: string[]): Promise<unknown> {
+  const label = ["explore", "plan", "auth"].includes(command ?? "")
+    ? `${command} ${rest[0] ?? ""}`
+    : (command ?? "");
+  if (!RUN_COMMANDS.has(label)) return dispatch(command, rest);
+
+  const project = resolve(projectArgument(rest));
+  const startedAt = new Date();
+  const runId = await runIdFor(project, label, startedAt);
+  let ok = false;
+  try {
+    const result = await dispatch(command, rest);
+    ok = true;
+    return result;
+  } finally {
+    await appendRunLog(project, {
+      runId,
+      command: label,
+      startedAt: startedAt.toISOString(),
+      durationMs: Date.now() - startedAt.getTime(),
+      ok,
+    }).catch(() => undefined);
+  }
+}
+
 export async function runCli(arguments_: string[]): Promise<void> {
   const cleaned = arguments_.filter((argument) => argument !== "--json");
   let command = cleaned[0];
@@ -220,39 +283,7 @@ export async function runCli(arguments_: string[]): Promise<void> {
     return;
   }
 
-  let result: unknown;
-  switch (command) {
-    case "render":
-      result = await runRender(rest);
-      break;
-    case "explore":
-      result = await runExplore(rest);
-      break;
-    case "plan":
-      result = await runPlan(rest);
-      break;
-    case "record":
-      result = await runRecord(parseArguments(rest, recordOptions));
-      break;
-    case "inspect":
-      result = await runInspect(parseArguments(rest, inspectOptions));
-      break;
-    case "doctor":
-      result = await runDoctor();
-      break;
-    case "setup":
-      result = await runSetup(parseArguments(rest, setupOptions));
-      break;
-    case "auth":
-      result = await runAuth(rest);
-      break;
-    case "__browser-server":
-      result = await runBrowserServerCommand(rest);
-      break;
-    default:
-      throw new Error(`${command ? `Unknown command: ${command}` : "Missing command"}\n${usage()}`);
-  }
-
+  const result = await runLogged(command, rest);
   if (result !== undefined) console.log(JSON.stringify(result, null, 2));
 }
 
