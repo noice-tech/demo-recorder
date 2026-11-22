@@ -1,5 +1,8 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { summarizeRun, type RunLogEntry } from "../../src/support/run-log.js";
+import { readRunLog, summarizeRun, type RunLogEntry } from "../../src/support/run-log.js";
 
 const at = (seconds: number) => new Date(Date.UTC(2026, 10, 17, 12, 0, seconds));
 
@@ -94,5 +97,19 @@ describe("summarizeRun", () => {
       firstVideoMs: 15_000,
       polishMs: 0,
     });
+  });
+});
+
+describe("readRunLog", () => {
+  it("skips damaged lines so a bad log cannot fail a finished command", async () => {
+    const project = await mkdtemp(join(tmpdir(), "run-log-"));
+    const good = entry("run-a", "record", 0, 5);
+    const lines = ["null", "{not json", JSON.stringify({ runId: "run-a" }), JSON.stringify(good)];
+    await writeFile(join(project, "run-log.jsonl"), `${lines.join("\n")}\n`);
+
+    const entries = await readRunLog(project);
+
+    expect(entries).toEqual([good]);
+    expect(() => summarizeRun({ runId: "run-a", entries, record })).not.toThrow();
   });
 });

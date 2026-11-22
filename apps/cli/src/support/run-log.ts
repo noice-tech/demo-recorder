@@ -1,19 +1,21 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { z } from "zod";
 
 /**
  * One finished CLI command. `DIR/run-log.jsonl` keeps one per line, so a run can
  * be reconstructed without any command holding state for another.
  */
-export type RunLogEntry = {
-  runId: string;
-  command: string;
-  startedAt: string;
-  durationMs: number;
-  ok: boolean;
+const runLogEntrySchema = z.object({
+  runId: z.string(),
+  command: z.string(),
+  startedAt: z.string(),
+  durationMs: z.number(),
+  ok: z.boolean(),
   /** Stopped by a signal (Ctrl-C, or a harness timeout), so neither a success nor a failure. */
-  interrupted?: true;
-};
+  interrupted: z.literal(true).optional(),
+});
+export type RunLogEntry = z.infer<typeof runLogEntrySchema>;
 
 /** Commands that make up a demo run; `explore start` begins a new one. */
 export const RUN_COMMANDS = new Set([
@@ -38,9 +40,10 @@ export async function readRunLog(project: string): Promise<RunLogEntry[]> {
     .split("\n")
     .filter((line) => line.trim())
     .flatMap((line) => {
+      // Timing is metadata: a damaged line must not fail a command that already did its work.
       try {
-        // SAFETY: appendRunLog is the only writer of this file.
-        return [JSON.parse(line) as RunLogEntry];
+        const entry = runLogEntrySchema.safeParse(JSON.parse(line));
+        return entry.success ? [entry.data] : [];
       } catch {
         return [];
       }

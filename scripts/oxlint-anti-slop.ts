@@ -1,4 +1,4 @@
-// Adapted from the anti-slop Oxlint plugin, MIT License, Copyright (c) 2026 Dillon Mulroy.
+// Adapted from the anti-slop Oxlint plugin by Dillon Mulroy, MIT License (see THIRD_PARTY_NOTICES.md).
 import { defineRule, eslintCompatPlugin } from "@oxlint/plugins";
 
 import type { ESTree, Scope, SourceCode, Variable } from "@oxlint/plugins";
@@ -76,7 +76,12 @@ const safetyCommentOwners = new Set([
   "ReturnStatement",
   "ThrowStatement",
   "VariableDeclaration",
+  "ExportNamedDeclaration",
+  "ExportDefaultDeclaration",
 ]);
+
+const isExport = (node: ESTree.Node) =>
+  node.type === "ExportNamedDeclaration" || node.type === "ExportDefaultDeclaration";
 
 function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean {
   let current: ESTree.Node = node;
@@ -87,7 +92,10 @@ function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean 
     if (found) {
       return true;
     }
-    if (safetyCommentOwners.has(current.type) || current.parent.type === "Program") {
+    if (
+      (safetyCommentOwners.has(current.type) && !isExport(current.parent)) ||
+      current.parent.type === "Program"
+    ) {
       return false;
     }
     current = current.parent;
@@ -117,7 +125,11 @@ const requireSafetyCommentForTypeAssertion = defineRule({
   },
 });
 
-const moduleMockMethods = new Set(["doMock", "mock", "unstable_mockModule"]);
+const moduleMockMethods = new Set(["doMock", "mock", "setMock", "unstable_mockModule"]);
+const frameworkExports = new Map([
+  ["vitest", "vi"],
+  ["@jest/globals", "jest"],
+]);
 
 function resolveVariable(
   sourceCode: SourceCode,
@@ -134,38 +146,54 @@ function resolveVariable(
   return null;
 }
 
-function isTestFramework(sourceCode: SourceCode, expression: ESTree.Expression): boolean {
-  if (expression.type !== "Identifier") {
-    return false;
-  }
-  const isFrameworkName = expression.name === "vi" || expression.name === "jest";
-  const variable = resolveVariable(sourceCode, expression);
+/** What an identifier was imported as, `*` for a namespace; undefined when it has no binding at all. */
+function importOf(
+  sourceCode: SourceCode,
+  identifier: ESTree.IdentifierReference,
+): { source: string; name: string } | null | undefined {
+  const variable = resolveVariable(sourceCode, identifier);
   if (variable === null || variable.defs.length === 0) {
-    return isFrameworkName;
+    return undefined;
   }
-  return variable.defs.some((definition) => {
+  for (const definition of variable.defs) {
     if (definition.type !== "ImportBinding" || definition.parent?.type !== "ImportDeclaration") {
-      return false;
+      continue;
     }
     const source = definition.parent.source.value;
     const specifier = definition.node;
-    if (specifier.type !== "ImportSpecifier") {
-      return false;
+    if (specifier.type === "ImportNamespaceSpecifier") {
+      return { source, name: "*" };
     }
-    const name =
-      specifier.imported.type === "Identifier" ? specifier.imported.name : specifier.imported.value;
-    return (
-      (source === "vitest" && name === "vi") || (source === "@jest/globals" && name === "jest")
-    );
-  });
+    if (specifier.type === "ImportSpecifier") {
+      const { imported } = specifier;
+      return { source, name: imported.type === "Identifier" ? imported.name : imported.value };
+    }
+  }
+  return null;
 }
 
-function mockedMethod(callee: ESTree.MemberExpression): string | null {
-  const { property } = callee;
-  if (!callee.computed) {
+function memberName(member: ESTree.MemberExpression): string | null {
+  const { property } = member;
+  if (!member.computed) {
     return property.type === "Identifier" ? property.name : null;
   }
   return property.type === "Literal" && typeof property.value === "string" ? property.value : null;
+}
+
+/** `vi` or `jest`, as a global, a named import, or a member of a namespace import. */
+function isTestFramework(sourceCode: SourceCode, expression: ESTree.Expression): boolean {
+  if (expression.type === "Identifier") {
+    const imported = importOf(sourceCode, expression);
+    if (imported === undefined) {
+      return expression.name === "vi" || expression.name === "jest";
+    }
+    return imported !== null && frameworkExports.get(imported.source) === imported.name;
+  }
+  if (expression.type !== "MemberExpression" || expression.object.type !== "Identifier") {
+    return false;
+  }
+  const imported = importOf(sourceCode, expression.object);
+  return imported?.name === "*" && frameworkExports.get(imported.source) === memberName(expression);
 }
 
 const noModuleMocking = defineRule({
@@ -187,7 +215,7 @@ const noModuleMocking = defineRule({
         ) {
           return;
         }
-        const method = mockedMethod(callee);
+        const method = memberName(callee);
         if (method !== null && moduleMockMethods.has(method)) {
           context.report({ node, messageId: "moduleMock" });
         }
