@@ -4,7 +4,12 @@ import type { Action, Plan, Recording } from "@noice-tech/demo-recorder-core";
 import type { Session } from "../driver/types.js";
 import { generateCursorPath, type CursorPoint } from "../motion/cursor.js";
 import { normalizeKeyChord } from "../motion/keys.js";
-import { actionTarget, revealTarget, type RevealSurface } from "../motion/reveal.js";
+import {
+  actionTarget,
+  revealTarget,
+  scrollToTarget,
+  type RevealSurface,
+} from "../motion/reveal.js";
 import { smoothScroll } from "../motion/scroll.js";
 import { executePlan, type PlanSession, type PlanStepReport } from "../runner.js";
 import { writeJsonAtomic } from "../support/files.js";
@@ -75,7 +80,9 @@ export async function recordPlan(input: {
 
   const revealSurface: RevealSurface = {
     bounds: (target) => session.bounds(target),
+    present: async (target) => (await session.countMatches(target)) > 0,
     scroll: scrollSmoothly,
+    scrollY: async () => (await session.scrollPosition()).y,
     wait: sleep,
   };
 
@@ -90,7 +97,9 @@ export async function recordPlan(input: {
       return;
     }
     if (action.type === "scroll") {
-      await scrollSmoothly(action.deltaX ?? 0, action.deltaY);
+      if ("to" in action && action.to)
+        await scrollToTarget(revealSurface, action.to, plan.viewport);
+      else await scrollSmoothly(action.deltaX ?? 0, action.deltaY ?? 0);
       return;
     }
 

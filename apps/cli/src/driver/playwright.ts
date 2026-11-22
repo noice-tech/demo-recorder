@@ -113,7 +113,7 @@ export const playwrightDriver: Driver = {
       viewport: options.viewport,
       ownsLifecycle: true,
       capture: true,
-      guarded: !existing,
+      ...(options.allowedOrigins ? { allowedOrigins: options.allowedOrigins } : {}),
       ...(connectionPid === undefined ? {} : { pid: connectionPid }),
     });
   },

@@ -46,7 +46,6 @@ export type Expect = z.infer<typeof expectSchema>;
 export const constraintsSchema = z.object({
   submitForms: z.boolean().optional(),
   modifyData: z.boolean().optional(),
-  sameOriginOnly: z.boolean().optional(),
 });
 
 export type Constraints = z.infer<typeof constraintsSchema>;
@@ -61,11 +60,21 @@ const planActionVariants = [
     target: targetSchema.optional(),
   }),
   z.strictObject({ type: z.literal("select"), target: targetSchema, value: z.string() }),
-  z.strictObject({
-    type: z.literal("scroll"),
-    deltaY: z.number().finite(),
-    deltaX: z.number().finite().optional(),
-  }),
+  z
+    .strictObject({
+      type: z.literal("scroll"),
+      deltaY: z.number().finite().optional(),
+      deltaX: z.number().finite().optional(),
+      /** Scroll until this target is near the top of the viewport. */
+      to: targetSchema.optional(),
+    })
+    .refine(
+      (step) =>
+        (step.to === undefined) !== (step.deltaY === undefined && step.deltaX === undefined),
+      {
+        message: "A scroll takes either deltaY (and deltaX) or to",
+      },
+    ),
   z.strictObject({ type: z.literal("hold"), durationMs: z.number().finite().nonnegative() }),
 ] as const;
 
@@ -132,7 +141,11 @@ export const planSchema = z.strictObject({
   version: z.literal(1),
   name: z.string().min(1),
   goal: z.string().min(1),
-  target: z.object({ baseUrl: z.url() }),
+  target: z.object({
+    baseUrl: z.url(),
+    /** Origins besides the base URL's that top-level navigation may reach. */
+    allowedOrigins: z.array(z.url()).optional(),
+  }),
   viewport: viewportSchema,
   constraints: constraintsSchema.optional(),
   steps: z.array(planStepSchema).min(1),
@@ -142,4 +155,9 @@ export type Plan = z.infer<typeof planSchema>;
 
 export function parsePlan(input: unknown): Plan {
   return planSchema.parse(input);
+}
+
+export function planOrigins(plan: Plan): string[] {
+  const urls = [plan.target.baseUrl, ...(plan.target.allowedOrigins ?? [])];
+  return [...new Set(urls.map((url) => new URL(url).origin))];
 }

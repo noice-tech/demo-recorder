@@ -1,5 +1,12 @@
 import type { SnapshotElement } from "./types.js";
 
+const ICON_GLYPHS = /[\uE000-\uF8FF]\s*|\s*[\uE000-\uF8FF]/gu;
+
+/** Drops icon-font glyphs (Unicode private use), which read as noise in names like "\ue600PS5". */
+export function withoutIconGlyphs(text: string): string {
+  return text.replace(ICON_GLYPHS, "");
+}
+
 /**
  * An element with a ref, its position in the tree (child indices from the root),
  * and its named ancestors (nearest first).
@@ -27,7 +34,8 @@ export function snapshotEntries(tree: unknown): SnapshotEntry[] {
     }
     if (!isNode(value)) return;
     const role = typeof value.role === "string" ? value.role : undefined;
-    const name = typeof value.name === "string" && value.name ? value.name : undefined;
+    const name =
+      typeof value.name === "string" ? withoutIconGlyphs(value.name) || undefined : undefined;
     if (role && typeof value.ref === "string") {
       entries.push({ ref: value.ref, role, ...(name ? { name } : {}), path, scopes });
     }

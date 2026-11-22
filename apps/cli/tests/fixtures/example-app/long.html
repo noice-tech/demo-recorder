@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Northstar overview</title>
+  </head>
+  <body>
+    <h1>Overview</h1>
+    <div style="height: 2400px"></div>
+    <div id="sentinel"></div>
+    <section id="later"></section>
+    <script>
+      // Like many product pages, the lower sections render only once a viewer gets near.
+      new IntersectionObserver((entries, observer) => {
+        if (!entries[0].isIntersecting) return;
+        observer.disconnect();
+        document.querySelector("#later").innerHTML =
+          '<div style="height: 900px"></div><h2>Reviews</h2><div style="height: 1200px"></div>';
+      }).observe(document.querySelector("#sentinel"));
+    </script>
+  </body>
+</html>

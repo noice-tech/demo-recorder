@@ -8,7 +8,7 @@ import {
 import { startCdpRecorder } from "../recorder/cdp.js";
 import { ACTION_TIMEOUT_MS, actionFailure } from "./action-error.js";
 import { enableBoundary } from "./boundary.js";
-import { snapshotEntries } from "./aria.js";
+import { snapshotEntries, withoutIconGlyphs } from "./aria.js";
 import { watchNavigation, type NavigationLog } from "./navigation.js";
 import type { PageInspection, Recorder, ResolvedRef, Session } from "./types.js";
 
@@ -26,20 +26,32 @@ const ELEMENT_FACTS = (element: Element) => ({
   target: element.getAttribute("target"),
 });
 
+/** The exact accessible name, ignoring icon-font glyphs around it. */
+function exactName(name: string): RegExp {
+  const glyphs = String.raw`[\uE000-\uF8FF\s]*`;
+  const literal = name.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+  return new RegExp(`^${glyphs}${literal}${glyphs}$`, "u");
+}
+
 /**
  * Resolves a durable target. Role and name match the exact accessible name, and
  * search every frame of the page (one frame per match), like the AI snapshot does.
  */
 function locatorFor(page: Page, target: Target, exact = true): Locator {
-  if (target.selector) return page.locator(target.selector);
+  if (target.selector) {
+    const locator = page.locator(target.selector);
+    // Responsive sites keep hidden copies of controls; a ref already names one element.
+    return target.selector.startsWith("aria-ref=") ? locator : locator.filter({ visible: true });
+  }
   const root = target.within
     ? page.frameLocator().getByRole(target.within.role as never, {
-        name: target.within.name,
-        exact: true,
+        name: exactName(target.within.name),
       })
     : page.frameLocator();
   if (target.role && target.name)
-    return root.getByRole(target.role as never, { name: target.name, exact });
+    return root.getByRole(target.role as never, {
+      name: exact ? exactName(target.name) : target.name,
+    });
   if (target.role) return root.getByRole(target.role as never);
   if (target.name) return root.getByText(target.name);
   throw new Error("Target has no role, name, or selector");
@@ -66,17 +78,26 @@ async function nearMatches(page: Page, target: Target): Promise<string> {
   const lines = await Promise.all(
     Array.from({ length: count }, (_, index) => loose.nth(index).ariaSnapshot({ timeout: 1_000 })),
   ).catch(() => []);
-  const names = lines.map((line) => /^- (\S+ "(?:[^"\\]|\\.)*")/.exec(line)?.[1]).filter(Boolean);
+  const names = lines
+    .map((line) => /^- (\S+ "(?:[^"\\]|\\.)*")/.exec(withoutIconGlyphs(line))?.[1])
+    .filter(Boolean);
   return names.length === 0 ? "" : ` (names match exactly; closest: ${names.join(", ")})`;
 }
 
 async function unique(page: Page, target: Target): Promise<Locator> {
   const locator = locatorFor(page, target);
-  const count = await countMatches(locator);
+  const deadline = Date.now() + ACTION_TIMEOUT_MS;
+  let count = await countMatches(locator);
+  // A near match means a mistyped name, which waiting cannot fix.
+  let near = count === 0 ? await nearMatches(page, target) : "";
+  // Banners and late content often appear just after the page does.
+  while (count === 0 && !near && Date.now() < deadline) {
+    await page.waitForTimeout(100);
+    count = await countMatches(locator);
+  }
   if (count === 0) {
-    throw new Error(
-      `No element matches ${describeTarget(target)}${await nearMatches(page, target)}`,
-    );
+    near ||= await nearMatches(page, target);
+    throw new Error(`No element matches ${describeTarget(target)}${near}`);
   }
   if (count > 1) {
     throw new Error(`${describeTarget(target)} matches ${count} elements; it must be unique`);
@@ -128,6 +149,23 @@ async function waitForExpectation(
   );
 }
 
+/**
+ * Whether a radio or checkbox sits under its own label, as custom controls often
+ * do. Playwright refuses that click; a person clicks the label, which works.
+ */
+const UNDER_OWN_LABEL = (element: Element): boolean => {
+  if (!(element instanceof HTMLInputElement) || !["radio", "checkbox"].includes(element.type)) {
+    return false;
+  }
+  if (element.disabled || !element.labels?.length) return false;
+  element.scrollIntoView({ block: "nearest", inline: "nearest" });
+  const box = element.getBoundingClientRect();
+  const hit = element.ownerDocument.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+  return (
+    hit !== null && hit !== element && [...element.labels].some((label) => label.contains(hit))
+  );
+};
+
 const INTERACTIONS = new Set<Action["type"]>(["navigate", "click", "fill", "press", "select"]);
 
 async function pageId(page: Page): Promise<string> {
@@ -170,8 +208,7 @@ export type BrowserSessionInput = {
   viewport: { width: number; height: number };
   ownsLifecycle: boolean;
   capture: boolean;
-  /** Enable the runtime effect boundary for this session. */
-  guarded: boolean;
+  allowedOrigins?: readonly string[];
   pid?: number;
 };
 
@@ -190,13 +227,14 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
   };
   watch(page);
 
-  const boundary = input.guarded
-    ? await enableBoundary(context, page).catch(() => undefined)
+  const boundary = input.allowedOrigins
+    ? await enableBoundary(context, page, input.allowedOrigins).catch(() => undefined)
     : undefined;
   let blockedSince = 0;
+  const blockedNow = (): readonly string[] => boundary?.blocked.slice(blockedSince) ?? [];
 
   const activity = (expectingNavigation: boolean): string => {
-    const blocked = boundary?.blocked.slice(blockedSince) ?? [];
+    const blocked = blockedNow();
     return [
       navigation.describe(expectingNavigation || blocked.length > 0),
       blocked.length > 0 ? `The recording boundary blocked: ${blocked.join("; ")}.` : "",
@@ -207,7 +245,7 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
 
   return {
     target: input.target,
-    guarded: Boolean(boundary?.active),
+    guarded: boundary !== undefined,
     ...(input.pid === undefined ? {} : { pid: input.pid }),
     async listPages() {
       return listPages(context);
@@ -218,6 +256,8 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
     },
     async goto(url: string) {
       await page.goto(url, { waitUntil: "domcontentloaded" });
+      // Redirects bypass the route handler, so allow wherever the entry URL led.
+      boundary?.allow(page.url());
     },
     async perform(action: Action) {
       if (INTERACTIONS.has(action.type)) {
@@ -225,11 +265,16 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
         blockedSince = boundary?.blocked.length ?? 0;
       }
       if (action.type === "navigate") {
-        await page.goto(action.url, { waitUntil: "domcontentloaded" });
+        await page.goto(action.url, { waitUntil: "domcontentloaded" }).catch((error: unknown) => {
+          const blocked = blockedNow();
+          throw blocked.length > 0
+            ? new Error(`The recording boundary blocked ${blocked.join("; ")}`)
+            : error;
+        });
         return;
       }
       if (action.type === "scroll") {
-        await page.mouse.wheel(action.deltaX ?? 0, action.deltaY);
+        await page.mouse.wheel(action.deltaX ?? 0, action.deltaY ?? 0);
         return;
       }
       if (action.type === "hold") {
@@ -262,14 +307,16 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
       if (action.type === "click" && "target" in action && action.target) {
         // Playwright would fail the click on a stalled navigation; settle waits the
         // same way but leaves the verdict to the step's expect.
-        await onTarget(page, action.target, "click", (locator) =>
-          locator.click({ noWaitAfter: true, timeout }),
-        );
+        await onTarget(page, action.target, "click", async (locator) => {
+          const force = await locator.evaluate(UNDER_OWN_LABEL, undefined, { timeout });
+          await locator.click({ noWaitAfter: true, timeout, force });
+        });
         await navigation.settle(timeout);
         return;
       }
       throw new Error(`Action ${action.type} is not supported by this driver`);
     },
+    blocked: blockedNow,
     async waitFor(expect: Expect) {
       await waitForExpectation(page, expect, () => activity(Boolean(expect.url)));
     },
@@ -277,10 +324,8 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
       return countMatches(locatorFor(page, target));
     },
     async bounds(target: Target) {
-      // Report a missing target at once; the action then explains what is missing.
-      const locator = locatorFor(page, target);
-      if ((await countMatches(locator)) === 0) return undefined;
-      return (await locator.first().boundingBox({ timeout: ACTION_TIMEOUT_MS })) ?? undefined;
+      const locator = await unique(page, target);
+      return (await locator.boundingBox({ timeout: ACTION_TIMEOUT_MS })) ?? undefined;
     },
     async mouseMove(x: number, y: number) {
       await page.mouse.move(x, y);
@@ -296,7 +341,7 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
     },
     async inspect(): Promise<PageInspection> {
       // The YAML is what the agent reads; the JSON gives the same refs as data.
-      const snapshot = await page.ariaSnapshot(AI_SNAPSHOT);
+      const snapshot = withoutIconGlyphs(await page.ariaSnapshot(AI_SNAPSHOT));
       const [tree, scroll] = await Promise.all([
         page.ariaSnapshotJSON(AI_SNAPSHOT),
         page.evaluate("({ x: window.scrollX, y: window.scrollY })") as Promise<{
@@ -327,7 +372,7 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
       return { ...entry, facts };
     },
     async snapshot() {
-      return page.ariaSnapshot(AI_SNAPSHOT);
+      return withoutIconGlyphs(await page.ariaSnapshot(AI_SNAPSHOT));
     },
     async screenshot(path: string) {
       await page.screenshot({ path, timeout: PAGE_READ_TIMEOUT_MS });

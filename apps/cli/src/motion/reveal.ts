@@ -7,13 +7,19 @@ export type Viewport = { width: number; height: number };
 /** Minimal surface reveal needs; keeps this module free of Playwright types. */
 export type RevealSurface = {
   bounds(target: Target): Promise<Rect | undefined>;
+  /** Whether the target is in the page now, without waiting for it. */
+  present(target: Target): Promise<boolean>;
   scroll(deltaX: number, deltaY: number): Promise<void>;
+  scrollY(): Promise<number>;
   wait(durationMs: number): Promise<void>;
 };
 
 /** Share of the viewport height kept clear above or below a target scrolled into view. */
 const REVEAL_MARGIN_RATIO = 0.15;
 const SETTLE_TOLERANCE_PX = 0.5;
+/** A scroll-to moves at most this share of the viewport at once, so viewers can follow. */
+const SEGMENT_RATIO = 0.8;
+const MAX_SEGMENTS = 40;
 
 /** The element a plan action moves the cursor to, if any. */
 export function actionTarget(action: Action): Target | undefined {
@@ -94,4 +100,43 @@ export async function revealTarget(
     );
   }
   return bounds;
+}
+
+/**
+ * Scrolls in segments until a target sits near the top of the viewport. It
+ * measures again after every segment, because lazy pages add content as they
+ * scroll and the target itself may render only once it is near.
+ */
+export async function scrollToTarget(
+  surface: RevealSurface,
+  target: Target,
+  viewport: Viewport,
+): Promise<void> {
+  const segment = Math.round(viewport.height * SEGMENT_RATIO);
+  const margin = Math.round(viewport.height * REVEAL_MARGIN_RATIO);
+  for (let index = 0; index < MAX_SEGMENTS; index += 1) {
+    const bounds = (await surface.present(target)) ? await surface.bounds(target) : undefined;
+    const remaining = bounds ? Math.round(bounds.y - margin) : segment;
+    if (bounds && Math.abs(remaining) <= 1) return;
+
+    const before = await surface.scrollY();
+    await surface.scroll(0, Math.max(-segment, Math.min(segment, remaining)));
+    const after = await settleAfterChange({
+      before,
+      read: () => surface.scrollY(),
+      same: (left, right) => Math.abs(left - right) <= SETTLE_TOLERANCE_PX,
+      wait: (durationMs) => surface.wait(durationMs),
+    });
+    if (after === undefined || Math.abs(after - before) > SETTLE_TOLERANCE_PX) continue;
+
+    // The page cannot scroll further: near its end, a visible target is enough.
+    const last = (await surface.present(target)) ? await surface.bounds(target) : undefined;
+    if (last && centerInViewport(last, viewport)) return;
+    throw new Error(
+      last
+        ? `${describeTarget(target)} cannot be scrolled into view`
+        : `${describeTarget(target)} did not appear while scrolling to the end of the page`,
+    );
+  }
+  throw new Error(`${describeTarget(target)} is more than ${MAX_SEGMENTS} scroll segments away`);
 }

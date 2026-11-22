@@ -32,6 +32,7 @@ export const exploreOptions: OptionDefinitions = {
   headed: { type: "boolean" },
   viewport: { type: "string" },
   policy: { type: "string" },
+  "allow-origin": { type: "string" },
   "storage-state": { type: "string" },
   attached: { type: "boolean" },
   target: { type: "string" },
@@ -58,6 +59,25 @@ function policyOf(args: ParsedArguments): "read-only" | "reversible" {
   return value;
 }
 
+function extraOriginsOf(args: ParsedArguments): string[] {
+  const values = (stringOption(args, "allow-origin") ?? "").split(",").filter(Boolean);
+  return values.map((value) => {
+    try {
+      return new URL(value.trim()).origin;
+    } catch {
+      throw new Error(`--allow-origin takes URLs such as https://shop.example.com, not ${value}`);
+    }
+  });
+}
+
+function originsOf(urls: readonly (string | undefined)[]): string[] {
+  const origins = urls.flatMap((url) => {
+    const origin = URL.parse(url ?? "")?.origin;
+    return origin && origin !== "null" ? [origin] : [];
+  });
+  return [...new Set(origins)];
+}
+
 function summarizeSession(file: SessionFile) {
   return {
     id: file.id,
@@ -65,6 +85,7 @@ function summarizeSession(file: SessionFile) {
     mode: file.browser.mode,
     owned: file.browser.owned,
     policy: file.policy,
+    allowedOrigins: file.allowedOrigins,
     viewport: file.viewport,
     limits: file.limits,
     actions: file.actions,
@@ -99,6 +120,7 @@ export async function exploreStart(args: ParsedArguments): Promise<unknown> {
   const policy = policyOf(args);
   const storageStatePath = stringOption(args, "storage-state");
   const url = stringOption(args, "url");
+  const extraOrigins = extraOriginsOf(args);
   const limits = {
     idleTimeoutMs: nonNegativeNumberOption(args, "idle-timeout") ?? DEFAULT_LIMITS.idleTimeoutMs,
     maxDurationMs: Math.min(
@@ -134,6 +156,7 @@ export async function exploreStart(args: ParsedArguments): Promise<unknown> {
         touchFile: sessionPath(project),
         idleTimeoutMs: limits.idleTimeoutMs,
         maxDurationMs: limits.maxDurationMs,
+        allowedOrigins: originsOf([url, ...extraOrigins]),
         ...(storageStatePath ? { storageStatePath } : {}),
       });
 
@@ -166,6 +189,7 @@ export async function exploreStart(args: ParsedArguments): Promise<unknown> {
       ...(session.pid === undefined ? {} : { pid: session.pid }),
     },
     policy,
+    allowedOrigins: originsOf([url, observation.url, ...extraOrigins]),
     viewport,
     ...(page === undefined ? {} : { page }),
     limits,
@@ -215,6 +239,7 @@ export async function exploreAct(args: ParsedArguments): Promise<unknown> {
       project,
       session,
       policy: file.policy,
+      allowedOrigins: file.allowedOrigins,
       lastObservationId: file.lastObservationId,
       nextObservationId: id,
       action,
@@ -227,6 +252,7 @@ export async function exploreAct(args: ParsedArguments): Promise<unknown> {
       target: result.target,
       risk: result.risk,
       reason: result.reason,
+      ...(result.blocked.length > 0 ? { blocked: result.blocked } : {}),
       session: summarizeSession(updated),
       observation: summarizeObservation(result.observation),
     };

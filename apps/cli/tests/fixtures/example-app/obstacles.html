@@ -22,6 +22,24 @@
       .below {
         margin-top: 320px;
       }
+      .swatch {
+        position: relative;
+        display: inline-block;
+      }
+      .swatch input {
+        position: absolute;
+        inset: 0;
+        margin: 0;
+      }
+      .swatch label {
+        position: relative;
+        display: block;
+        padding: 8px 16px;
+        background: #ddd;
+      }
+      .icon::before {
+        content: "\e600";
+      }
     </style>
   </head>
   <body>
@@ -30,7 +48,41 @@
       <button>Start trial</button>
       <p class="below"><a href="/stall/store">Open store</a></p>
       <p><a href="/">Back to workspace</a></p>
+      <button id="visit">Visit partner</button>
+      <button id="popup">Open partner window</button>
+      <iframe title="Partner preview" height="120"></iframe>
+      <fieldset>
+        <legend>Finish</legend>
+        <span class="swatch"
+          ><input type="radio" name="finish" id="night" /><label for="night">Night Sky</label></span
+        >
+        <button class="more" hidden>More finishes</button>
+        <button class="more">More finishes</button>
+        <button class="icon">PS5</button>
+        <p id="status"></p>
+      </fieldset>
     </main>
     <div id="consent-banner"><p>We use cookies.</p></div>
+    <script>
+      // The same server under its other name is another origin.
+      const partner = new URL("/partner.html", location.href);
+      partner.hostname = partner.hostname === "localhost" ? "127.0.0.1" : "localhost";
+      document.querySelector("iframe").src = partner.href;
+      document.querySelector("#visit").onclick = () => (location.href = partner.href);
+      document.querySelector("#popup").onclick = () => window.open(partner.href);
+
+      const status = (text) => (document.querySelector("#status").textContent = text);
+      document.querySelector("#night").onchange = () => status("Selected Night Sky");
+      for (const more of document.querySelectorAll(".more")) {
+        more.onclick = () => status("Showing more finishes");
+      }
+      // Consent arrives after the page, as it does on real sites.
+      setTimeout(() => {
+        const accept = document.createElement("button");
+        accept.textContent = "Accept cookies";
+        accept.onclick = () => status("Cookies accepted");
+        document.querySelector("#consent-banner").append(accept);
+      }, 800);
+    </script>
   </body>
 </html>

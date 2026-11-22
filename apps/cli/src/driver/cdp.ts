@@ -46,7 +46,6 @@ export const cdpDriver: Driver = {
       viewport: options.viewport,
       ownsLifecycle: false,
       capture: false,
-      guarded: false,
     });
   },
 };

@@ -44,7 +44,7 @@ import { cliVersion } from "./version.js";
 function usage(): string {
   return [
     "Usage:",
-    "  demo-recorder explore start --url URL [--project DIR] [--driver NAME] [--headed] [--viewport WxH] [--policy read-only|reversible]",
+    "  demo-recorder explore start --url URL [--project DIR] [--driver NAME] [--headed] [--viewport WxH] [--policy read-only|reversible] [--allow-origin URL[,URL]]",
     "  demo-recorder explore pages [--project DIR | --driver cdp --target URL]",
     "  demo-recorder explore observe [--project DIR]",
     "  demo-recorder explore act --input FILE [--project DIR]",

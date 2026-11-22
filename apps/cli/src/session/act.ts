@@ -23,15 +23,8 @@ export type ActResult = {
   target: Target | undefined;
   risk: Risk;
   reason: string;
+  blocked: readonly string[];
 };
-
-function sameOrigin(left: string, right: string): boolean {
-  try {
-    return new URL(left).origin === new URL(right).origin;
-  } catch {
-    return false;
-  }
-}
 
 /** The action on exactly the observed element, through Playwright's `aria-ref` engine. */
 function exactAction(action: ExplorationAction, ref: string): Action {
@@ -53,18 +46,18 @@ function exactAction(action: ExplorationAction, ref: string): Action {
 function actionRisk(
   action: ExplorationAction,
   element: ResolvedRef | undefined,
-  currentUrl: string,
-): { risk: Risk; sameOrigin: boolean } {
+  allowedOrigins: readonly string[],
+): { risk: Risk; allowedOrigin: boolean } {
   if (action.type === "navigate") {
-    const same = sameOrigin(action.url, currentUrl);
-    return { risk: same ? "read-only" : "external-side-effect", sameOrigin: same };
+    const allowed = allowedOrigins.includes(URL.parse(action.url)?.origin ?? "");
+    return { risk: allowed ? "read-only" : "external-side-effect", allowedOrigin: allowed };
   }
   if (action.type === "scroll" || action.type === "hold") {
-    return { risk: "read-only", sameOrigin: true };
+    return { risk: "read-only", allowedOrigin: true };
   }
-  if (!element) return { risk: "unknown", sameOrigin: true };
+  if (!element) return { risk: "unknown", allowedOrigin: true };
   const facts = { ...element.facts, role: element.role, name: element.name ?? "" };
-  return { risk: classifyRisk(facts, new URL(currentUrl).origin), sameOrigin: true };
+  return { risk: classifyRisk(facts, allowedOrigins), allowedOrigin: true };
 }
 
 /**
@@ -96,6 +89,7 @@ export async function act(input: {
   project: string;
   session: Session;
   policy: Policy;
+  allowedOrigins: readonly string[];
   lastObservationId: string;
   nextObservationId: string;
   action: ExplorationAction;
@@ -131,14 +125,9 @@ export async function act(input: {
     }
   }
 
-  const { risk, sameOrigin: same } = actionRisk(action, element, previous.url);
+  const { risk, allowedOrigin } = actionRisk(action, element, input.allowedOrigins);
   const planAction: Action = element ? exactAction(action, element.ref) : action;
-  const decision = evaluatePolicy({
-    action: planAction,
-    risk,
-    policy,
-    sameOrigin: same,
-  });
+  const decision = evaluatePolicy({ action: planAction, risk, policy, allowedOrigin });
   if (!decision.allowed) {
     throw new PolicyError(`Blocked ${action.type}: ${decision.reason}`, risk, decision.reason);
   }
@@ -176,5 +165,6 @@ export async function act(input: {
     target: durable?.target,
     risk,
     reason: decision.reason,
+    blocked: session.blocked(),
   };
 }

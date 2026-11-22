@@ -1,7 +1,9 @@
 import { join, resolve } from "node:path";
-import { parsePlan, type Plan } from "@noice-tech/demo-recorder-core";
+import { parsePlan, planOrigins, type Plan } from "@noice-tech/demo-recorder-core";
 import { selectDriver } from "../driver/index.js";
 import { recordPlan } from "../recorder/record.js";
+import { PlanRunError } from "../runner.js";
+import { planFailure } from "./rehearse.js";
 import { renderDemoVideo } from "../renderer/index.js";
 import {
   booleanOption,
@@ -71,6 +73,7 @@ export async function runRecord(args: ParsedArguments): Promise<unknown> {
     mode: "launched",
     headless: !booleanOption(args, "headed"),
     viewport: plan.viewport,
+    allowedOrigins: planOrigins(plan),
     ...(storageStatePath ? { storageStatePath } : {}),
   });
 
@@ -81,7 +84,13 @@ export async function runRecord(args: ParsedArguments): Promise<unknown> {
         "The runtime effect boundary is not available for this driver. Pass --allow-unguarded to record without it.",
       );
     }
-    const captured = await recordPlan({ plan, session, project, guarded });
+    const captured = await recordPlan({ plan, session, project, guarded }).catch(
+      async (error: unknown) => {
+        if (!(error instanceof PlanRunError)) throw error;
+        const report = "record-report.json";
+        throw await planFailure({ project, report, planPath, name: plan.name, session, error });
+      },
+    );
     const renderStart = performance.now();
     const rendered = await renderDemoVideo(join(project, "recording"), {
       assetsDirectory: requireFfmpegAssets(),

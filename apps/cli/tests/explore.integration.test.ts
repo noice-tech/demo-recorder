@@ -17,6 +17,7 @@ type ActResult = {
   recordable: boolean;
   target: unknown;
   observation: Observation;
+  blocked?: string[];
 };
 
 let fixture: Awaited<ReturnType<typeof serveFixture>>;
@@ -124,7 +125,7 @@ describe("explore", () => {
       }),
     ).rejects.toThrow(/must match the current observation/);
     await expect(act(project, { type: "navigate", url: "https://example.com/" })).rejects.toThrow(
-      /Off-origin navigation is blocked/,
+      /Navigation outside the allowed origins is blocked/,
     );
   }, 60_000);
 
@@ -151,6 +152,38 @@ describe("explore", () => {
       }),
     ).rejects.toThrow(/page changed since obs-0001; e\d+ is no longer button "Create project"/);
   }, 30_000);
+
+  it("blocks what recording would block, and says so", async () => {
+    const page = `${fixture.baseUrl}obstacles.html`;
+    const partner = new URL("/partner.html", page.replace("127.0.0.1", "localhost"));
+    const { project, observation } = await startSession(page);
+
+    const popup = await act(project, {
+      type: "click",
+      observationId: observation.id,
+      ref: refOf(observation.snapshot, 'button "Open partner window"'),
+    });
+    expect(popup.blocked).toEqual([`new window ${partner.href}`]);
+
+    const visit = await act(project, {
+      type: "click",
+      observationId: popup.observation.id,
+      ref: refOf(popup.observation.snapshot, 'button "Visit partner"'),
+    });
+    expect(visit.blocked).toEqual([
+      `off-origin navigation ${partner.href}; add ${partner.origin} to allowedOrigins to allow it`,
+    ]);
+  }, 60_000);
+
+  it("names icon-font controls by their text", async () => {
+    const { project, observation } = await startSession(`${fixture.baseUrl}obstacles.html`);
+    const clicked = await act(project, {
+      type: "click",
+      observationId: observation.id,
+      ref: refOf(observation.snapshot, 'button "PS5"'),
+    });
+    expect(clicked).toMatchObject({ target: { role: "button", name: "PS5" }, recordable: true });
+  }, 60_000);
 
   it("fails fast with the reason when something covers the control", async () => {
     const { project, observation } = await startSession(`${fixture.baseUrl}obstacles.html`);

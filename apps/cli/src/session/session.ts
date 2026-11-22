@@ -26,6 +26,7 @@ export const sessionFileSchema = z.object({
     pid: z.number().int().optional(),
   }),
   policy: z.enum(["read-only", "reversible"]),
+  allowedOrigins: z.array(z.string()),
   viewport: viewportSchema,
   page: z.string().optional(),
   limits: z.object({
@@ -89,6 +90,8 @@ export async function connectSession(
     viewport: file.viewport,
     target: file.browser.target,
     ...(file.page ? { pageId: file.page } : {}),
+    // Guard every command of a launched session the way rehearsal and recording are.
+    ...(file.browser.mode === "launched" ? { allowedOrigins: file.allowedOrigins } : {}),
   });
   return { driver, session };
 }

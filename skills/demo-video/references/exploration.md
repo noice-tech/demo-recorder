@@ -14,6 +14,8 @@ node "$DR_CLI" explore start \
   --json
 ```
 
+Exploration runs under the same runtime boundary as rehearsal and recording. Top-level navigation may reach only the `--url` origin, the origin it redirected to, and origins passed as `--allow-origin https://shop.example.com,https://id.example.com`; embedded frames load from anywhere. The session summary lists `allowedOrigins`; copy any origin beyond the base URL's into the plan's `target.allowedOrigins`. When `act` reports `blocked`, such as `off-origin navigation …` or `new window …`, the action ran but its effect was stopped, and recording would stop it too. To allow another origin, finish and start exploration again with `--allow-origin`.
+
 The response contains the session summary and the first observation: URL, title, viewport, scroll, console errors, the path of a screenshot, and `snapshot`, Playwright's accessibility tree of the page:
 
 ```yaml
@@ -61,7 +63,7 @@ Before performing an action, the tool derives the element's durable `target` rec
 
 ## Policy
 
-The policy classifies the live element when an action runs; observations do not list risk. The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked, and a blocked action fails with the reason.
+The policy classifies the live element when an action runs; observations do not list risk. The default `read-only` policy allows navigation within the allowed origins and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked, and a blocked action fails with the reason.
 
 Use `--policy reversible` only with the user's explicit permission. Ask before `explore start` when the story involves choosing options (radio buttons, checkboxes, selects, toggles), because changing the policy means restarting exploration. Prefer a disposable local or staging environment; on a production site, tell the user that reversible controls can still save state, such as a settings toggle that saves itself. It still blocks destructive and external-side-effect controls. These policies are conservative guardrails, not proof that an application cannot produce a server-side side effect.
 

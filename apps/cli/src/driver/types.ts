@@ -28,6 +28,8 @@ export type ConnectOptions = {
   maxDurationMs?: number;
   pageId?: string;
   storageStatePath?: string;
+  /** Turns on the runtime effect boundary, allowing top-level navigation to these origins. */
+  allowedOrigins?: readonly string[];
 };
 
 export type Risk = "read-only" | "reversible" | "destructive" | "external-side-effect" | "unknown";
@@ -72,6 +74,8 @@ export interface Session {
   selectPage(id: string): Promise<void>;
   goto(url: string): Promise<void>;
   perform(action: Action): Promise<void>;
+  /** What the boundary blocked since the last interaction. */
+  blocked(): readonly string[];
   waitFor(expect: Expect): Promise<void>;
   /** Number of live elements a target resolves to. Must be exactly one to be recordable. */
   countMatches(target: Target): Promise<number>;

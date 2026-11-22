@@ -1,10 +1,15 @@
 import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { parsePlan } from "@noice-tech/demo-recorder-core";
+import { parsePlan, planOrigins } from "@noice-tech/demo-recorder-core";
 import { ActionError } from "../driver/action-error.js";
 import { selectDriver } from "../driver/index.js";
 import type { Session } from "../driver/types.js";
-import { actionTarget, revealTarget, type RevealSurface } from "../motion/reveal.js";
+import {
+  actionTarget,
+  revealTarget,
+  scrollToTarget,
+  type RevealSurface,
+} from "../motion/reveal.js";
 import { PlanRunError, executePlan, type PlanSession } from "../runner.js";
 import {
   booleanOption,
@@ -15,6 +20,9 @@ import {
 import { readJson, writeFileAtomic, writeJsonAtomic } from "../support/files.js";
 import { requirePresentationFits } from "../renderer/prepare-recording.js";
 import { planDigest } from "../support/rehearsal.js";
+
+/** Holds only pace the recording; rehearsal checks the steps without sitting through them. */
+const REHEARSAL_HOLD_MS = 250;
 
 export const rehearseOptions: OptionDefinitions = {
   project: { type: "string" },
@@ -44,6 +52,33 @@ async function writeEvidence(project: string, step: number, session: Session): P
       ),
   ]);
   return written.filter((path): path is string => path !== undefined);
+}
+
+/** Writes the failure report and evidence; returns the error to throw. */
+export async function planFailure(input: {
+  project: string;
+  report: string;
+  planPath: string;
+  name: string;
+  session: Session;
+  error: PlanRunError;
+}): Promise<Error> {
+  const { project, error } = input;
+  const evidence = await writeEvidence(project, error.step, input.session);
+  await writeJsonAtomic(join(project, input.report), {
+    ok: false,
+    captureReady: false,
+    name: input.name,
+    plan: input.planPath,
+    error: error.message,
+    ...(error.cause instanceof ActionError ? { callLog: error.cause.callLog } : {}),
+    steps: error.reports,
+  });
+  const saved =
+    evidence.length > 0
+      ? `Evidence: ${input.report}, ${evidence.join(", ")}`
+      : `No evidence: the page could not be read. Report: ${input.report}`;
+  return new Error(`${error.message.replace(/\.$/, "")}. ${saved}`, { cause: error });
 }
 
 export function resolvePlanPath(args: ParsedArguments): { project: string; planPath: string } {
@@ -76,6 +111,7 @@ export async function planRehearse(args: ParsedArguments): Promise<unknown> {
     mode: "launched",
     headless: !booleanOption(args, "headed"),
     viewport: plan.viewport,
+    allowedOrigins: planOrigins(plan),
     ...(storageStatePath ? { storageStatePath } : {}),
   });
 
@@ -83,11 +119,24 @@ export async function planRehearse(args: ParsedArguments): Promise<unknown> {
   // scrolled into view fails here instead of after a full capture.
   const revealSurface: RevealSurface = {
     bounds: (target) => session.bounds(target),
+    present: async (target) => (await session.countMatches(target)) > 0,
     scroll: (deltaX, deltaY) => session.perform({ type: "scroll", deltaX, deltaY }),
+    scrollY: async () => (await session.scrollPosition()).y,
     wait: (durationMs) => new Promise((done) => setTimeout(done, durationMs)),
   };
   const planSession: PlanSession = {
     perform: async (action) => {
+      if (action.type === "hold") {
+        await session.perform({
+          ...action,
+          durationMs: Math.min(action.durationMs, REHEARSAL_HOLD_MS),
+        });
+        return;
+      }
+      if (action.type === "scroll" && "to" in action && action.to) {
+        await scrollToTarget(revealSurface, action.to, plan.viewport);
+        return;
+      }
       const target = actionTarget(action);
       if (target) await revealTarget(revealSurface, target, plan.viewport);
       await session.perform(action);
@@ -111,21 +160,14 @@ export async function planRehearse(args: ParsedArguments): Promise<unknown> {
     return report;
   } catch (error) {
     if (error instanceof PlanRunError) {
-      const evidence = await writeEvidence(project, error.step, session);
-      await writeJsonAtomic(join(project, "rehearsal-report.json"), {
-        ok: false,
-        captureReady: false,
+      throw await planFailure({
+        project,
+        report: "rehearsal-report.json",
+        planPath,
         name: plan.name,
-        plan: planPath,
-        error: error.message,
-        ...(error.cause instanceof ActionError ? { callLog: error.cause.callLog } : {}),
-        steps: error.reports,
+        session,
+        error,
       });
-      const saved =
-        evidence.length > 0
-          ? `Evidence: ${evidence.join(", ")}`
-          : "No evidence: the page could not be read";
-      throw new Error(`${error.message.replace(/\.$/, "")}. ${saved}`, { cause: error });
     }
     throw error;
   } finally {
