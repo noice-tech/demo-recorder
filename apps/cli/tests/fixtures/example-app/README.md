@@ -10,3 +10,5 @@ Expected flow:
 4. Wait for **Project launched**.
 
 Reloading the page restores the initial state. All important controls use accessible names for semantic Playwright locators.
+
+`obstacles.html` holds controls that fail on purpose: **Start trial** sits under a fixed cookie banner, **Open store** links to `/stall/store`, which the test server never answers, and **Back to workspace** returns to the main screen.

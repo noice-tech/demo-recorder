@@ -5,8 +5,10 @@ import {
   canvasToOptions,
   parsePresentation,
   parseRecording,
+  presentationAnchorProblems,
   resolveRenderConfig,
   type CanvasOptions,
+  type Plan,
   type Presentation,
   type ProductDemoInput,
   type Recording,
@@ -49,6 +51,17 @@ async function loadPresentation(paths: string[]): Promise<Presentation | undefin
     }
   }
   return undefined;
+}
+
+/** Fails before a browser starts when presentation.json anchors steps that record nothing. */
+export async function requirePresentationFits(project: string, plan: Plan): Promise<void> {
+  const path = join(project, "presentation.json");
+  const presentation = await loadPresentation([path]);
+  if (!presentation) return;
+  const problems = presentationAnchorProblems(presentation, plan.steps);
+  if (problems.length > 0) {
+    throw new Error(`${path} does not fit the plan:\n  - ${problems.join("\n  - ")}`);
+  }
 }
 
 function mergeCanvas(

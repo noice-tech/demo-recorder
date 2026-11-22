@@ -189,15 +189,28 @@ async function runBrowserServerCommand(rest: string[]): Promise<unknown> {
   return undefined;
 }
 
-function formatError(error: unknown): string {
-  if (!(error instanceof Error)) return String(error);
+/** An error and its causes, skipping a cause whose message the previous one includes. */
+function errorMessages(error: unknown): string[] {
+  if (!(error instanceof Error)) return [String(error)];
   const messages: string[] = [];
   let current: unknown = error;
   while (current instanceof Error) {
-    messages.push(current.message);
+    const message = current.message.trim();
+    if (!messages.at(-1)?.includes(message)) messages.push(message);
     current = current.cause;
   }
-  return messages.join("\n  caused by: ");
+  return messages;
+}
+
+function reportError(error: unknown, json: boolean): void {
+  const [message = "", ...causes] = errorMessages(error);
+  if (json) {
+    // Agents parse stdout, so failures go there too.
+    const report = { ok: false, error: message, ...(causes.length > 0 ? { causes } : {}) };
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else {
+    console.error(`[demo-recorder] ${[message, ...causes].join("\n  caused by: ")}`);
+  }
 }
 
 async function dispatch(command: string | undefined, rest: string[]): Promise<unknown> {
@@ -274,7 +287,7 @@ export async function runCli(arguments_: string[]): Promise<void> {
     console.error("[demo-recorder] `explore --url` is deprecated; use `explore start --url`");
     rest = ["start", ...rest];
   }
-  if (["--help", "-h", "help"].includes(command ?? "")) {
+  if (["--help", "-h", "help"].includes(command ?? "") || rest.includes("--help")) {
     console.log(usage());
     return;
   }
@@ -304,7 +317,7 @@ if (isMainModule()) {
       setTimeout(() => process.exit(0), 1_000);
     })
     .catch((error: unknown) => {
-      console.error(`[demo-recorder] ${formatError(error)}`);
-      process.exit(1);
+      reportError(error, process.argv.includes("--json"));
+      process.stdout.write("", () => process.exit(1));
     });
 }

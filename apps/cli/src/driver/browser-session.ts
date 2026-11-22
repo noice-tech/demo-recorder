@@ -6,9 +6,15 @@ import {
   type Target,
 } from "@noice-tech/demo-recorder-core";
 import { startCdpRecorder } from "../recorder/cdp.js";
+import { ACTION_TIMEOUT_MS, actionFailure } from "./action-error.js";
 import { enableBoundary } from "./boundary.js";
 import { snapshotEntries } from "./aria.js";
+import { watchNavigation, type NavigationLog } from "./navigation.js";
 import type { PageInspection, Recorder, ResolvedRef, Session } from "./types.js";
+
+// A stalled navigation blocks snapshots and screenshots, so they must time out.
+const PAGE_READ_TIMEOUT_MS = 10_000;
+const AI_SNAPSHOT = { mode: "ai", timeout: PAGE_READ_TIMEOUT_MS } as const;
 
 /** Element facts the policy needs that the ARIA snapshot does not carry. */
 const ELEMENT_FACTS = (element: Element) => ({
@@ -78,26 +84,51 @@ async function unique(page: Page, target: Target): Promise<Locator> {
   return locator.first();
 }
 
-async function waitForExpectation(page: Page, expect: Expect): Promise<void> {
+async function onTarget(
+  page: Page,
+  target: Target,
+  verb: string,
+  run: (locator: Locator) => Promise<unknown>,
+): Promise<void> {
+  const locator = await unique(page, target);
+  try {
+    await run(locator);
+  } catch (error) {
+    throw actionFailure(error, verb, describeTarget(target));
+  }
+}
+
+async function waitForExpectation(
+  page: Page,
+  expect: Expect,
+  activity: () => string,
+): Promise<void> {
   const timeoutMs = expect.timeoutMs ?? 5_000;
   const deadline = Date.now() + timeoutMs;
-  let lastState = "";
+  let problems: string[] = [];
   while (Date.now() <= deadline) {
-    const urlOk = !expect.url || page.url().includes(expect.url);
-    let visibleOk = true;
+    problems = [];
+    if (expect.url && !page.url().includes(expect.url)) {
+      problems.push(`the URL is ${page.url()}, not one containing ${expect.url}`);
+    }
     if (expect.visible) {
       const locator = locatorFor(page, expect.visible);
       const count = await countMatches(locator);
-      visibleOk = count > 0 && (await locator.first().isVisible());
+      if (count === 0) problems.push(`no ${describeTarget(expect.visible)} is in the page`);
+      else if (!(await locator.first().isVisible())) {
+        problems.push(`${describeTarget(expect.visible)} is in the page but not visible`);
+      }
     }
-    if (urlOk && visibleOk) return;
-    lastState = `url=${page.url()}, urlExpected=${expect.url ?? "-"}, visible=${
-      expect.visible ? (visibleOk ? "yes" : "no") : "-"
-    }`;
+    if (problems.length === 0) return;
     await page.waitForTimeout(50);
   }
-  throw new Error(`Expectation did not hold within ${timeoutMs}ms (${lastState})`);
+  const detail = activity();
+  throw new Error(
+    `Expectation did not hold within ${timeoutMs}ms: ${problems.join(", and ")}.${detail ? ` ${detail}` : ""}`,
+  );
 }
+
+const INTERACTIONS = new Set<Action["type"]>(["navigate", "click", "fill", "press", "select"]);
 
 async function pageId(page: Page): Promise<string> {
   const connection = await page.context().newCDPSession(page);
@@ -149,14 +180,30 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
   const { browser, context, viewport } = input;
   let page = input.page;
   const errors: string[] = [];
-  page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
-  });
-  page.on("pageerror", (error) => errors.push(error.message));
+  let navigation: NavigationLog;
+  const watch = (watched: Page): void => {
+    watched.on("console", (message) => {
+      if (message.type() === "error") errors.push(message.text());
+    });
+    watched.on("pageerror", (error) => errors.push(error.message));
+    navigation = watchNavigation(watched);
+  };
+  watch(page);
 
   const boundary = input.guarded
     ? await enableBoundary(context, page).catch(() => undefined)
     : undefined;
+  let blockedSince = 0;
+
+  const activity = (expectingNavigation: boolean): string => {
+    const blocked = boundary?.blocked.slice(blockedSince) ?? [];
+    return [
+      navigation.describe(expectingNavigation || blocked.length > 0),
+      blocked.length > 0 ? `The recording boundary blocked: ${blocked.join("; ")}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  };
 
   return {
     target: input.target,
@@ -167,11 +214,16 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
     },
     async selectPage(id: string) {
       page = await selectPage(context, id);
+      watch(page);
     },
     async goto(url: string) {
       await page.goto(url, { waitUntil: "domcontentloaded" });
     },
     async perform(action: Action) {
+      if (INTERACTIONS.has(action.type)) {
+        navigation.reset(action.type);
+        blockedSince = boundary?.blocked.length ?? 0;
+      }
       if (action.type === "navigate") {
         await page.goto(action.url, { waitUntil: "domcontentloaded" });
         return;
@@ -184,30 +236,42 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
         await page.waitForTimeout(action.durationMs);
         return;
       }
+      const timeout = ACTION_TIMEOUT_MS;
       if (action.type === "press") {
         if ("target" in action && action.target) {
-          await (await unique(page, action.target)).press(action.key);
+          await onTarget(page, action.target, "press a key on", (locator) =>
+            locator.press(action.key, { timeout }),
+          );
         } else {
           await page.keyboard.press(action.key);
         }
         return;
       }
       if (action.type === "fill" && "target" in action && action.target) {
-        await (await unique(page, action.target)).fill(action.value);
+        await onTarget(page, action.target, "fill", (locator) =>
+          locator.fill(action.value, { timeout }),
+        );
         return;
       }
       if (action.type === "select" && "target" in action && action.target) {
-        await (await unique(page, action.target)).selectOption(action.value);
+        await onTarget(page, action.target, "select an option in", (locator) =>
+          locator.selectOption(action.value, { timeout }),
+        );
         return;
       }
       if (action.type === "click" && "target" in action && action.target) {
-        await (await unique(page, action.target)).click();
+        // Playwright would fail the click on a stalled navigation; settle waits the
+        // same way but leaves the verdict to the step's expect.
+        await onTarget(page, action.target, "click", (locator) =>
+          locator.click({ noWaitAfter: true, timeout }),
+        );
+        await navigation.settle(timeout);
         return;
       }
       throw new Error(`Action ${action.type} is not supported by this driver`);
     },
     async waitFor(expect: Expect) {
-      await waitForExpectation(page, expect);
+      await waitForExpectation(page, expect, () => activity(Boolean(expect.url)));
     },
     async countMatches(target: Target) {
       return countMatches(locatorFor(page, target));
@@ -216,7 +280,7 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
       // Report a missing target at once; the action then explains what is missing.
       const locator = locatorFor(page, target);
       if ((await countMatches(locator)) === 0) return undefined;
-      return (await locator.first().boundingBox()) ?? undefined;
+      return (await locator.first().boundingBox({ timeout: ACTION_TIMEOUT_MS })) ?? undefined;
     },
     async mouseMove(x: number, y: number) {
       await page.mouse.move(x, y);
@@ -232,9 +296,9 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
     },
     async inspect(): Promise<PageInspection> {
       // The YAML is what the agent reads; the JSON gives the same refs as data.
-      const snapshot = await page.ariaSnapshot({ mode: "ai" });
+      const snapshot = await page.ariaSnapshot(AI_SNAPSHOT);
       const [tree, scroll] = await Promise.all([
-        page.ariaSnapshotJSON({ mode: "ai" }),
+        page.ariaSnapshotJSON(AI_SNAPSHOT),
         page.evaluate("({ x: window.scrollX, y: window.scrollY })") as Promise<{
           x: number;
           y: number;
@@ -253,18 +317,20 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
     },
     async resolveElement(path: number[]): Promise<ResolvedRef | undefined> {
       const key = path.join(".");
-      const entry = snapshotEntries(await page.ariaSnapshotJSON({ mode: "ai" })).find(
+      const entry = snapshotEntries(await page.ariaSnapshotJSON(AI_SNAPSHOT)).find(
         (candidate) => candidate.path.join(".") === key,
       );
       if (!entry) return undefined;
-      const facts = await page.getByRef(entry.ref).evaluate(ELEMENT_FACTS);
+      const facts = await page
+        .getByRef(entry.ref)
+        .evaluate(ELEMENT_FACTS, undefined, { timeout: ACTION_TIMEOUT_MS });
       return { ...entry, facts };
     },
     async snapshot() {
-      return page.ariaSnapshot({ mode: "ai" });
+      return page.ariaSnapshot(AI_SNAPSHOT);
     },
     async screenshot(path: string) {
-      await page.screenshot({ path });
+      await page.screenshot({ path, timeout: PAGE_READ_TIMEOUT_MS });
     },
     async saveStorageState(path: string) {
       await context.storageState({ path });
@@ -289,8 +355,9 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
       };
     },
     async close() {
-      await boundary?.dispose().catch(() => undefined);
+      // Unrouting can block on a stalled navigation; closing the browser drops the route anyway.
       if (input.ownsLifecycle) await browser.close().catch(() => undefined);
+      else await boundary?.dispose().catch(() => undefined);
     },
   };
 }

@@ -55,7 +55,7 @@ Exploration actions use `observationId` plus `ref`:
 | `scroll`   | `deltaY`, optional `deltaX`             |
 | `hold`     | `durationMs`                            |
 
-`click`, `fill`, `select`, and `press` with a `ref` must resolve to exactly one visible element. Waiting and assertions are not exploration actions.
+`click`, `fill`, `select`, and `press` with a `ref` must resolve to exactly one visible element. Waiting and assertions are not exploration actions. An action that cannot happen fails within 5 seconds and says why, for example `covered by <div id="consent-banner">`; dismiss what covers the control, reveal it, or choose another one. Failures are printed as `{ "ok": false, "error": "..." }` on stdout when `--json` is passed.
 
 Before performing an action, the tool derives the element's durable `target` recipe (role plus exact accessible name, narrowed by `within` to the nearest named container when the control is repeated) and reports `recordable: true | false`. A target that is still ambiguous marks the step `recordable: false`. If the page changed since the observation, for example through a timer, `act` refuses the stale ref and asks for `explore observe`. The action still runs so exploration is not blocked, but a non-recordable step cannot go into a plan; find a unique identifier or choose a different path. The result also reports the classified `risk` and the policy `reason`.
 
@@ -63,7 +63,7 @@ Before performing an action, the tool derives the element's durable `target` rec
 
 The policy classifies the live element when an action runs; observations do not list risk. The default `read-only` policy allows same-origin navigation and controls classified as presentational. Unknown, mutation-like, destructive, form, and external-side-effect controls are blocked, and a blocked action fails with the reason.
 
-Use `--policy reversible` only when the user explicitly requested it and the target is a disposable local or staging environment. It still blocks destructive and external-side-effect controls. These policies are conservative guardrails, not proof that an application cannot produce a server-side side effect.
+Use `--policy reversible` only with the user's explicit permission. Ask before `explore start` when the story involves choosing options (radio buttons, checkboxes, selects, toggles), because changing the policy means restarting exploration. Prefer a disposable local or staging environment; on a production site, tell the user that reversible controls can still save state, such as a settings toggle that saves itself. It still blocks destructive and external-side-effect controls. These policies are conservative guardrails, not proof that an application cannot produce a server-side side effect.
 
 ## Observation and limits
 

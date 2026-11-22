@@ -1,4 +1,5 @@
 import type { Action, ExplorationAction, Target } from "@noice-tech/demo-recorder-core";
+import { ActionError } from "../driver/action-error.js";
 import type { ResolvedRef, Risk, Session } from "../driver/types.js";
 import { classifyRisk, evaluatePolicy, type Policy } from "../policy.js";
 import { settleAfterChange } from "../support/settle.js";
@@ -144,7 +145,15 @@ export async function act(input: {
 
   const durable = element ? await durableTarget(session, element) : undefined;
   const scrollBefore = action.type === "scroll" ? await session.scrollPosition() : undefined;
-  await session.perform(planAction);
+  try {
+    await session.perform(planAction);
+  } catch (error) {
+    // Name the element as the agent saw it, not by its ref selector.
+    if (error instanceof ActionError && element) {
+      throw error.about(element.name ? `${element.role} "${element.name}"` : element.role);
+    }
+    throw error;
+  }
   if (scrollBefore) {
     // Wheel scrolling finishes asynchronously; observe the page where it lands.
     await settleAfterChange({

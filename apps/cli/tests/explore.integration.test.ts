@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   act as runAct,
   cli,
+  CliError,
   refOf,
   refsOf,
   serveFixture,
@@ -23,7 +24,9 @@ const projects: string[] = [];
 
 const act = (project: string, action: object) => runAct<ActResult>(project, action);
 
-async function startSession(): Promise<{ project: string; observation: Observation }> {
+async function startSession(
+  url = fixture.baseUrl,
+): Promise<{ project: string; observation: Observation }> {
   const project = await mkdtemp(join(tmpdir(), "demo-recorder-explore-"));
   projects.push(project);
   const started = await cli<{ observation: Observation }>(
@@ -32,7 +35,7 @@ async function startSession(): Promise<{ project: string; observation: Observati
     "--project",
     project,
     "--url",
-    fixture.baseUrl,
+    url,
     "--json",
   );
   return { project, observation: started.observation };
@@ -148,4 +151,23 @@ describe("explore", () => {
       }),
     ).rejects.toThrow(/page changed since obs-0001; e\d+ is no longer button "Create project"/);
   }, 30_000);
+
+  it("fails fast with the reason when something covers the control", async () => {
+    const { project, observation } = await startSession(`${fixture.baseUrl}obstacles.html`);
+    const startedAt = Date.now();
+    const failure = await act(project, {
+      type: "click",
+      observationId: observation.id,
+      ref: refOf(observation.snapshot, 'button "Start trial"'),
+    }).catch((error: unknown) => error);
+
+    // Playwright's default would retry for 30 s.
+    expect(Date.now() - startedAt).toBeLessThan(20_000);
+    expect(failure).toBeInstanceOf(CliError);
+    const report = JSON.parse((failure as CliError).stdout) as { ok: boolean; error: string };
+    expect(report.ok).toBe(false);
+    expect(report.error).toMatch(
+      /^Could not click button "Start trial" .*: covered by <div id="consent-banner">$/,
+    );
+  }, 60_000);
 });

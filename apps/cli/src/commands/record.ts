@@ -10,6 +10,7 @@ import {
   type ParsedArguments,
 } from "../support/args.js";
 import { readJson, writeJsonAtomic } from "../support/files.js";
+import { requirePresentationFits } from "../renderer/prepare-recording.js";
 import { readRunLog, runIdFor, summarizeRun } from "../support/run-log.js";
 import { planDigest } from "../support/rehearsal.js";
 import { requireFfmpegAssets } from "../support/ffmpeg.js";
@@ -57,6 +58,8 @@ export async function runRecord(args: ParsedArguments): Promise<unknown> {
     stringOption(args, "plan") ?? args.positionals[0] ?? join(project, "plan.json"),
   );
   const plan = parsePlan(await readJson(planPath));
+  // Styling edits keep the rehearsal valid, so check them again before capture.
+  await requirePresentationFits(project, plan);
 
   if (!booleanOption(args, "skip-rehearsal")) await requireRehearsal(project, planPath, plan);
 

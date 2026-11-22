@@ -1,4 +1,4 @@
-import type { Anchor } from "./presentation.js";
+import type { Anchor, Presentation } from "./presentation.js";
 import type { ClickEvent, CursorMoveEvent, Recording, RecordingEvent } from "./recording.js";
 
 export type InteractionPoint = { x: number; y: number };
@@ -42,4 +42,41 @@ export function stepInteractionPoint(
 export function resolveAnchorMs(anchor: Anchor, recording: Recording): number {
   if ("anchor" in anchor) return anchor.anchor === "start" ? 0 : recording.durationMs;
   return stepTimeMs(recording, anchor.step) + (anchor.offsetMs ?? 0);
+}
+
+function presentationAnchors(presentation: Presentation): { label: string; step: number }[] {
+  const anchors: { label: string; step: number }[] = [];
+  const { trim, zooms = [] } = presentation;
+  if (trim && "step" in trim.from) anchors.push({ label: "trim.from", step: trim.from.step });
+  if (trim && "step" in trim.to) anchors.push({ label: "trim.to", step: trim.to.step });
+  zooms.forEach((zoom, index) => {
+    if ("step" in zoom) anchors.push({ label: `zooms[${index}]`, step: zoom.step });
+    else {
+      anchors.push({ label: `zooms[${index}].fromStep`, step: zoom.fromStep });
+      anchors.push({ label: `zooms[${index}].toStep`, step: zoom.toStep });
+    }
+  });
+  return anchors;
+}
+
+/** Anchor problems the plan alone reveals, so they fail before capture instead of at render. */
+export function presentationAnchorProblems(
+  presentation: Presentation,
+  steps: readonly { type: string }[],
+): string[] {
+  const problems: string[] = [];
+  for (const { label, step } of presentationAnchors(presentation)) {
+    const type = steps[step - 1]?.type;
+    if (type === undefined) {
+      problems.push(`${label} anchors step ${step}, but the plan has ${steps.length} steps`);
+    } else if (type === "hold") {
+      problems.push(`${label} anchors step ${step}, a hold, which records no events`);
+    }
+  }
+  presentation.zooms?.forEach((zoom, index) => {
+    if ("fromStep" in zoom && zoom.fromStep > zoom.toStep) {
+      problems.push(`zooms[${index}] runs from step ${zoom.fromStep} back to step ${zoom.toStep}`);
+    }
+  });
+  return problems;
 }

@@ -16,6 +16,27 @@ const contentTypes: Record<string, string> = {
 
 export type Observation = { id: string; snapshot: string; scroll: { x: number; y: number } };
 
+export class CliError extends Error {
+  constructor(
+    message: string,
+    readonly stdout: string,
+    readonly stderr: string,
+  ) {
+    super(message);
+  }
+}
+
+/** With `--json`, a failure is reported on stdout instead of stderr. */
+function reportedError(stdout: string): string | undefined {
+  try {
+    const report = JSON.parse(stdout) as { ok?: boolean; error?: string; causes?: string[] };
+    if (report.ok !== false || !report.error) return undefined;
+    return [report.error, ...(report.causes ?? [])].join("\n  caused by: ");
+  } catch {
+    return undefined;
+  }
+}
+
 /** Runs one CLI command in its own process, as an agent does. */
 export async function cli<Result>(...args: string[]): Promise<Result> {
   try {
@@ -24,8 +45,9 @@ export async function cli<Result>(...args: string[]): Promise<Result> {
     });
     return JSON.parse(stdout) as Result;
   } catch (error) {
-    const stderr = (error as { stderr?: string }).stderr ?? "";
-    throw new Error(stderr.trim() || String(error), { cause: error });
+    const { stdout = "", stderr = "" } = error as { stdout?: string; stderr?: string };
+    const message = reportedError(stdout) ?? (stderr.trim() || String(error));
+    throw new CliError(message, stdout, stderr);
   }
 }
 
@@ -40,6 +62,8 @@ export async function act<Result>(project: string, action: object): Promise<Resu
 export async function serveFixture(): Promise<{ baseUrl: string; close: () => Promise<void> }> {
   const server = createServer((request, response) => {
     const path = new URL(request.url ?? "/", "http://localhost").pathname;
+    // Never answer, like a stalled site.
+    if (path.startsWith("/stall/")) return;
     const file = join(fixture, path === "/" ? "index.html" : path);
     readFile(file).then(
       (body) => {
@@ -57,7 +81,11 @@ export async function serveFixture(): Promise<{ baseUrl: string; close: () => Pr
   if (!address || typeof address === "string") throw new Error("No server address");
   return {
     baseUrl: `http://127.0.0.1:${address.port}/`,
-    close: () => new Promise((done) => server.close(() => done())),
+    close: () =>
+      new Promise((done) => {
+        server.closeAllConnections();
+        server.close(() => done());
+      }),
   };
 }
 

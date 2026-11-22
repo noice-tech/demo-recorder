@@ -17,6 +17,15 @@ function originOf(value: string): string | undefined {
   }
 }
 
+// No new windows, but same-tab opens still navigate (playstation.com uses
+// window.open(url, "_self")); the route handler still guards where they go.
+const WINDOW_OPEN_GUARD = `window.open = function (url, target) {
+  if (url && ["_self", "_parent", "_top"].includes(String(target))) {
+    try { window.location.assign(String(url)); } catch (error) {}
+  }
+  return null;
+};`;
+
 function frameOrigin(request: Request): string | undefined {
   try {
     return originOf(request.frame().url());
@@ -85,7 +94,7 @@ export async function enableBoundary(context: BrowserContext, ownedPage: Page): 
   ownedPage.on("download", onDownload);
 
   await context.addInitScript({
-    content: "window.open = function () { return null; };",
+    content: WINDOW_OPEN_GUARD,
   });
 
   return {

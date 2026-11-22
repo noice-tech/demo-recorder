@@ -1,5 +1,7 @@
+import { rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { parsePlan } from "@noice-tech/demo-recorder-core";
+import { ActionError } from "../driver/action-error.js";
 import { selectDriver } from "../driver/index.js";
 import type { Session } from "../driver/types.js";
 import { actionTarget, revealTarget, type RevealSurface } from "../motion/reveal.js";
@@ -11,6 +13,7 @@ import {
   type ParsedArguments,
 } from "../support/args.js";
 import { readJson, writeFileAtomic, writeJsonAtomic } from "../support/files.js";
+import { requirePresentationFits } from "../renderer/prepare-recording.js";
 import { planDigest } from "../support/rehearsal.js";
 
 export const rehearseOptions: OptionDefinitions = {
@@ -21,14 +24,26 @@ export const rehearseOptions: OptionDefinitions = {
   "storage-state": { type: "string" },
 };
 
-async function writeEvidence(project: string, step: number, session: Session): Promise<void> {
-  await Promise.all([
-    session.screenshot(join(project, "evidence", `step-${step}.png`)).catch(() => undefined),
+/** Returns the evidence files written; a page stuck mid-navigation may yield none. */
+async function writeEvidence(project: string, step: number, session: Session): Promise<string[]> {
+  const screenshot = `evidence/step-${step}.png`;
+  const snapshot = `evidence/step-${step}.yml`;
+  // Remove files from an earlier rehearsal so they cannot pass for this one.
+  await Promise.all([screenshot, snapshot].map((path) => rm(join(project, path), { force: true })));
+  const written = await Promise.all([
+    session.screenshot(join(project, screenshot)).then(
+      () => screenshot,
+      () => undefined,
+    ),
     session
       .snapshot()
-      .then((snapshot) => writeFileAtomic(join(project, "evidence", `step-${step}.yml`), snapshot))
-      .catch(() => undefined),
+      .then((text) => writeFileAtomic(join(project, snapshot), text))
+      .then(
+        () => snapshot,
+        () => undefined,
+      ),
   ]);
+  return written.filter((path): path is string => path !== undefined);
 }
 
 export function resolvePlanPath(args: ParsedArguments): { project: string; planPath: string } {
@@ -54,6 +69,7 @@ export async function planShow(args: ParsedArguments): Promise<unknown> {
 export async function planRehearse(args: ParsedArguments): Promise<unknown> {
   const { project, planPath } = resolvePlanPath(args);
   const plan = parsePlan(await readJson(planPath));
+  await requirePresentationFits(project, plan);
   const driver = selectDriver(stringOption(args, "driver") ?? "playwright");
   const storageStatePath = stringOption(args, "storage-state");
   const session = await driver.connect({
@@ -95,18 +111,21 @@ export async function planRehearse(args: ParsedArguments): Promise<unknown> {
     return report;
   } catch (error) {
     if (error instanceof PlanRunError) {
-      await writeEvidence(project, error.step, session);
+      const evidence = await writeEvidence(project, error.step, session);
       await writeJsonAtomic(join(project, "rehearsal-report.json"), {
         ok: false,
         captureReady: false,
         name: plan.name,
         plan: planPath,
         error: error.message,
+        ...(error.cause instanceof ActionError ? { callLog: error.cause.callLog } : {}),
         steps: error.reports,
       });
-      throw new Error(`${error.message}. Evidence: evidence/step-${error.step}.png`, {
-        cause: error,
-      });
+      const saved =
+        evidence.length > 0
+          ? `Evidence: ${evidence.join(", ")}`
+          : "No evidence: the page could not be read";
+      throw new Error(`${error.message.replace(/\.$/, "")}. ${saved}`, { cause: error });
     }
     throw error;
   } finally {
