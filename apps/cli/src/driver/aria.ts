@@ -45,3 +45,68 @@ export function snapshotEntries(tree: unknown): SnapshotEntry[] {
   visit(tree, [], []);
   return entries;
 }
+
+const OUTLINE_ROLES = new Set([
+  "heading",
+  "button",
+  "link",
+  "radio",
+  "checkbox",
+  "switch",
+  "tab",
+  "menuitem",
+  "menuitemcheckbox",
+  "menuitemradio",
+  "option",
+  "combobox",
+  "textbox",
+  "searchbox",
+  "spinbutton",
+  "slider",
+  "iframe",
+  "status",
+  "alert",
+]);
+/** Containers worth showing when named, so a control's place stays readable. */
+const NAMED_CONTAINERS = new Set([
+  "dialog",
+  "alertdialog",
+  "region",
+  "navigation",
+  "form",
+  "group",
+  "radiogroup",
+  "tabpanel",
+  "listbox",
+  "menu",
+]);
+
+/**
+ * The snapshot reduced to what the agent acts on: headings, controls, clickable
+ * elements, and named containers, nested as in the page. Text, wrappers, and
+ * link URLs stay in the full snapshot file.
+ */
+export function outlineOf(snapshot: string): string {
+  const kept: { depth: number; text: string }[] = [];
+  const open: number[] = [];
+  for (const line of snapshot.split("\n")) {
+    const match = /^(\s*)- ([\w-]+)?(.*)$/.exec(line);
+    if (!match) continue;
+    const [, indent = "", role = "", rest = ""] = match;
+    // Any line at or above a kept element's depth ends that element's subtree.
+    while (open.length > 0 && (open.at(-1) ?? 0) >= indent.length) open.pop();
+    const keep =
+      OUTLINE_ROLES.has(role) ||
+      (rest.startsWith(' "') && NAMED_CONTAINERS.has(role)) ||
+      rest.includes("[cursor=pointer]");
+    if (!keep) continue;
+    kept.push({ depth: open.length, text: `- ${role}${rest.replace(/:$/, "")}` });
+    open.push(indent.length);
+  }
+  return kept
+    .map((entry, index) => {
+      const parent = (kept[index + 1]?.depth ?? 0) > entry.depth ? ":" : "";
+      return `${"  ".repeat(entry.depth)}${entry.text}${parent}`;
+    })
+    .join("\n");
+}

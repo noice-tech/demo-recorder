@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join } from "node:path";
@@ -14,7 +14,12 @@ const contentTypes: Record<string, string> = {
   ".css": "text/css",
 };
 
-export type Observation = { id: string; snapshot: string; scroll: { x: number; y: number } };
+export type Observation = {
+  id: string;
+  outline: string;
+  snapshotFile: string;
+  scroll: { x: number; y: number };
+};
 
 export class CliError extends Error {
   constructor(
@@ -49,6 +54,11 @@ export async function cli<Result>(...args: string[]): Promise<Result> {
     const message = reportedError(stdout) ?? (stderr.trim() || String(error));
     throw new CliError(message, stdout, stderr);
   }
+}
+
+/** Starts a CLI command without waiting for it, to stop it midway. */
+export function startCli(...args: string[]): ChildProcess {
+  return spawn(process.execPath, ["--import", "tsx", cliEntry, ...args], { stdio: "ignore" });
 }
 
 /** Runs `explore act` with an action written to the project's input file. */
@@ -89,7 +99,7 @@ export async function serveFixture(): Promise<{ baseUrl: string; close: () => Pr
   };
 }
 
-/** Refs the snapshot shows for an element, in page order. */
+/** Refs an outline or snapshot shows for an element, in page order. */
 export function refsOf(snapshot: string, element: string): string[] {
   return snapshot
     .split("\n")

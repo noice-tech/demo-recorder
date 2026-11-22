@@ -16,18 +16,17 @@ node "$DR_CLI" explore start \
 
 Exploration runs under the same runtime boundary as rehearsal and recording. Top-level navigation may reach only the `--url` origin, the origin it redirected to, and origins passed as `--allow-origin https://shop.example.com,https://id.example.com`; embedded frames load from anywhere. The session summary lists `allowedOrigins`; copy any origin beyond the base URL's into the plan's `target.allowedOrigins`. When `act` reports `blocked`, such as `off-origin navigation …` or `new window …`, the action ran but its effect was stopped, and recording would stop it too. To allow another origin, finish and start exploration again with `--allow-origin`.
 
-The response contains the session summary and the first observation: URL, title, viewport, scroll, console errors, the path of a screenshot, and `snapshot`, Playwright's accessibility tree of the page:
+The response contains the session summary and the first observation: URL, title, viewport, scroll, console errors, the path of a screenshot, and `outline`, the page's headings, controls, clickable elements, and named containers from Playwright's accessibility tree:
 
 ```yaml
-- banner [ref=e2]:
-    - button "Create project" [ref=e5] [cursor=pointer]
+- button "Create project" [ref=e5] [cursor=pointer]
 - region "Pricing" [ref=e11]:
     - button "Choose plan" [ref=e20]
     - iframe [ref=e26]:
         - button "Preview action" [ref=f1e2]
 ```
 
-Every element carries a ref, including elements in open shadow roots and iframes. Refs are valid only for that observation.
+Every element carries a ref, including elements in open shadow roots and iframes. Refs are valid only for that observation. The outline leaves out page text, wrappers, and link URLs. The full tree, with the same refs, is in `snapshotFile` (`observations/<id>.yml`). Read it when the story needs the page's copy, or pass `--full` to `start`, `act`, or `observe` to get it as `snapshot` in the response.
 
 Propose one bounded action at a time as JSON:
 
@@ -75,7 +74,7 @@ Use `explore observe` only for pages that changed without an explorer action, su
 node "$DR_CLI" explore observe --project ./demo --json
 ```
 
-Each observation is written as `observations/<id>.json` plus `<id>.yml` (the same snapshot) and `<id>.png` (screenshot).
+Each observation is written as `observations/<id>.json` plus `<id>.yml` (the full snapshot) and `<id>.png` (screenshot).
 
 A session ends itself after 5 minutes idle, 20 minutes total, or 200 actions. Override at start with `--idle-timeout`, `--max-duration` (never above 60 minutes), and `--max-actions`. Always close it:
 

@@ -11,6 +11,8 @@ export type RunLogEntry = {
   startedAt: string;
   durationMs: number;
   ok: boolean;
+  /** Stopped by a signal (Ctrl-C, or a harness timeout), so neither a success nor a failure. */
+  interrupted?: true;
 };
 
 /** Commands that make up a demo run; `explore start` begins a new one. */
@@ -80,6 +82,14 @@ export type RunSummary = {
     rehearsals: number;
     /** Failed rehearsals and recordings before this recording. */
     repairAttempts: number;
+    /** Commands stopped by a signal; they count as neither success nor repair. */
+    interrupted: number;
+    /** Recordings in this run, this one included. */
+    recordings: number;
+    /** From the start of the run to the end of its first successful recording. */
+    firstVideoMs: number;
+    /** From the first successful recording to the end of this one; 0 when this is the first. */
+    polishMs: number;
   };
 };
 
@@ -114,6 +124,9 @@ export function summarizeRun(input: {
       : Math.max(0, (firstRehearsal ?? recordStart) - explorationEnd);
   const rehearsalMs = firstRehearsal === undefined ? undefined : recordStart - firstRehearsal;
   const recordMs = record.finishedAt.getTime() - recordStart;
+  const records = entries.filter((entry) => entry.command === "record");
+  const firstVideo = records.find((entry) => entry.ok);
+  const firstVideoEnd = firstVideo ? endOf(firstVideo) : record.finishedAt.getTime();
 
   return {
     runId: input.runId,
@@ -130,8 +143,15 @@ export function summarizeRun(input: {
       exploreActions: explore.filter((entry) => entry.command === "explore act").length,
       rehearsals: rehearsals.length,
       repairAttempts: entries.filter(
-        (entry) => !entry.ok && (entry.command === "plan rehearse" || entry.command === "record"),
+        (entry) =>
+          !entry.ok &&
+          !entry.interrupted &&
+          (entry.command === "plan rehearse" || entry.command === "record"),
       ).length,
+      interrupted: entries.filter((entry) => entry.interrupted).length,
+      recordings: records.length + 1,
+      firstVideoMs: firstVideoEnd - runStart,
+      polishMs: record.finishedAt.getTime() - firstVideoEnd,
     },
   };
 }

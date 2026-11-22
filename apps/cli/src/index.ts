@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { backgroundPresetNames, type BackgroundOptions } from "@noice-tech/demo-recorder-core";
-import { realpathSync } from "node:fs";
+import { appendFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -38,16 +38,22 @@ import {
   type OptionDefinitions,
   type ParsedArguments,
 } from "./support/args.js";
-import { appendRunLog, RUN_COMMANDS, runIdFor } from "./support/run-log.js";
+import {
+  appendRunLog,
+  RUN_COMMANDS,
+  runIdFor,
+  runLogPath,
+  type RunLogEntry,
+} from "./support/run-log.js";
 import { cliVersion } from "./version.js";
 
 function usage(): string {
   return [
     "Usage:",
-    "  demo-recorder explore start --url URL [--project DIR] [--driver NAME] [--headed] [--viewport WxH] [--policy read-only|reversible] [--allow-origin URL[,URL]]",
+    "  demo-recorder explore start --url URL [--project DIR] [--driver NAME] [--headed] [--viewport WxH] [--policy read-only|reversible] [--allow-origin URL[,URL]] [--full]",
     "  demo-recorder explore pages [--project DIR | --driver cdp --target URL]",
-    "  demo-recorder explore observe [--project DIR]",
-    "  demo-recorder explore act --input FILE [--project DIR]",
+    "  demo-recorder explore observe [--project DIR] [--full]",
+    "  demo-recorder explore act --input FILE [--project DIR] [--full]",
     "  demo-recorder explore finish [--project DIR]",
     "  demo-recorder plan rehearse [plan.json] [--project DIR] [--headed] [--storage-state FILE]",
     "  demo-recorder record [plan.json] [--project DIR] [--allow-unguarded] [--skip-rehearsal] [--headed] [--storage-state FILE] [--output FILE]",
@@ -259,19 +265,36 @@ async function runLogged(command: string | undefined, rest: string[]): Promise<u
   const project = resolve(projectArgument(rest));
   const startedAt = new Date();
   const runId = await runIdFor(project, label, startedAt);
+  const entry = (ok: boolean): RunLogEntry => ({
+    runId,
+    command: label,
+    startedAt: startedAt.toISOString(),
+    durationMs: Date.now() - startedAt.getTime(),
+    ok,
+  });
+  // A signal (Ctrl-C, or a harness timeout) ends the process before `finally` runs.
+  const onSignal = (signal: NodeJS.Signals): void => {
+    try {
+      appendFileSync(
+        runLogPath(project),
+        `${JSON.stringify({ ...entry(false), interrupted: true })}\n`,
+      );
+    } catch {
+      // Logging never fails the command.
+    }
+    process.exit(signal === "SIGINT" ? 130 : 143);
+  };
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
   let ok = false;
   try {
     const result = await dispatch(command, rest);
     ok = true;
     return result;
   } finally {
-    await appendRunLog(project, {
-      runId,
-      command: label,
-      startedAt: startedAt.toISOString(),
-      durationMs: Date.now() - startedAt.getTime(),
-      ok,
-    }).catch(() => undefined);
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
+    await appendRunLog(project, entry(ok)).catch(() => undefined);
   }
 }
 

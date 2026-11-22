@@ -3,14 +3,14 @@ import { summarizeRun, type RunLogEntry } from "../../src/support/run-log.js";
 
 const at = (seconds: number) => new Date(Date.UTC(2026, 10, 17, 12, 0, seconds));
 
-function entry(runId: string, command: string, startS: number, durationS: number, ok = true) {
-  return {
-    runId,
-    command,
-    startedAt: at(startS).toISOString(),
-    durationMs: durationS * 1_000,
-    ok,
-  } satisfies RunLogEntry;
+function entry(
+  runId: string,
+  command: string,
+  startS: number,
+  durationS: number,
+  ok = true,
+): RunLogEntry {
+  return { runId, command, startedAt: at(startS).toISOString(), durationMs: durationS * 1_000, ok };
 }
 
 const record = { startedAt: at(40), finishedAt: at(55), captureMs: 6_000, renderMs: 9_000 };
@@ -49,7 +49,33 @@ describe("summarizeRun", () => {
         exploreActions: 1,
         rehearsals: 2,
         repairAttempts: 1,
+        interrupted: 0,
+        recordings: 1,
+        firstVideoMs: 45_000,
+        polishMs: 0,
       },
+    });
+  });
+
+  it("separates polishing after the first video, and interruptions from failures", () => {
+    const summary = summarizeRun({
+      runId: "run-4",
+      entries: [
+        entry("run-4", "explore start", 0, 1),
+        entry("run-4", "plan rehearse", 5, 2),
+        entry("run-4", "record", 10, 8),
+        // Polishing: a harness timeout stops one recording, another fails.
+        { ...entry("run-4", "record", 20, 4, false), interrupted: true },
+        entry("run-4", "record", 30, 5, false),
+      ],
+      record,
+    });
+    expect(summary.metrics).toMatchObject({
+      recordings: 4,
+      firstVideoMs: 18_000,
+      polishMs: 37_000,
+      interrupted: 1,
+      repairAttempts: 1,
     });
   });
 
@@ -63,6 +89,10 @@ describe("summarizeRun", () => {
       exploreActions: 0,
       rehearsals: 0,
       repairAttempts: 0,
+      interrupted: 0,
+      recordings: 1,
+      firstVideoMs: 15_000,
+      polishMs: 0,
     });
   });
 });

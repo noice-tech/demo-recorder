@@ -59,21 +59,25 @@ afterAll(async () => {
 describe("explore", () => {
   it("acts on snapshot refs across commands and returns durable plan targets", async () => {
     const { project, observation: first } = await startSession();
-    // The snapshot reaches into shadow DOM and iframes.
-    expect(first.snapshot).toContain('button "Open shadow preview"');
-    expect(first.snapshot).toContain('button "Preview action"');
+    // The outline reaches into shadow DOM and iframes.
+    expect(first.outline).toContain('button "Open shadow preview"');
+    expect(first.outline).toContain('button "Preview action"');
+    // It leaves page text to the full snapshot file.
+    const copy = "Plan, review, and ship your next product update";
+    expect(first.outline).not.toContain(copy);
+    expect(await readFile(join(project, first.snapshotFile), "utf8")).toContain(copy);
 
     const tab = await act(project, {
       type: "click",
       observationId: first.id,
-      ref: refOf(first.snapshot, 'tab "Activity"'),
+      ref: refOf(first.outline, 'tab "Activity"'),
     });
     expect(tab).toMatchObject({ recordable: true, target: { role: "tab", name: "Activity" } });
     // A ref the previous action introduced still resolves in the next command.
     const heading = await act(project, {
       type: "click",
       observationId: tab.observation.id,
-      ref: refOf(tab.observation.snapshot, 'heading "Recent activity"'),
+      ref: refOf(tab.observation.outline, 'heading "Recent activity"'),
     });
     expect(heading).toMatchObject({
       recordable: true,
@@ -81,7 +85,7 @@ describe("explore", () => {
     });
 
     // The same control in two named sections is narrowed to its section.
-    const [, proPlan] = refsOf(heading.observation.snapshot, 'button "Choose plan"');
+    const [, proPlan] = refsOf(heading.observation.outline, 'button "Choose plan"');
     const plan = await act(project, {
       type: "click",
       observationId: heading.observation.id,
@@ -93,7 +97,7 @@ describe("explore", () => {
     });
 
     // Identical controls with no named container cannot be told apart in a plan.
-    const [, duplicate] = refsOf(plan.observation.snapshot, 'button "Open details"');
+    const [, duplicate] = refsOf(plan.observation.outline, 'button "Open details"');
     const details = await act(project, {
       type: "click",
       observationId: plan.observation.id,
@@ -107,7 +111,7 @@ describe("explore", () => {
     const preview = await act(project, {
       type: "click",
       observationId: details.observation.id,
-      ref: refOf(details.observation.snapshot, 'button "Preview action"'),
+      ref: refOf(details.observation.outline, 'button "Preview action"'),
     });
     expect(preview).toMatchObject({
       recordable: true,
@@ -121,7 +125,7 @@ describe("explore", () => {
       act(project, {
         type: "click",
         observationId: first.id,
-        ref: refOf(first.snapshot, 'button "Create project"'),
+        ref: refOf(first.outline, 'button "Create project"'),
       }),
     ).rejects.toThrow(/must match the current observation/);
     await expect(act(project, { type: "navigate", url: "https://example.com/" })).rejects.toThrow(
@@ -148,7 +152,7 @@ describe("explore", () => {
       act(project, {
         type: "click",
         observationId: observation.id,
-        ref: refOf(observation.snapshot, 'button "Create project"'),
+        ref: refOf(observation.outline, 'button "Create project"'),
       }),
     ).rejects.toThrow(/page changed since obs-0001; e\d+ is no longer button "Create project"/);
   }, 30_000);
@@ -161,14 +165,14 @@ describe("explore", () => {
     const popup = await act(project, {
       type: "click",
       observationId: observation.id,
-      ref: refOf(observation.snapshot, 'button "Open partner window"'),
+      ref: refOf(observation.outline, 'button "Open partner window"'),
     });
     expect(popup.blocked).toEqual([`new window ${partner.href}`]);
 
     const visit = await act(project, {
       type: "click",
       observationId: popup.observation.id,
-      ref: refOf(popup.observation.snapshot, 'button "Visit partner"'),
+      ref: refOf(popup.observation.outline, 'button "Visit partner"'),
     });
     expect(visit.blocked).toEqual([
       `off-origin navigation ${partner.href}; add ${partner.origin} to allowedOrigins to allow it`,
@@ -180,7 +184,7 @@ describe("explore", () => {
     const clicked = await act(project, {
       type: "click",
       observationId: observation.id,
-      ref: refOf(observation.snapshot, 'button "PS5"'),
+      ref: refOf(observation.outline, 'button "PS5"'),
     });
     expect(clicked).toMatchObject({ target: { role: "button", name: "PS5" }, recordable: true });
   }, 60_000);
@@ -191,7 +195,7 @@ describe("explore", () => {
     const failure = await act(project, {
       type: "click",
       observationId: observation.id,
-      ref: refOf(observation.snapshot, 'button "Start trial"'),
+      ref: refOf(observation.outline, 'button "Start trial"'),
     }).catch((error: unknown) => error);
 
     // Playwright's default would retry for 30 s.

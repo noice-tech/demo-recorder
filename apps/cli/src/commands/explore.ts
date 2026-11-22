@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { explorationActionSchema, type ExplorationAction } from "@noice-tech/demo-recorder-core";
+import { outlineOf } from "../driver/aria.js";
 import { selectDriver } from "../driver/index.js";
 import { act, PolicyError } from "../session/act.js";
 import { observe, type Observation } from "../session/observe.js";
@@ -41,6 +42,7 @@ export const exploreOptions: OptionDefinitions = {
   "max-duration": { type: "string" },
   "max-actions": { type: "string" },
   input: { type: "string" },
+  full: { type: "boolean" },
 };
 
 function projectOf(args: ParsedArguments): string {
@@ -93,15 +95,21 @@ function summarizeSession(file: SessionFile) {
   };
 }
 
-/** What the agent reads: the AI snapshot carries every element with its ref. */
-function summarizeObservation(observation: Observation) {
+/**
+ * What the agent reads. The outline keeps every control with its ref; the page's
+ * text is in `snapshotFile`, or inline with `--full`.
+ */
+function summarizeObservation(observation: Observation, args: ParsedArguments) {
   return {
     id: observation.id,
     url: observation.url,
     title: observation.title,
     viewport: observation.viewport,
     scroll: observation.scroll,
-    snapshot: observation.snapshot,
+    ...(booleanOption(args, "full")
+      ? { snapshot: observation.snapshot }
+      : { outline: outlineOf(observation.snapshot) }),
+    snapshotFile: observation.artifacts.snapshot,
     errors: observation.errors,
     screenshot: observation.artifacts.screenshot,
   };
@@ -197,7 +205,7 @@ export async function exploreStart(args: ParsedArguments): Promise<unknown> {
     actions: 0,
   };
   await saveSessionFile(project, file);
-  return { session: summarizeSession(file), observation: summarizeObservation(observation) };
+  return { session: summarizeSession(file), observation: summarizeObservation(observation, args) };
 }
 
 export async function explorePages(args: ParsedArguments): Promise<unknown> {
@@ -223,7 +231,10 @@ export async function exploreObserve(args: ParsedArguments): Promise<unknown> {
   const observation = await observe({ project, session, viewport: file.viewport, id });
   const updated = { ...file, lastObservationId: observation.id };
   await saveSessionFile(project, updated);
-  return { session: summarizeSession(updated), observation: summarizeObservation(observation) };
+  return {
+    session: summarizeSession(updated),
+    observation: summarizeObservation(observation, args),
+  };
 }
 
 export async function exploreAct(args: ParsedArguments): Promise<unknown> {
@@ -254,7 +265,7 @@ export async function exploreAct(args: ParsedArguments): Promise<unknown> {
       reason: result.reason,
       ...(result.blocked.length > 0 ? { blocked: result.blocked } : {}),
       session: summarizeSession(updated),
-      observation: summarizeObservation(result.observation),
+      observation: summarizeObservation(result.observation, args),
     };
   } catch (error) {
     if (error instanceof PolicyError) {
