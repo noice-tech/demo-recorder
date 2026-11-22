@@ -80,7 +80,9 @@ export async function enableBoundary(
   });
 
   const onPage = (page: Page): void => {
-    if (page === ownedPage) return;
+    if (page === ownedPage) {
+      return;
+    }
     blocked.push(`popup ${page.url()}`);
     void page.close().catch(() => undefined);
   };
@@ -94,8 +96,9 @@ export async function enableBoundary(
 
   const onConsole = (message: { text(): string }): void => {
     const text = message.text();
-    if (text.startsWith(BLOCKED_WINDOW))
+    if (text.startsWith(BLOCKED_WINDOW)) {
       blocked.push(`new window ${text.slice(BLOCKED_WINDOW.length)}`);
+    }
   };
   context.on("console", onConsole);
 
@@ -105,7 +108,9 @@ export async function enableBoundary(
     blocked,
     allow(url: string) {
       const origin = originOf(url);
-      if (origin) allowed.add(origin);
+      if (origin) {
+        allowed.add(origin);
+      }
     },
     async dispose() {
       await context.unroute("**/*").catch(() => undefined);

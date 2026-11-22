@@ -70,7 +70,9 @@ async function frameSimilarity(actual: string, expected: string): Promise<number
     "-",
   ]);
   const match = /All:([0-9.]+)/.exec(result.stderr);
-  if (!match?.[1]) throw new Error(`Unable to parse SSIM output: ${result.stderr.slice(-2_000)}`);
+  if (!match?.[1]) {
+    throw new Error(`Unable to parse SSIM output: ${result.stderr.slice(-2_000)}`);
+  }
   return Number(match[1]);
 }
 
@@ -94,7 +96,9 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
-  if (temporaryDirectory) await rm(temporaryDirectory, { recursive: true, force: true });
+  if (temporaryDirectory) {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
 });
 
 describe.sequential("FFmpeg product-demo render", () => {
@@ -130,7 +134,9 @@ describe.sequential("FFmpeg product-demo render", () => {
   it("matches neutral, click, zoom-hold, and zoom-exit golden frames", async () => {
     for (const frame of goldenFrames) {
       const actual = actualFrames.get(frame);
-      if (!actual) throw new Error(`Actual frame ${frame} was not extracted`);
+      if (!actual) {
+        throw new Error(`Actual frame ${frame} was not extracted`);
+      }
       const similarity = await frameSimilarity(actual, join(goldenDirectory, `frame-${frame}.png`));
       expect(similarity, `frame ${frame} SSIM`).toBeGreaterThan(0.94);
     }
@@ -153,7 +159,9 @@ describe.sequential("FFmpeg product-demo render", () => {
       assetsDirectory,
       signal: controller.signal,
       onProgress: (progress) => {
-        if (progress > 0) controller.abort();
+        if (progress > 0) {
+          controller.abort();
+        }
       },
     });
     await expect(rendering).rejects.toThrow();

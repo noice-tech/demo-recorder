@@ -28,7 +28,9 @@ function transitionDurations(
   const enter = Math.max(0, enterDurationMs);
   const exit = Math.max(0, exitDurationMs);
   const total = enter + exit;
-  if (total === 0 || total <= durationMs) return { enterMs: enter, exitMs: exit };
+  if (total === 0 || total <= durationMs) {
+    return { enterMs: enter, exitMs: exit };
+  }
   const ratio = durationMs / total;
   return { enterMs: enter * ratio, exitMs: exit * ratio };
 }
@@ -82,7 +84,9 @@ function piecewise(
   let expression = fallback;
   for (let index = segments.length - 1; index >= 0; index -= 1) {
     const segment = segments[index];
-    if (!segment) continue;
+    if (!segment) {
+      continue;
+    }
     expression = `if(between(${time},${number(segment.startMs / 1000)},${number(segment.endMs / 1000)}),${value(segment, index)},${expression})`;
   }
   return expression;
@@ -121,14 +125,18 @@ export function buildCameraExpressions(input: {
       input.geometry.content,
     )[axis];
     const previous = input.timeline.zoomSegments[index - 1];
-    if (!joined(previous, segment) || input.enterDurationMs === 0) return number(target);
+    if (!joined(previous, segment) || input.enterDurationMs === 0) {
+      return number(target);
+    }
 
     const enterMs = transitionDurations(
       segment.endMs - segment.startMs,
       input.enterDurationMs,
       input.exitDurationMs,
     ).enterMs;
-    if (enterMs === 0) return number(target);
+    if (enterMs === 0) {
+      return number(target);
+    }
     const source = projectViewportPoint(
       { x: previous!.focusX, y: previous!.focusY },
       input.viewport,

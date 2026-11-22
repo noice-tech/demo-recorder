@@ -24,7 +24,9 @@ type SmoothScrollOptions = {
 };
 
 function validateDelta(value: number): void {
-  if (!Number.isFinite(value)) throw new Error("Scroll deltas must be finite");
+  if (!Number.isFinite(value)) {
+    throw new Error("Scroll deltas must be finite");
+  }
 }
 
 /**
@@ -35,7 +37,9 @@ export function scrollDurationMs(deltaY: number, deltaX = 0): number {
   validateDelta(deltaX);
   validateDelta(deltaY);
   const distance = Math.hypot(deltaX, deltaY);
-  if (distance === 0) return 0;
+  if (distance === 0) {
+    return 0;
+  }
   return Math.min(
     MAX_SCROLL_DURATION_MS,
     Math.max(
@@ -60,11 +64,14 @@ export function generateScrollGesture(
   if (
     options.durationMs !== undefined &&
     (!Number.isFinite(options.durationMs) || options.durationMs <= 0)
-  )
+  ) {
     throw new Error("Scroll duration must be a finite positive number");
+  }
 
   const distance = Math.hypot(deltaX, deltaY);
-  if (distance === 0) return { deltas: [], durationMs: 0 };
+  if (distance === 0) {
+    return { deltas: [], durationMs: 0 };
+  }
 
   const durationMs = options.durationMs ?? scrollDurationMs(deltaY, deltaX);
   const sampleCount = Math.max(2, Math.ceil((durationMs / 1000) * SCROLL_SAMPLE_RATE));
@@ -99,7 +106,9 @@ export async function smoothScroll(
   options: SmoothScrollOptions = {},
 ): Promise<void> {
   const gesture = generateScrollGesture(deltaY, deltaX, options);
-  if (gesture.deltas.length === 0) return;
+  if (gesture.deltas.length === 0) {
+    return;
+  }
 
   const now = options.now ?? (() => performance.now());
   const startedAtMs = now();
@@ -109,7 +118,9 @@ export async function smoothScroll(
     const scheduledAtMs =
       startedAtMs + (finalIndex === 0 ? 0 : (gesture.durationMs * index) / finalIndex);
     const delayMs = scheduledAtMs - now();
-    if (delayMs > 0) await sink.waitForTimeout(delayMs);
+    if (delayMs > 0) {
+      await sink.waitForTimeout(delayMs);
+    }
     await sink.wheel(delta.deltaX, delta.deltaY);
   }
 

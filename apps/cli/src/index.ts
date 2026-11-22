@@ -87,10 +87,16 @@ const serverOptions: OptionDefinitions = {
 };
 
 function backgroundOption(value: string | undefined): BackgroundOptions | undefined {
-  if (!value) return undefined;
-  if (/^#[0-9a-fA-F]{6}$/.test(value)) return { type: "color", color: value };
+  if (!value) {
+    return undefined;
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+    return { type: "color", color: value };
+  }
   const preset = backgroundPresetNames.find((name) => value === `preset:${name}`);
-  if (preset) return { type: "preset", name: preset };
+  if (preset) {
+    return { type: "preset", name: preset };
+  }
   throw new Error(`--background must be #RRGGBB or preset:${backgroundPresetNames.join("|")}`);
 }
 
@@ -98,10 +104,12 @@ async function runRender(rest: string[]): Promise<unknown> {
   const parsed = parseArguments(rest, renderOptions);
   const size = dimensionsOption(parsed, "size");
   const aspectRatio = stringOption(parsed, "aspect-ratio");
-  if (size && aspectRatio) throw new Error("Use either --aspect-ratio or --size, not both");
+  if (size && aspectRatio) {
+    throw new Error("Use either --aspect-ratio or --size, not both");
+  }
   const padding = nonNegativeNumberOption(parsed, "padding");
   const paddingMode = stringOption(parsed, "padding-mode");
-  if (paddingMode && !["minimum", "exact"].includes(paddingMode)) {
+  if (paddingMode !== undefined && paddingMode !== "minimum" && paddingMode !== "exact") {
     throw new Error("--padding-mode must be minimum or exact");
   }
   const background = backgroundOption(stringOption(parsed, "background"));
@@ -114,7 +122,7 @@ async function runRender(rest: string[]): Promise<unknown> {
     ...size,
     ...(aspectRatio ? { aspectRatio } : {}),
     ...(padding !== undefined ? { padding } : {}),
-    ...(paddingMode ? { paddingMode: paddingMode as "minimum" | "exact" } : {}),
+    ...(paddingMode ? { paddingMode } : {}),
     ...(background ? { background } : {}),
   });
 }
@@ -197,12 +205,16 @@ async function runBrowserServerCommand(rest: string[]): Promise<unknown> {
 
 /** An error and its causes, skipping a cause whose message the previous one includes. */
 function errorMessages(error: unknown): string[] {
-  if (!(error instanceof Error)) return [String(error)];
+  if (!(error instanceof Error)) {
+    return [String(error)];
+  }
   const messages: string[] = [];
   let current: unknown = error;
   while (current instanceof Error) {
     const message = current.message.trim();
-    if (!messages.at(-1)?.includes(message)) messages.push(message);
+    if (!messages.at(-1)?.includes(message)) {
+      messages.push(message);
+    }
     current = current.cause;
   }
   return messages;
@@ -247,7 +259,10 @@ async function dispatch(command: string | undefined, rest: string[]): Promise<un
 /** The value of `--project`, which every run command accepts (default `.`). */
 function projectArgument(rest: string[]): string {
   const index = rest.indexOf("--project");
-  if (index !== -1 && rest[index + 1]) return rest[index + 1] as string;
+  const value = index === -1 ? undefined : rest[index + 1];
+  if (value) {
+    return value;
+  }
   const inline = rest.find((argument) => argument.startsWith("--project="));
   return inline ? inline.slice("--project=".length) : ".";
 }
@@ -260,7 +275,9 @@ async function runLogged(command: string | undefined, rest: string[]): Promise<u
   const label = ["explore", "plan", "auth"].includes(command ?? "")
     ? `${command} ${rest[0] ?? ""}`
     : (command ?? "");
-  if (!RUN_COMMANDS.has(label)) return dispatch(command, rest);
+  if (!RUN_COMMANDS.has(label)) {
+    return dispatch(command, rest);
+  }
 
   const project = resolve(projectArgument(rest));
   const startedAt = new Date();
@@ -320,11 +337,15 @@ export async function runCli(arguments_: string[]): Promise<void> {
   }
 
   const result = await runLogged(command, rest);
-  if (result !== undefined) console.log(JSON.stringify(result, null, 2));
+  if (result !== undefined) {
+    console.log(JSON.stringify(result, null, 2));
+  }
 }
 
 function isMainModule(): boolean {
-  if (!process.argv[1]) return false;
+  if (!process.argv[1]) {
+    return false;
+  }
   try {
     return realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url));
   } catch {

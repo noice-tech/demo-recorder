@@ -142,7 +142,9 @@ export async function exploreStart(args: ParsedArguments): Promise<unknown> {
     const live = await loadSessionFile(project)
       .then((file) => connectSession(project, file))
       .catch(() => undefined);
-    if (live) throw new Error("A live explore session already exists for this project");
+    if (live) {
+      throw new Error("A live explore session already exists for this project");
+    }
     await clearSessionFile(project);
   }
 
@@ -172,18 +174,24 @@ export async function exploreStart(args: ParsedArguments): Promise<unknown> {
   if (attached) {
     const pages = await session.listPages();
     if (!page) {
-      if (pages.length === 0) throw new Error("The attached browser has no open tabs");
+      if (pages.length === 0) {
+        throw new Error("The attached browser has no open tabs");
+      }
       if (pages.length > 1) {
         throw new Error(
           `The attached browser has ${pages.length} tabs; select one with --page (see \`explore pages\`)`,
         );
       }
       page = pages[0]?.id;
-      if (page) await session.selectPage(page);
+      if (page) {
+        await session.selectPage(page);
+      }
     }
   }
 
-  if (url) await session.goto(url);
+  if (url) {
+    await session.goto(url);
+  }
   const observation = await observe({ project, session, viewport, id: "obs-0001" });
   const file: SessionFile = {
     version: 1,
@@ -242,7 +250,9 @@ export async function exploreAct(args: ParsedArguments): Promise<unknown> {
   const inputPath = requireStringOption(args, "input");
   const action: ExplorationAction = explorationActionSchema.parse(await readJson(inputPath));
   const { file, session } = await connectExisting(project);
-  if (!file.lastObservationId) throw new Error("The session has no observation to act on");
+  if (!file.lastObservationId) {
+    throw new Error("The session has no observation to act on");
+  }
   const id = nextObservationId(file.lastObservationId);
 
   try {
@@ -278,7 +288,9 @@ export async function exploreAct(args: ParsedArguments): Promise<unknown> {
 export async function exploreFinish(args: ParsedArguments): Promise<unknown> {
   const project = projectOf(args);
   const file = await loadSessionFile(project).catch(() => undefined);
-  if (!file) return { closed: false, message: "No live session to finish" };
+  if (!file) {
+    return { closed: false, message: "No live session to finish" };
+  }
 
   const closed = file.browser.owned;
   const connected = await connectSession(project, file).catch(() => undefined);

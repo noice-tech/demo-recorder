@@ -28,7 +28,9 @@ export function findFfmpegAssets(): string | undefined {
 
 export function requireFfmpegAssets(): string {
   const path = findFfmpegAssets();
-  if (path) return path;
+  if (path) {
+    return path;
+  }
   throw new Error(
     "FFmpeg renderer assets are missing. Run `pnpm package:cli` in a source checkout or reinstall Demo Recorder.",
   );

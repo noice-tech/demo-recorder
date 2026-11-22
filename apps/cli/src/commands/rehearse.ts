@@ -138,7 +138,9 @@ export async function planRehearse(args: ParsedArguments): Promise<unknown> {
         return;
       }
       const target = actionTarget(action);
-      if (target) await revealTarget(revealSurface, target, plan.viewport);
+      if (target) {
+        await revealTarget(revealSurface, target, plan.viewport);
+      }
       await session.perform(action);
     },
     waitFor: (expect) => session.waitFor(expect),

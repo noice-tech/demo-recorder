@@ -14,7 +14,9 @@ export type OptionDefinitions = Record<string, OptionDefinition>;
 
 function normalizedArguments(arguments_: string[], definitions: OptionDefinitions): string[] {
   return arguments_.map((argument) => {
-    if (!argument.startsWith("--") || argument.includes("=")) return argument;
+    if (!argument.startsWith("--") || argument.includes("=")) {
+      return argument;
+    }
     const definition = definitions[argument.slice(2)];
     return definition?.type === "string" && definition.optionalValue ? `${argument}=` : argument;
   });
@@ -38,17 +40,25 @@ export function parseArguments(
   });
   const seen = new Set<string>();
   for (const token of parsed.tokens) {
-    if (token.kind !== "option") continue;
-    if (seen.has(token.name)) throw new Error(`Option --${token.name} may only be specified once`);
+    if (token.kind !== "option") {
+      continue;
+    }
+    if (seen.has(token.name)) {
+      throw new Error(`Option --${token.name} may only be specified once`);
+    }
     seen.add(token.name);
   }
 
   const options = new Map<string, string | true>();
   for (const [name, value] of Object.entries(parsed.values)) {
-    if (value === undefined) continue;
+    if (value === undefined) {
+      continue;
+    }
     const definition = definitions[name];
     if (typeof value === "boolean") {
-      if (value) options.set(name, true);
+      if (value) {
+        options.set(name, true);
+      }
       continue;
     }
     options.set(name, value === "" && definition?.optionalValue ? true : value);
@@ -63,7 +73,9 @@ export function stringOption(arguments_: ParsedArguments, name: string): string 
 
 export function requireStringOption(arguments_: ParsedArguments, name: string): string {
   const value = stringOption(arguments_, name);
-  if (value === undefined) throw new Error(`Missing required option --${name}`);
+  if (value === undefined) {
+    throw new Error(`Missing required option --${name}`);
+  }
   return value;
 }
 
@@ -76,13 +88,18 @@ export function dimensionsOption(
   name: string,
 ): { width: number; height: number } | undefined {
   const text = stringOption(arguments_, name);
-  if (text === undefined) return undefined;
+  if (text === undefined) {
+    return undefined;
+  }
   const match = /^(\d+)x(\d+)$/.exec(text);
-  if (!match) throw new Error(`--${name} must use WIDTHxHEIGHT`);
+  if (!match) {
+    throw new Error(`--${name} must use WIDTHxHEIGHT`);
+  }
   const width = Number(match[1]);
   const height = Number(match[2]);
-  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0)
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) {
     throw new Error(`--${name} dimensions must be positive integers`);
+  }
   return { width, height };
 }
 
@@ -91,18 +108,24 @@ export function nonNegativeNumberOption(
   name: string,
 ): number | undefined {
   const text = stringOption(arguments_, name);
-  if (text === undefined) return undefined;
+  if (text === undefined) {
+    return undefined;
+  }
   const value = Number(text);
-  if (!Number.isSafeInteger(value) || value < 0)
+  if (!Number.isSafeInteger(value) || value < 0) {
     throw new Error(`--${name} must be a non-negative integer`);
+  }
   return value;
 }
 
 export function numberOption(arguments_: ParsedArguments, name: string, fallback: number): number {
   const text = stringOption(arguments_, name);
-  if (text === undefined) return fallback;
+  if (text === undefined) {
+    return fallback;
+  }
   const value = Number(text);
-  if (!Number.isSafeInteger(value) || value <= 0)
+  if (!Number.isSafeInteger(value) || value <= 0) {
     throw new Error(`--${name} must be a positive integer`);
+  }
   return value;
 }

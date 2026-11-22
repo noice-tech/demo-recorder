@@ -37,6 +37,15 @@ function exactName(name: string): RegExp {
  * Resolves a durable target. Role and name match the exact accessible name, and
  * search every frame of the page (one frame per match), like the AI snapshot does.
  */
+type AriaRole = Parameters<Page["getByRole"]>[0];
+
+// SAFETY: plans carry free-form role strings, and Playwright matches nothing for an unknown role.
+const ariaRole = (role: string) => role as AriaRole;
+
+// SAFETY: the expression builds this object from two numeric window properties.
+const scrollOf = (page: Page) =>
+  page.evaluate("({ x: window.scrollX, y: window.scrollY })") as Promise<{ x: number; y: number }>;
+
 function locatorFor(page: Page, target: Target, exact = true): Locator {
   if (target.selector) {
     const locator = page.locator(target.selector);
@@ -44,16 +53,21 @@ function locatorFor(page: Page, target: Target, exact = true): Locator {
     return target.selector.startsWith("aria-ref=") ? locator : locator.filter({ visible: true });
   }
   const root = target.within
-    ? page.frameLocator().getByRole(target.within.role as never, {
+    ? page.frameLocator().getByRole(ariaRole(target.within.role), {
         name: exactName(target.within.name),
       })
     : page.frameLocator();
-  if (target.role && target.name)
-    return root.getByRole(target.role as never, {
+  if (target.role && target.name) {
+    return root.getByRole(ariaRole(target.role), {
       name: exact ? exactName(target.name) : target.name,
     });
-  if (target.role) return root.getByRole(target.role as never);
-  if (target.name) return root.getByText(target.name);
+  }
+  if (target.role) {
+    return root.getByRole(ariaRole(target.role));
+  }
+  if (target.name) {
+    return root.getByText(target.name);
+  }
   throw new Error("Target has no role, name, or selector");
 }
 
@@ -64,17 +78,23 @@ async function countMatches(locator: Locator): Promise<number> {
   try {
     return await locator.count();
   } catch (error) {
-    if (error instanceof Error && MULTIPLE_FRAMES.test(error.message)) return 2;
+    if (error instanceof Error && MULTIPLE_FRAMES.test(error.message)) {
+      return 2;
+    }
     throw error;
   }
 }
 
 /** Full names of elements whose name merely contains the target's, for the error. */
 async function nearMatches(page: Page, target: Target): Promise<string> {
-  if (!target.role || !target.name) return "";
+  if (!target.role || !target.name) {
+    return "";
+  }
   const loose = locatorFor(page, target, false);
   const count = await countMatches(loose).catch(() => 0);
-  if (count === 0 || count > 3) return "";
+  if (count === 0 || count > 3) {
+    return "";
+  }
   const lines = await Promise.all(
     Array.from({ length: count }, (_, index) => loose.nth(index).ariaSnapshot({ timeout: 1_000 })),
   ).catch(() => []);
@@ -135,12 +155,15 @@ async function waitForExpectation(
     if (expect.visible) {
       const locator = locatorFor(page, expect.visible);
       const count = await countMatches(locator);
-      if (count === 0) problems.push(`no ${describeTarget(expect.visible)} is in the page`);
-      else if (!(await locator.first().isVisible())) {
+      if (count === 0) {
+        problems.push(`no ${describeTarget(expect.visible)} is in the page`);
+      } else if (!(await locator.first().isVisible())) {
         problems.push(`${describeTarget(expect.visible)} is in the page but not visible`);
       }
     }
-    if (problems.length === 0) return;
+    if (problems.length === 0) {
+      return;
+    }
     await page.waitForTimeout(50);
   }
   const detail = activity();
@@ -157,7 +180,9 @@ const UNDER_OWN_LABEL = (element: Element): boolean => {
   if (!(element instanceof HTMLInputElement) || !["radio", "checkbox"].includes(element.type)) {
     return false;
   }
-  if (element.disabled || !element.labels?.length) return false;
+  if (element.disabled || !element.labels?.length) {
+    return false;
+  }
   element.scrollIntoView({ block: "nearest", inline: "nearest" });
   const box = element.getBoundingClientRect();
   const hit = element.ownerDocument.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
@@ -192,7 +217,9 @@ export async function selectPage(context: BrowserContext, selectedId?: string): 
   const pages = context.pages();
   if (selectedId !== undefined) {
     for (const page of pages) {
-      if ((await pageId(page)) === selectedId) return page;
+      if ((await pageId(page)) === selectedId) {
+        return page;
+      }
     }
     throw new Error(`Selected page ${selectedId} is gone`);
   }
@@ -220,7 +247,9 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
   let navigation: NavigationLog;
   const watch = (watched: Page): void => {
     watched.on("console", (message) => {
-      if (message.type() === "error") errors.push(message.text());
+      if (message.type() === "error") {
+        errors.push(message.text());
+      }
     });
     watched.on("pageerror", (error) => errors.push(error.message));
     navigation = watchNavigation(watched);
@@ -331,10 +360,7 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
       await page.mouse.move(x, y);
     },
     async scrollPosition() {
-      return (await page.evaluate("({ x: window.scrollX, y: window.scrollY })")) as {
-        x: number;
-        y: number;
-      };
+      return scrollOf(page);
     },
     async url() {
       return page.url();
@@ -344,10 +370,7 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
       const snapshot = withoutIconGlyphs(await page.ariaSnapshot(AI_SNAPSHOT));
       const [tree, scroll] = await Promise.all([
         page.ariaSnapshotJSON(AI_SNAPSHOT),
-        page.evaluate("({ x: window.scrollX, y: window.scrollY })") as Promise<{
-          x: number;
-          y: number;
-        }>,
+        scrollOf(page),
       ]);
       return {
         url: page.url(),
@@ -365,7 +388,9 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
       const entry = snapshotEntries(await page.ariaSnapshotJSON(AI_SNAPSHOT)).find(
         (candidate) => candidate.path.join(".") === key,
       );
-      if (!entry) return undefined;
+      if (!entry) {
+        return undefined;
+      }
       const facts = await page
         .getByRef(entry.ref)
         .evaluate(ELEMENT_FACTS, undefined, { timeout: ACTION_TIMEOUT_MS });
@@ -381,7 +406,9 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
       await context.storageState({ path });
     },
     async startCapture(path: string): Promise<Recorder> {
-      if (!input.capture) throw new Error("This driver does not support the capture capability");
+      if (!input.capture) {
+        throw new Error("This driver does not support the capture capability");
+      }
       const capture = await startCdpRecorder({
         page,
         outputPath: path,
@@ -401,8 +428,11 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
     },
     async close() {
       // Unrouting can block on a stalled navigation; closing the browser drops the route anyway.
-      if (input.ownsLifecycle) await browser.close().catch(() => undefined);
-      else await boundary?.dispose().catch(() => undefined);
+      if (input.ownsLifecycle) {
+        await browser.close().catch(() => undefined);
+      } else {
+        await boundary?.dispose().catch(() => undefined);
+      }
     },
   };
 }

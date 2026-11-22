@@ -26,7 +26,9 @@ const reversiblePattern =
   /\b(save|create|add|new|edit|update|apply|confirm|continue|next|submit|send|post|upload|import|duplicate|toggle|check|uncheck)\b/i;
 
 function originOf(value: string | null | undefined): string | undefined {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   try {
     return new URL(value).origin;
   } catch {
@@ -36,26 +38,48 @@ function originOf(value: string | null | undefined): string | undefined {
 
 /** Static read of what an element likely does. It is a heuristic, never a guarantee. */
 export function classifyRisk(facts: ElementFacts, allowedOrigins: readonly string[]): Risk {
-  if (facts.download) return "destructive";
-  if (facts.tag === "button" && facts.inputType === "submit") return "destructive";
-  if (facts.tag === "input" && facts.inputType === "submit") return "destructive";
-  if (facts.inForm && (facts.tag === "button" || facts.inputType === "submit"))
+  if (facts.download) {
     return "destructive";
+  }
+  if (facts.tag === "button" && facts.inputType === "submit") {
+    return "destructive";
+  }
+  if (facts.tag === "input" && facts.inputType === "submit") {
+    return "destructive";
+  }
+  if (facts.inForm && (facts.tag === "button" || facts.inputType === "submit")) {
+    return "destructive";
+  }
 
   const hrefOrigin = originOf(facts.href);
   if (hrefOrigin && hrefOrigin !== "null" && !allowedOrigins.includes(hrefOrigin)) {
     return "external-side-effect";
   }
-  if (facts.target === "_blank") return "external-side-effect";
+  if (facts.target === "_blank") {
+    return "external-side-effect";
+  }
 
-  if (facts.name && destructivePattern.test(facts.name)) return "destructive";
-  if (facts.tag === "a") return "read-only";
-  if (facts.role === "link") return "read-only";
-  if (facts.role === "textbox" || facts.role === "searchbox") return "reversible";
-  if (facts.role === "checkbox" || facts.role === "radio" || facts.role === "combobox")
+  if (facts.name && destructivePattern.test(facts.name)) {
+    return "destructive";
+  }
+  if (facts.tag === "a") {
+    return "read-only";
+  }
+  if (facts.role === "link") {
+    return "read-only";
+  }
+  if (facts.role === "textbox" || facts.role === "searchbox") {
     return "reversible";
-  if (facts.name && reversiblePattern.test(facts.name)) return "reversible";
-  if (!facts.name) return "unknown";
+  }
+  if (facts.role === "checkbox" || facts.role === "radio" || facts.role === "combobox") {
+    return "reversible";
+  }
+  if (facts.name && reversiblePattern.test(facts.name)) {
+    return "reversible";
+  }
+  if (!facts.name) {
+    return "unknown";
+  }
   return "read-only";
 }
 

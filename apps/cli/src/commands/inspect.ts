@@ -31,7 +31,9 @@ export function contactSheetSamples(
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
     throw new Error("Video duration must be positive");
   }
-  if (!Number.isFinite(fps) || fps <= 0) throw new Error("Video frame rate must be positive");
+  if (!Number.isFinite(fps) || fps <= 0) {
+    throw new Error("Video frame rate must be positive");
+  }
   // Constant-rate renders have duration = frames / fps up to ffprobe's microsecond
   // rounding, so rounding recovers the exact frame count. If a variable-rate input
   // overshoots, the tile filter still flushes the frames it received at EOF.
@@ -57,10 +59,14 @@ function contactSheetFilter(samples: readonly ContactSheetSample[]): string {
 
 export async function runInspect(args: ParsedArguments): Promise<unknown> {
   const video = args.positionals[0];
-  if (!video) throw new Error("Missing video argument for inspect");
+  if (!video) {
+    throw new Error("Missing video argument for inspect");
+  }
 
   const metadata = await probeVideo(video, { ffprobePath: findFfprobe() });
-  if (!booleanOption(args, "contact-sheet")) return { video, ...metadata };
+  if (!booleanOption(args, "contact-sheet")) {
+    return { video, ...metadata };
+  }
 
   const contactSheet =
     stringOption(args, "output") ?? `${video.replace(/\.[^./]+$/, "")}-contact-sheet.png`;

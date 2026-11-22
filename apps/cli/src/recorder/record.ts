@@ -61,7 +61,9 @@ export async function recordPlan(input: {
     for (const step of path.points) {
       await session.mouseMove(step.x, step.y);
       log.push({ type: "cursor-move", x: step.x, y: step.y });
-      if (interval > 0) await sleep(interval);
+      if (interval > 0) {
+        await sleep(interval);
+      }
     }
     pointer = point;
   };
@@ -97,15 +99,19 @@ export async function recordPlan(input: {
       return;
     }
     if (action.type === "scroll") {
-      if ("to" in action && action.to)
+      if ("to" in action && action.to) {
         await scrollToTarget(revealSurface, action.to, plan.viewport);
-      else await scrollSmoothly(action.deltaX ?? 0, action.deltaY ?? 0);
+      } else {
+        await scrollSmoothly(action.deltaX ?? 0, action.deltaY ?? 0);
+      }
       return;
     }
 
     const target = actionTarget(action);
     const bounds = target ? await revealTarget(revealSurface, target, plan.viewport) : undefined;
-    if (bounds) await moveTo(centerOf(bounds));
+    if (bounds) {
+      await moveTo(centerOf(bounds));
+    }
     if (action.type === "click") {
       log.push({
         type: "click",

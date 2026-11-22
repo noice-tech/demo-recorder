@@ -20,6 +20,7 @@
     "demo:render": "pnpm package:cli && pnpm --filter @noice-tech/demo-recorder render"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.76.0",
     "@types/node": "22.20.1",
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",

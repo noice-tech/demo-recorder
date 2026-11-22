@@ -39,6 +39,7 @@ export async function readRunLog(project: string): Promise<RunLogEntry[]> {
     .filter((line) => line.trim())
     .flatMap((line) => {
       try {
+        // SAFETY: appendRunLog is the only writer of this file.
         return [JSON.parse(line) as RunLogEntry];
       } catch {
         return [];
@@ -52,7 +53,9 @@ function newRunId(startedAt: Date): string {
 
 /** The run a command belongs to: a new one for `explore start`, otherwise the latest. */
 export async function runIdFor(project: string, command: string, startedAt: Date): Promise<string> {
-  if (command === "explore start") return newRunId(startedAt);
+  if (command === "explore start") {
+    return newRunId(startedAt);
+  }
   return (await readRunLog(project)).at(-1)?.runId ?? newRunId(startedAt);
 }
 

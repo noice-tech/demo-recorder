@@ -29,7 +29,9 @@ export function watchNavigation(page: Page): NavigationLog {
   let since = Date.now();
   let events: NavigationEvent[] = [];
   const push = (event: NavigationEvent): void => {
-    if (events.length < MAX_EVENTS) events.push(event);
+    if (events.length < MAX_EVENTS) {
+      events.push(event);
+    }
   };
   const isMainFrameNavigation = (request: Request): boolean => {
     try {
@@ -41,8 +43,9 @@ export function watchNavigation(page: Page): NavigationLog {
   };
 
   page.on("request", (request) => {
-    if (isMainFrameNavigation(request))
+    if (isMainFrameNavigation(request)) {
       push({ kind: "request", at: Date.now(), url: request.url() });
+    }
   });
   page.on("response", (response) => {
     const request = response.request();
@@ -57,7 +60,9 @@ export function watchNavigation(page: Page): NavigationLog {
     }
   });
   page.on("framenavigated", (frame) => {
-    if (frame === page.mainFrame()) push({ kind: "committed", at: Date.now(), url: frame.url() });
+    if (frame === page.mainFrame()) {
+      push({ kind: "committed", at: Date.now(), url: frame.url() });
+    }
   });
 
   const pending = (): boolean => {
@@ -79,7 +84,9 @@ export function watchNavigation(page: Page): NavigationLog {
     async settle(timeoutMs: number) {
       const deadline = Date.now() + timeoutMs;
       await sleep(NAVIGATION_START_GRACE_MS);
-      while (pending() && Date.now() < deadline) await sleep(50);
+      while (pending() && Date.now() < deadline) {
+        await sleep(50);
+      }
     },
     describe(expectingNavigation: boolean) {
       const requests = events.filter((event) => event.kind === "request");

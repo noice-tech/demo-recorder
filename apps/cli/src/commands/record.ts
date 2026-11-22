@@ -37,6 +37,7 @@ type RehearsalReport = {
 
 async function requireRehearsal(project: string, planPath: string, plan: Plan): Promise<void> {
   const report = await readJson(join(project, "rehearsal-report.json")).then(
+    // SAFETY: `plan rehearse` writes this report, and every field is checked before it is trusted.
     (value) => value as RehearsalReport,
     () => undefined,
   );
@@ -63,7 +64,9 @@ export async function runRecord(args: ParsedArguments): Promise<unknown> {
   // Styling edits keep the rehearsal valid, so check them again before capture.
   await requirePresentationFits(project, plan);
 
-  if (!booleanOption(args, "skip-rehearsal")) await requireRehearsal(project, planPath, plan);
+  if (!booleanOption(args, "skip-rehearsal")) {
+    await requireRehearsal(project, planPath, plan);
+  }
 
   // Capture time includes launching the browser for the recording.
   const captureStart = performance.now();
@@ -86,7 +89,9 @@ export async function runRecord(args: ParsedArguments): Promise<unknown> {
     }
     const captured = await recordPlan({ plan, session, project, guarded }).catch(
       async (error: unknown) => {
-        if (!(error instanceof PlanRunError)) throw error;
+        if (!(error instanceof PlanRunError)) {
+          throw error;
+        }
         const report = "record-report.json";
         throw await planFailure({ project, report, planPath, name: plan.name, session, error });
       },

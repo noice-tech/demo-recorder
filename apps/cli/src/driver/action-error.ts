@@ -17,8 +17,11 @@ function reasonFrom(callLog: string): string | undefined {
   for (const raw of callLog.split("\n")) {
     const line = raw.trim().replace(/^- /, "");
     const covered = COVERED.exec(line);
-    if (covered?.[1]) reason = `covered by ${openingTag(covered[2] ?? covered[1])}`;
-    else reason = NOT_ACTIONABLE.exec(line)?.[0] ?? reason;
+    if (covered?.[1]) {
+      reason = `covered by ${openingTag(covered[2] ?? covered[1])}`;
+    } else {
+      reason = NOT_ACTIONABLE.exec(line)?.[0] ?? reason;
+    }
   }
   return reason;
 }
@@ -43,7 +46,9 @@ export class ActionError extends Error {
 
 /** Turns a Playwright actionability timeout into an ActionError; other errors pass through. */
 export function actionFailure(error: unknown, verb: string, subject: string): unknown {
-  if (!(error instanceof Error) || error.name !== "TimeoutError") return error;
+  if (!(error instanceof Error) || error.name !== "TimeoutError") {
+    return error;
+  }
   const [, log = ""] = stripVTControlCharacters(error.message).split("\nCall log:\n");
   const callLog = log.trimEnd();
   return new ActionError(verb, subject, reasonFrom(callLog) ?? "it never became ready", callLog);

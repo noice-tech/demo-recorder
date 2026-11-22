@@ -20,7 +20,9 @@ export function stepTimeMs(recording: Recording, step: number): number {
   }
   for (const type of decisiveEventOrder) {
     const decisive = events.find((event) => event.type === type);
-    if (decisive) return decisive.timestampMs;
+    if (decisive) {
+      return decisive.timestampMs;
+    }
   }
   return events[0]!.timestampMs;
 }
@@ -32,26 +34,37 @@ export function stepInteractionPoint(
 ): InteractionPoint | undefined {
   const events = eventsForStep(recording, step);
   const click = events.find((event): event is ClickEvent => event.type === "click");
-  if (click) return { x: click.x, y: click.y };
+  if (click) {
+    return { x: click.x, y: click.y };
+  }
   const move = events.find((event): event is CursorMoveEvent => event.type === "cursor-move");
-  if (move) return { x: move.x, y: move.y };
+  if (move) {
+    return { x: move.x, y: move.y };
+  }
   return undefined;
 }
 
 /** Turns a step or edge anchor into absolute milliseconds on the recording clock. */
 export function resolveAnchorMs(anchor: Anchor, recording: Recording): number {
-  if ("anchor" in anchor) return anchor.anchor === "start" ? 0 : recording.durationMs;
+  if ("anchor" in anchor) {
+    return anchor.anchor === "start" ? 0 : recording.durationMs;
+  }
   return stepTimeMs(recording, anchor.step) + (anchor.offsetMs ?? 0);
 }
 
 function presentationAnchors(presentation: Presentation): { label: string; step: number }[] {
   const anchors: { label: string; step: number }[] = [];
   const { trim, zooms = [] } = presentation;
-  if (trim && "step" in trim.from) anchors.push({ label: "trim.from", step: trim.from.step });
-  if (trim && "step" in trim.to) anchors.push({ label: "trim.to", step: trim.to.step });
+  if (trim && "step" in trim.from) {
+    anchors.push({ label: "trim.from", step: trim.from.step });
+  }
+  if (trim && "step" in trim.to) {
+    anchors.push({ label: "trim.to", step: trim.to.step });
+  }
   zooms.forEach((zoom, index) => {
-    if ("step" in zoom) anchors.push({ label: `zooms[${index}]`, step: zoom.step });
-    else {
+    if ("step" in zoom) {
+      anchors.push({ label: `zooms[${index}]`, step: zoom.step });
+    } else {
       anchors.push({ label: `zooms[${index}].fromStep`, step: zoom.fromStep });
       anchors.push({ label: `zooms[${index}].toStep`, step: zoom.toStep });
     }

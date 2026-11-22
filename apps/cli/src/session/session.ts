@@ -68,7 +68,9 @@ export async function clearSessionFile(project: string): Promise<void> {
 /** A session that stopped being used ends itself; the file's mtime is the heartbeat. */
 export async function assertSessionFresh(project: string, file: SessionFile): Promise<void> {
   const value = await stat(sessionPath(project)).catch(() => undefined);
-  if (!value) throw new Error("The session file has disappeared; run `explore start` again");
+  if (!value) {
+    throw new Error("The session file has disappeared; run `explore start` again");
+  }
   if (Date.now() - value.mtimeMs > file.limits.idleTimeoutMs) {
     await clearSessionFile(project);
     throw new Error("The explore session expired from inactivity; run `explore start` again");

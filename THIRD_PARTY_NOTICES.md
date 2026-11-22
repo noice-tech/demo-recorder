@@ -275,3 +275,9 @@ separately. Those downloads contain software under Chromium's BSD-style
 license and additional third-party licenses. Their applicable notices are
 provided with the downloaded browser distribution and by the Chromium
 project: https://chromium.googlesource.com/chromium/src/+/HEAD/LICENSE
+
+## anti-slop Oxlint rules
+
+`scripts/oxlint-anti-slop.ts` is a development-only lint plugin adapted from
+the anti-slop Oxlint plugin, copyright 2026 Dillon Mulroy, under the MIT
+License. It is not included in the published CLI package.

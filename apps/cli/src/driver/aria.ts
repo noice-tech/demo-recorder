@@ -29,10 +29,14 @@ export function snapshotEntries(tree: unknown): SnapshotEntry[] {
   const entries: SnapshotEntry[] = [];
   const visit = (value: unknown, path: number[], scopes: SnapshotEntry["scopes"]): void => {
     if (Array.isArray(value)) {
-      for (const [index, child] of value.entries()) visit(child, [...path, index], scopes);
+      for (const [index, child] of value.entries()) {
+        visit(child, [...path, index], scopes);
+      }
       return;
     }
-    if (!isNode(value)) return;
+    if (!isNode(value)) {
+      return;
+    }
     const role = typeof value.role === "string" ? value.role : undefined;
     const name =
       typeof value.name === "string" ? withoutIconGlyphs(value.name) || undefined : undefined;
@@ -91,15 +95,21 @@ export function outlineOf(snapshot: string): string {
   const open: number[] = [];
   for (const line of snapshot.split("\n")) {
     const match = /^(\s*)- ([\w-]+)?(.*)$/.exec(line);
-    if (!match) continue;
+    if (!match) {
+      continue;
+    }
     const [, indent = "", role = "", rest = ""] = match;
     // Any line at or above a kept element's depth ends that element's subtree.
-    while (open.length > 0 && (open.at(-1) ?? 0) >= indent.length) open.pop();
+    while (open.length > 0 && (open.at(-1) ?? 0) >= indent.length) {
+      open.pop();
+    }
     const keep =
       OUTLINE_ROLES.has(role) ||
       (rest.startsWith(' "') && NAMED_CONTAINERS.has(role)) ||
       rest.includes("[cursor=pointer]");
-    if (!keep) continue;
+    if (!keep) {
+      continue;
+    }
     kept.push({ depth: open.length, text: `- ${role}${rest.replace(/:$/, "")}` });
     open.push(indent.length);
   }

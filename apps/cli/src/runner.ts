@@ -48,7 +48,9 @@ export async function executePlan(input: {
     beforeStep?.(stepNumber, step);
     try {
       await session.perform(step);
-      if (step.expect) await session.waitFor(step.expect);
+      if (step.expect) {
+        await session.waitFor(step.expect);
+      }
     } catch (error) {
       const report: PlanStepReport = {
         step: stepNumber,

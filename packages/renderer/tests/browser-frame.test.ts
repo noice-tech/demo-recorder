@@ -25,8 +25,12 @@ describe("browser frame layout", () => {
     expect(layout.trafficLights.length > 0).toBe(showsTrafficLights);
     expect(layout.back.x).toBeGreaterThanOrEqual(browser.x);
     expect(right(layout.navigation)).toBeLessThanOrEqual(layout.address.x);
-    if (layout.sidebar) expect(right(layout.sidebar)).toBeLessThanOrEqual(layout.navigation.x);
-    if (layout.forward) expect(right(layout.back)).toBeLessThanOrEqual(layout.forward.x);
+    if (layout.sidebar) {
+      expect(right(layout.sidebar)).toBeLessThanOrEqual(layout.navigation.x);
+    }
+    if (layout.forward) {
+      expect(right(layout.back)).toBeLessThanOrEqual(layout.forward.x);
+    }
     expect(Boolean(layout.sidebar)).toBe(density === "full");
     expect(Boolean(layout.forward)).toBe(density !== "narrow");
     expect(right(layout.address)).toBeLessThanOrEqual(layout.actions.group.x);

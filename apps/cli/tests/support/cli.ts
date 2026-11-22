@@ -35,7 +35,9 @@ export class CliError extends Error {
 function reportedError(stdout: string): string | undefined {
   try {
     const report = JSON.parse(stdout) as { ok?: boolean; error?: string; causes?: string[] };
-    if (report.ok !== false || !report.error) return undefined;
+    if (report.ok !== false || !report.error) {
+      return undefined;
+    }
     return [report.error, ...(report.causes ?? [])].join("\n  caused by: ");
   } catch {
     return undefined;
@@ -73,7 +75,9 @@ export async function serveFixture(): Promise<{ baseUrl: string; close: () => Pr
   const server = createServer((request, response) => {
     const path = new URL(request.url ?? "/", "http://localhost").pathname;
     // Never answer, like a stalled site.
-    if (path.startsWith("/stall/")) return;
+    if (path.startsWith("/stall/")) {
+      return;
+    }
     const file = join(fixture, path === "/" ? "index.html" : path);
     readFile(file).then(
       (body) => {
@@ -88,7 +92,9 @@ export async function serveFixture(): Promise<{ baseUrl: string; close: () => Pr
   });
   await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("No server address");
+  if (!address || typeof address === "string") {
+    throw new Error("No server address");
+  }
   return {
     baseUrl: `http://127.0.0.1:${address.port}/`,
     close: () =>
@@ -110,6 +116,8 @@ export function refsOf(snapshot: string, element: string): string[] {
 
 export function refOf(snapshot: string, element: string): string {
   const [ref] = refsOf(snapshot, element);
-  if (!ref) throw new Error(`No ref for ${element} in:\n${snapshot}`);
+  if (!ref) {
+    throw new Error(`No ref for ${element} in:\n${snapshot}`);
+  }
   return ref;
 }

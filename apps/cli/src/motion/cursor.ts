@@ -69,7 +69,9 @@ function cubicBezier(
 }
 
 function clampPoint(point: CursorPoint, viewport: CursorViewport | undefined): CursorPoint {
-  if (!viewport) return point;
+  if (!viewport) {
+    return point;
+  }
   return {
     x: clamp(point.x, 0, viewport.width),
     y: clamp(point.y, 0, viewport.height),
@@ -155,7 +157,9 @@ export function generateCursorPath(
 
   const points = Array.from({ length: steps }, (_, index) => {
     const time = (index + 1) / steps;
-    if (index === steps - 1) return { ...to };
+    if (index === steps - 1) {
+      return { ...to };
+    }
     return clampPoint(
       cubicBezier(from, firstControl, secondControl, to, minimumJerk(time)),
       options.viewport,

@@ -82,7 +82,9 @@ export async function runProcess(
     let stderr = "";
     let settled = false;
     const finish = (callback: () => void) => {
-      if (settled) return;
+      if (settled) {
+        return;
+      }
       settled = true;
       callback();
     };
@@ -92,7 +94,9 @@ export async function runProcess(
     });
     child.stderr!.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
-      if (stderr.length > 100_000) stderr = stderr.slice(-100_000);
+      if (stderr.length > 100_000) {
+        stderr = stderr.slice(-100_000);
+      }
       options.onStderr?.(chunk);
     });
     child.stdio[3]?.on("data", (chunk: Buffer) => options.onProgress?.(chunk));
@@ -152,7 +156,9 @@ export type ProbedVideo = {
 };
 
 function parseRate(value: string | undefined): number | undefined {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   const [numeratorText, denominatorText = "1"] = value.split("/");
   const numerator = Number(numeratorText);
   const denominator = Number(denominatorText);
@@ -163,7 +169,9 @@ function parseRate(value: string | undefined): number | undefined {
 export function parseFfprobeOutput(input: unknown, path = "media"): ProbedVideo {
   const parsed = probeSchema.parse(input);
   const video = parsed.streams.find((stream) => stream.codec_type === "video");
-  if (!video?.width || !video.height) throw new Error(`ffprobe found no video stream in ${path}`);
+  if (!video?.width || !video.height) {
+    throw new Error(`ffprobe found no video stream in ${path}`);
+  }
   const durationSeconds = Number(video.duration ?? parsed.format?.duration);
   if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
     throw new Error(`ffprobe returned no positive duration for ${path}`);
@@ -249,7 +257,9 @@ export function parseFfmpegFilters(output: string): Set<string> {
   const result = new Set<string>();
   for (const line of output.split(/\r?\n/)) {
     const match = /^\s*[TSC.]{2,3}\s+(\S+)\s/.exec(line);
-    if (match?.[1] && match[1] !== "=") result.add(match[1]);
+    if (match?.[1] && match[1] !== "=") {
+      result.add(match[1]);
+    }
   }
   return result;
 }
@@ -258,7 +268,9 @@ export function parseFfmpegEncoders(output: string): Set<string> {
   const result = new Set<string>();
   for (const line of output.split(/\r?\n/)) {
     const match = /^\s*[VAS.][FSXBD.]{5}\s+(\S+)\s/.exec(line);
-    if (match?.[1] && match[1] !== "=") result.add(match[1]);
+    if (match?.[1] && match[1] !== "=") {
+      result.add(match[1]);
+    }
   }
   return result;
 }
@@ -300,9 +312,12 @@ export async function inspectFfmpegCapabilities(
   const ffprobeVersion = firstVersionLine(ffprobeVersionResult?.stdout ?? "");
   const missingFilters = REQUIRED_FILTERS.filter((name) => !filters.has(name));
   const h264Encoders = H264_ENCODERS.filter((name) => encoders.has(name));
-  if (missingFilters.length > 0)
+  if (missingFilters.length > 0) {
     errors.push(`Missing FFmpeg filters: ${missingFilters.join(", ")}`);
-  if (h264Encoders.length === 0) errors.push("No supported H.264 encoder found");
+  }
+  if (h264Encoders.length === 0) {
+    errors.push("No supported H.264 encoder found");
+  }
   return {
     ffmpegPath,
     ffprobePath,
@@ -343,12 +358,16 @@ export function createProgressParser(onProgress: (value: FfmpegProgress) => void
     buffered = lines.pop() ?? "";
     for (const line of lines) {
       const separator = line.indexOf("=");
-      if (separator < 0) continue;
+      if (separator < 0) {
+        continue;
+      }
       const key = line.slice(0, separator);
       const value = line.slice(separator + 1);
       if (key === "out_time_us" || key === "out_time_ms") {
         const microseconds = Number(value);
-        if (Number.isFinite(microseconds)) current.outTimeMs = microseconds / 1000;
+        if (Number.isFinite(microseconds)) {
+          current.outTimeMs = microseconds / 1000;
+        }
       }
       if (key === "progress") {
         current.progress = value;
@@ -369,7 +388,9 @@ const FONT_FILE = "fonts/Inter-Variable.ttf";
 
 async function requireFile(path: string): Promise<void> {
   const value = await stat(path).catch(() => undefined);
-  if (!value?.isFile()) throw new Error(`FFmpeg renderer asset is missing: ${path}`);
+  if (!value?.isFile()) {
+    throw new Error(`FFmpeg renderer asset is missing: ${path}`);
+  }
 }
 
 export async function renderProductDemo(
@@ -381,19 +402,26 @@ export async function renderProductDemo(
     realpath(input.sourcePath).catch(() => resolve(input.sourcePath)),
     realpath(outputPath).catch(() => outputPath),
   ]);
-  if (outputIdentity === sourceIdentity)
+  if (outputIdentity === sourceIdentity) {
     throw new Error("Render output must differ from the source recording");
+  }
   if (options.overwrite === false) {
     const existing = await lstat(outputPath).catch((error: NodeJS.ErrnoException) => {
-      if (error.code !== "ENOENT") throw error;
+      if (error.code !== "ENOENT") {
+        throw error;
+      }
       return undefined;
     });
-    if (existing) throw new Error(`Render output already exists: ${outputPath}`);
+    if (existing) {
+      throw new Error(`Render output already exists: ${outputPath}`);
+    }
   }
   const ffmpegPath = options.ffmpegPath ?? process.env.DEMO_RECORDER_FFMPEG ?? "ffmpeg";
   const ffprobePath = options.ffprobePath ?? process.env.DEMO_RECORDER_FFPROBE ?? "ffprobe";
   const capabilities = await inspectFfmpegCapabilities({ ffmpegPath, ffprobePath });
-  if (!capabilities.ready) throw new Error(capabilities.errors.join("; "));
+  if (!capabilities.ready) {
+    throw new Error(capabilities.errors.join("; "));
+  }
   if (!capabilities.h264Encoders.includes("libx264")) {
     throw new Error("The initial FFmpeg renderer requires the libx264 encoder");
   }
@@ -458,7 +486,9 @@ export async function renderProductDemo(
 
     let lastProgress = -1;
     const reportProgress = (value: number) => {
-      if (value <= lastProgress) return;
+      if (value <= lastProgress) {
+        return;
+      }
       lastProgress = value;
       options.onProgress?.(value);
     };
@@ -515,15 +545,23 @@ export async function renderProductDemo(
         onProgress: parseProgress,
       },
     );
-    if (options.signal?.aborted) throw new Error("Rendering cancelled");
-    if ((await stat(pendingOutput)).size === 0) throw new Error("Rendered video is empty");
-    if (options.overwrite === false) await link(pendingOutput, outputPath);
-    else await rename(pendingOutput, outputPath);
+    if (options.signal?.aborted) {
+      throw new Error("Rendering cancelled");
+    }
+    if ((await stat(pendingOutput)).size === 0) {
+      throw new Error("Rendered video is empty");
+    }
+    if (options.overwrite === false) {
+      await link(pendingOutput, outputPath);
+    } else {
+      await rename(pendingOutput, outputPath);
+    }
     reportProgress(1);
     return { outputPath, frameCount: graph.frameCount, durationMs: graph.durationMs };
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
-    if (pendingDirectory)
+    if (pendingDirectory) {
       await rm(pendingDirectory, { recursive: true, force: true }).catch(() => undefined);
+    }
   }
 }

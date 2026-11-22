@@ -31,7 +31,9 @@ async function tileLuma(sheet: string, index: number): Promise<number> {
     "-",
   ]);
   const match = /YAVG=([0-9.]+)/.exec(stdout);
-  if (!match?.[1]) throw new Error(`No luma reading in: ${stdout}`);
+  if (!match?.[1]) {
+    throw new Error(`No luma reading in: ${stdout}`);
+  }
   return Number(match[1]);
 }
 

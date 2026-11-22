@@ -38,10 +38,16 @@ export function actionTarget(action: Action): Target | undefined {
 function revealDeltaY(bounds: Rect, viewport: Viewport, marginRatio = REVEAL_MARGIN_RATIO): number {
   const top = bounds.y;
   const bottom = bounds.y + bounds.height;
-  if (top >= 0 && bottom <= viewport.height) return 0;
+  if (top >= 0 && bottom <= viewport.height) {
+    return 0;
+  }
   const margin = Math.round(viewport.height * marginRatio);
-  if (bounds.height > viewport.height - 2 * margin) return Math.round(top - margin);
-  if (bottom > viewport.height) return Math.round(bottom - (viewport.height - margin));
+  if (bounds.height > viewport.height - 2 * margin) {
+    return Math.round(top - margin);
+  }
+  if (bottom > viewport.height) {
+    return Math.round(bottom - (viewport.height - margin));
+  }
   return Math.round(top - margin);
 }
 
@@ -73,7 +79,9 @@ export async function revealTarget(
   viewport: Viewport,
 ): Promise<Rect | undefined> {
   const initial = await surface.bounds(target);
-  if (!initial) return undefined;
+  if (!initial) {
+    return undefined;
+  }
 
   const deltaY = revealDeltaY(initial, viewport);
   let bounds: Rect | undefined = initial;
@@ -87,7 +95,9 @@ export async function revealTarget(
       same: sameRect,
       wait: (durationMs) => surface.wait(durationMs),
     });
-    if (!bounds) throw new Error(`${describeTarget(target)} disappeared while scrolling into view`);
+    if (!bounds) {
+      throw new Error(`${describeTarget(target)} disappeared while scrolling into view`);
+    }
   }
 
   if (!centerInViewport(bounds, viewport)) {
@@ -117,7 +127,9 @@ export async function scrollToTarget(
   for (let index = 0; index < MAX_SEGMENTS; index += 1) {
     const bounds = (await surface.present(target)) ? await surface.bounds(target) : undefined;
     const remaining = bounds ? Math.round(bounds.y - margin) : segment;
-    if (bounds && Math.abs(remaining) <= 1) return;
+    if (bounds && Math.abs(remaining) <= 1) {
+      return;
+    }
 
     const before = await surface.scrollY();
     await surface.scroll(0, Math.max(-segment, Math.min(segment, remaining)));
@@ -127,11 +139,15 @@ export async function scrollToTarget(
       same: (left, right) => Math.abs(left - right) <= SETTLE_TOLERANCE_PX,
       wait: (durationMs) => surface.wait(durationMs),
     });
-    if (after === undefined || Math.abs(after - before) > SETTLE_TOLERANCE_PX) continue;
+    if (after === undefined || Math.abs(after - before) > SETTLE_TOLERANCE_PX) {
+      continue;
+    }
 
     // The page cannot scroll further: near its end, a visible target is enough.
     const last = (await surface.present(target)) ? await surface.bounds(target) : undefined;
-    if (last && centerInViewport(last, viewport)) return;
+    if (last && centerInViewport(last, viewport)) {
+      return;
+    }
     throw new Error(
       last
         ? `${describeTarget(target)} cannot be scrolled into view`

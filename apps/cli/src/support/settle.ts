@@ -22,9 +22,13 @@ export async function settleAfterChange<Value>(input: {
   for (let elapsed = 0; elapsed < timeoutMs; elapsed += pollMs) {
     await input.wait(pollMs);
     const current = await input.read();
-    if (current === undefined) return undefined;
+    if (current === undefined) {
+      return undefined;
+    }
     moved ||= !input.same(current, input.before);
-    if (moved && previous !== undefined && input.same(previous, current)) return current;
+    if (moved && previous !== undefined && input.same(previous, current)) {
+      return current;
+    }
     previous = current;
   }
   return previous;

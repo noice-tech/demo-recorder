@@ -75,7 +75,9 @@ describe("a demo run", () => {
     expect(run.metrics).toEqual(recorded.metrics);
     expect(run.metrics).toMatchObject({ exploreActions: 1, rehearsals: 2, repairAttempts: 1 });
     const phases = ["explorationMs", "planningMs", "rehearsalMs", "captureMs", "renderMs"];
-    for (const phase of phases) expect(run.metrics[phase]).toBeGreaterThanOrEqual(0);
+    for (const phase of phases) {
+      expect(run.metrics[phase]).toBeGreaterThanOrEqual(0);
+    }
     expect(run.metrics.captureMs).toBeGreaterThan(600);
     const phaseTotal = phases.reduce((sum, phase) => sum + (run.metrics[phase] ?? 0), 0);
     expect(phaseTotal).toBeLessThanOrEqual(run.metrics.totalMs ?? 0);
@@ -117,8 +119,9 @@ describe("a demo run", () => {
             () => true,
             () => false,
           )
-        )
+        ) {
           break;
+        }
         await new Promise((done) => setTimeout(done, 100));
       }
       child.kill("SIGINT");

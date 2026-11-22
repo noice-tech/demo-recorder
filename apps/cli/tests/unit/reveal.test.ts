@@ -19,9 +19,14 @@ function fakePage(
   const scrolls: number[] = [];
   const surface: RevealSurface = {
     bounds: () => {
-      if (vanished) return Promise.resolve(undefined);
-      if (lag > 0) lag -= 1;
-      else shownY = scrollY;
+      if (vanished) {
+        return Promise.resolve(undefined);
+      }
+      if (lag > 0) {
+        lag -= 1;
+      } else {
+        shownY = scrollY;
+      }
       return Promise.resolve({ ...initial, y: initial.y - shownY });
     },
     scroll: (_deltaX, deltaY) => {

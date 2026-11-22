@@ -55,7 +55,9 @@ function actionRisk(
   if (action.type === "scroll" || action.type === "hold") {
     return { risk: "read-only", allowedOrigin: true };
   }
-  if (!element) return { risk: "unknown", allowedOrigin: true };
+  if (!element) {
+    return { risk: "unknown", allowedOrigin: true };
+  }
   const facts = { ...element.facts, role: element.role, name: element.name ?? "" };
   return { risk: classifyRisk(facts, allowedOrigins), allowedOrigin: true };
 }
@@ -72,10 +74,14 @@ async function durableTarget(
   const target: Target = element.name
     ? { role: element.role, name: element.name }
     : { role: element.role };
-  if ((await session.countMatches(target)) === 1) return { target, recordable: true };
+  if ((await session.countMatches(target)) === 1) {
+    return { target, recordable: true };
+  }
   for (const within of element.scopes) {
     const scoped = { ...target, within };
-    if ((await session.countMatches(scoped)) === 1) return { target: scoped, recordable: true };
+    if ((await session.countMatches(scoped)) === 1) {
+      return { target: scoped, recordable: true };
+    }
   }
   return { target, recordable: false };
 }
@@ -112,8 +118,9 @@ export async function act(input: {
   let element: ResolvedRef | undefined;
   if (ref !== undefined) {
     const observed = previous.elements.find((candidate) => candidate.ref === ref);
-    if (!observed)
+    if (!observed) {
       throw new Error(`Element ${ref} is not part of observation ${lastObservationId}`);
+    }
     // Ref numbers belong to the command that observed them. Find the same node in
     // a fresh snapshot by its position, and confirm it is still the same element.
     element = await session.resolveElement(observed.path);
