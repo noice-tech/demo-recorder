@@ -148,9 +148,9 @@ describe("plan rehearse and record", () => {
     await cli("plan", "rehearse", "--project", project);
   }, 60_000);
 
-  it("scroll to a heading that a lazy page renders late", async () => {
+  it("scroll to a heading that renders late, on a page that ignores the wheel at first", async () => {
     const reviews = await projectWith(
-      [{ type: "scroll", to: { role: "heading", name: "Reviews" } }],
+      [{ type: "scroll", to: { role: "heading", name: "Owners' reviews" } }],
       "long.html",
     );
     await cli("plan", "rehearse", "--project", reviews);

@@ -84,7 +84,7 @@ export async function recordPlan(input: {
     bounds: (target) => session.bounds(target),
     present: async (target) => (await session.countMatches(target)) > 0,
     scroll: scrollSmoothly,
-    scrollY: async () => (await session.scrollPosition()).y,
+    scrollPosition: () => session.scrollPosition(),
     wait: sleep,
   };
 

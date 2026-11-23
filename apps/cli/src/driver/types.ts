@@ -83,8 +83,8 @@ export interface Session {
     target: Target,
   ): Promise<{ x: number; y: number; width: number; height: number } | undefined>;
   mouseMove(x: number, y: number): Promise<void>;
-  /** Current document scroll offset. */
-  scrollPosition(): Promise<{ x: number; y: number }>;
+  /** Current document scroll offset, and the largest vertical offset the document allows. */
+  scrollPosition(): Promise<{ x: number; y: number; maxY: number }>;
   url(): Promise<string>;
   inspect(): Promise<PageInspection>;
   /** Finds the node at `path` in a fresh AI snapshot; its `ref` is live for this connection. */

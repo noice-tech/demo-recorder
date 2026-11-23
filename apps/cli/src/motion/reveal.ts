@@ -10,7 +10,7 @@ export type RevealSurface = {
   /** Whether the target is in the page now, without waiting for it. */
   present(target: Target): Promise<boolean>;
   scroll(deltaX: number, deltaY: number): Promise<void>;
-  scrollY(): Promise<number>;
+  scrollPosition(): Promise<{ y: number; maxY: number }>;
   wait(durationMs: number): Promise<void>;
 };
 
@@ -20,6 +20,8 @@ const SETTLE_TOLERANCE_PX = 0.5;
 /** A scroll-to moves at most this share of the viewport at once, so viewers can follow. */
 const SEGMENT_RATIO = 0.8;
 const MAX_SEGMENTS = 40;
+/** Segments in a row that may fail to move a page that has not reached its end. */
+const MAX_STALLS = 3;
 
 /** The element a plan action moves the cursor to, if any. */
 export function actionTarget(action: Action): Target | undefined {
@@ -112,6 +114,11 @@ export async function revealTarget(
   return bounds;
 }
 
+/** Whether the document cannot scroll any further in the direction of `deltaY`. */
+function reachedEnd(position: { y: number; maxY: number }, deltaY: number): boolean {
+  return deltaY > 0 ? position.y >= position.maxY - 1 : position.y <= 0;
+}
+
 /**
  * Scrolls in segments until a target sits near the top of the viewport. It
  * measures again after every segment, because lazy pages add content as they
@@ -124,6 +131,7 @@ export async function scrollToTarget(
 ): Promise<void> {
   const segment = Math.round(viewport.height * SEGMENT_RATIO);
   const margin = Math.round(viewport.height * REVEAL_MARGIN_RATIO);
+  let stalls = 0;
   for (let index = 0; index < MAX_SEGMENTS; index += 1) {
     const bounds = (await surface.present(target)) ? await surface.bounds(target) : undefined;
     const remaining = bounds ? Math.round(bounds.y - margin) : segment;
@@ -131,22 +139,34 @@ export async function scrollToTarget(
       return;
     }
 
-    const before = await surface.scrollY();
-    await surface.scroll(0, Math.max(-segment, Math.min(segment, remaining)));
+    const before = await surface.scrollPosition();
+    const deltaY = Math.max(-segment, Math.min(segment, remaining));
+    await surface.scroll(0, deltaY);
     const after = await settleAfterChange({
-      before,
-      read: () => surface.scrollY(),
+      before: before.y,
+      read: async () => (await surface.scrollPosition()).y,
       same: (left, right) => Math.abs(left - right) <= SETTLE_TOLERANCE_PX,
       wait: (durationMs) => surface.wait(durationMs),
     });
-    if (after === undefined || Math.abs(after - before) > SETTLE_TOLERANCE_PX) {
+    if (after === undefined || Math.abs(after - before.y) > SETTLE_TOLERANCE_PX) {
+      stalls = 0;
+      continue;
+    }
+    // Some pages ignore the wheel for a moment after loading (playstation.com,
+    // about a second), so only the document's end stops a scroll-to for good.
+    const atEnd = reachedEnd(before, deltaY);
+    if (!atEnd && stalls < MAX_STALLS) {
+      stalls += 1;
       continue;
     }
 
-    // The page cannot scroll further: near its end, a visible target is enough.
+    // Scrolling stopped: a visible target is enough.
     const last = (await surface.present(target)) ? await surface.bounds(target) : undefined;
     if (last && centerInViewport(last, viewport)) {
       return;
+    }
+    if (!atEnd) {
+      throw new Error(`${describeTarget(target)} is out of reach: the page stopped scrolling`);
     }
     throw new Error(
       last

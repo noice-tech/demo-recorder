@@ -29,7 +29,10 @@ const ELEMENT_FACTS = (element: Element) => ({
 /** The exact accessible name, ignoring icon-font glyphs around it. */
 function exactName(name: string): RegExp {
   const glyphs = String.raw`[\uE000-\uF8FF\s]*`;
-  const literal = name.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+  // A bare ' breaks Playwright's selector parser once the locator is chained (nth, click).
+  const literal = name
+    .replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
+    .replaceAll("'", String.raw`\x27`);
   return new RegExp(`^${glyphs}${literal}${glyphs}$`, "u");
 }
 
@@ -360,7 +363,10 @@ export async function createBrowserSession(input: BrowserSessionInput): Promise<
       await page.mouse.move(x, y);
     },
     async scrollPosition() {
-      return scrollOf(page);
+      // SAFETY: the expression builds this object from numeric window and document properties.
+      return page.evaluate(
+        "({ x: scrollX, y: scrollY, maxY: document.documentElement.scrollHeight - innerHeight })",
+      ) as Promise<{ x: number; y: number; maxY: number }>;
     },
     async url() {
       return page.url();

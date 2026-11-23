@@ -121,7 +121,7 @@ export async function planRehearse(args: ParsedArguments): Promise<unknown> {
     bounds: (target) => session.bounds(target),
     present: async (target) => (await session.countMatches(target)) > 0,
     scroll: (deltaX, deltaY) => session.perform({ type: "scroll", deltaX, deltaY }),
-    scrollY: async () => (await session.scrollPosition()).y,
+    scrollPosition: () => session.scrollPosition(),
     wait: (durationMs) => new Promise((done) => setTimeout(done, durationMs)),
   };
   const planSession: PlanSession = {
