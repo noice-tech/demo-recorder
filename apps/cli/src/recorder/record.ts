@@ -4,6 +4,12 @@ import type { Action, Plan, Recording } from "@noice-tech/demo-recorder-core";
 import type { Session } from "../driver/types.js";
 import { generateCursorPath, type CursorPoint } from "../motion/cursor.js";
 import { normalizeKeyChord } from "../motion/keys.js";
+import {
+  actionTarget,
+  revealTarget,
+  scrollToTarget,
+  type RevealSurface,
+} from "../motion/reveal.js";
 import { smoothScroll } from "../motion/scroll.js";
 import { executePlan, type PlanSession, type PlanStepReport } from "../runner.js";
 import { writeJsonAtomic } from "../support/files.js";
@@ -55,9 +61,31 @@ export async function recordPlan(input: {
     for (const step of path.points) {
       await session.mouseMove(step.x, step.y);
       log.push({ type: "cursor-move", x: step.x, y: step.y });
-      if (interval > 0) await sleep(interval);
+      if (interval > 0) {
+        await sleep(interval);
+      }
     }
     pointer = point;
+  };
+
+  const scrollSmoothly = async (deltaX: number, deltaY: number): Promise<void> => {
+    log.push({ type: "scroll", deltaX, deltaY });
+    await smoothScroll(
+      {
+        wheel: (x, y) => session.perform({ type: "scroll", deltaX: x, deltaY: y }),
+        waitForTimeout: sleep,
+      },
+      deltaY,
+      deltaX,
+    );
+  };
+
+  const revealSurface: RevealSurface = {
+    bounds: (target) => session.bounds(target),
+    present: async (target) => (await session.countMatches(target)) > 0,
+    scroll: scrollSmoothly,
+    scrollPosition: () => session.scrollPosition(),
+    wait: sleep,
   };
 
   const recordAction = async (action: Action): Promise<void> => {
@@ -71,22 +99,19 @@ export async function recordPlan(input: {
       return;
     }
     if (action.type === "scroll") {
-      const deltaX = action.deltaX ?? 0;
-      log.push({ type: "scroll", deltaX, deltaY: action.deltaY });
-      await smoothScroll(
-        {
-          wheel: (x, y) => session.perform({ type: "scroll", deltaX: x, deltaY: y }),
-          waitForTimeout: sleep,
-        },
-        action.deltaY,
-        deltaX,
-      );
+      if ("to" in action && action.to) {
+        await scrollToTarget(revealSurface, action.to, plan.viewport);
+      } else {
+        await scrollSmoothly(action.deltaX ?? 0, action.deltaY ?? 0);
+      }
       return;
     }
 
-    const target = "target" in action ? action.target : undefined;
-    const bounds = target ? await session.bounds(target) : undefined;
-    if (bounds) await moveTo(centerOf(bounds));
+    const target = actionTarget(action);
+    const bounds = target ? await revealTarget(revealSurface, target, plan.viewport) : undefined;
+    if (bounds) {
+      await moveTo(centerOf(bounds));
+    }
     if (action.type === "click") {
       log.push({
         type: "click",

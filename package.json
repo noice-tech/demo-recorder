@@ -20,10 +20,11 @@
     "demo:render": "pnpm package:cli && pnpm --filter @noice-tech/demo-recorder render"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.76.0",
     "@types/node": "22.20.1",
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
-    "playwright": "1.62.1",
+    "playwright": "1.65.1",
     "tsdown": "0.22.14",
     "tsx": "4.23.1",
     "turbo": "2.10.8",

@@ -1,18 +1,38 @@
 import { z } from "zod";
 import { viewportSchema } from "./recording.js";
 
-/** A durable, replayable way to find one element. Never contains a temporary `ref`. */
+/** A named container that narrows a target, such as a dialog, region, or row. */
+export const scopeSchema = z.strictObject({
+  role: z.string().min(1),
+  name: z.string().min(1),
+});
+
+/**
+ * A durable, replayable way to find one element. Never contains a temporary `ref`.
+ * `role` plus `name` matches the exact accessible name; `within` narrows it to
+ * the named container when the same control appears more than once.
+ */
 export const targetSchema = z
   .object({
     role: z.string().min(1).optional(),
     name: z.string().min(1).optional(),
     selector: z.string().min(1).optional(),
+    within: scopeSchema.optional(),
   })
   .refine((target) => target.role ?? target.name ?? target.selector, {
     message: "A target must include role, name, or selector",
   });
 
 export type Target = z.infer<typeof targetSchema>;
+
+/** A short human description such as `button "Save" in dialog "Settings"`. */
+export function describeTarget(target: Target): string {
+  const self =
+    target.role && target.name
+      ? `${target.role} "${target.name}"`
+      : (target.selector ?? (target.name ? `"${target.name}"` : (target.role ?? "target")));
+  return target.within ? `${self} in ${target.within.role} "${target.within.name}"` : self;
+}
 
 /** Conditions that must all hold after a step runs. */
 export const expectSchema = z.object({
@@ -26,7 +46,6 @@ export type Expect = z.infer<typeof expectSchema>;
 export const constraintsSchema = z.object({
   submitForms: z.boolean().optional(),
   modifyData: z.boolean().optional(),
-  sameOriginOnly: z.boolean().optional(),
 });
 
 export type Constraints = z.infer<typeof constraintsSchema>;
@@ -41,11 +60,21 @@ const planActionVariants = [
     target: targetSchema.optional(),
   }),
   z.strictObject({ type: z.literal("select"), target: targetSchema, value: z.string() }),
-  z.strictObject({
-    type: z.literal("scroll"),
-    deltaY: z.number().finite(),
-    deltaX: z.number().finite().optional(),
-  }),
+  z
+    .strictObject({
+      type: z.literal("scroll"),
+      deltaY: z.number().finite().optional(),
+      deltaX: z.number().finite().optional(),
+      /** Scroll until this target is near the top of the viewport. */
+      to: targetSchema.optional(),
+    })
+    .refine(
+      (step) =>
+        (step.to === undefined) !== (step.deltaY === undefined && step.deltaX === undefined),
+      {
+        message: "A scroll takes either deltaY (and deltaX) or to",
+      },
+    ),
   z.strictObject({ type: z.literal("hold"), durationMs: z.number().finite().nonnegative() }),
 ] as const;
 
@@ -112,7 +141,11 @@ export const planSchema = z.strictObject({
   version: z.literal(1),
   name: z.string().min(1),
   goal: z.string().min(1),
-  target: z.object({ baseUrl: z.url() }),
+  target: z.object({
+    baseUrl: z.url(),
+    /** Origins besides the base URL's that top-level navigation may reach. */
+    allowedOrigins: z.array(z.url()).optional(),
+  }),
   viewport: viewportSchema,
   constraints: constraintsSchema.optional(),
   steps: z.array(planStepSchema).min(1),
@@ -122,4 +155,9 @@ export type Plan = z.infer<typeof planSchema>;
 
 export function parsePlan(input: unknown): Plan {
   return planSchema.parse(input);
+}
+
+export function planOrigins(plan: Plan): string[] {
+  const urls = [plan.target.baseUrl, ...(plan.target.allowedOrigins ?? [])];
+  return [...new Set(urls.map((url) => new URL(url).origin))];
 }

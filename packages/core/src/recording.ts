@@ -21,14 +21,20 @@ export function isCanonicalChord(keys: readonly string[]): boolean {
   let previousModifier = -1;
   let ordinary = 0;
   for (const [index, key] of keys.entries()) {
-    if (seen.has(key)) return false;
+    if (seen.has(key)) {
+      return false;
+    }
     seen.add(key);
     const order = modifierOrder.get(key);
     if (order === undefined) {
       ordinary += 1;
-      if (index !== keys.length - 1) return false;
+      if (index !== keys.length - 1) {
+        return false;
+      }
     } else {
-      if (ordinary > 0 || order <= previousModifier) return false;
+      if (ordinary > 0 || order <= previousModifier) {
+        return false;
+      }
       previousModifier = order;
     }
   }
@@ -106,7 +112,7 @@ export type KeyPressEvent = z.infer<typeof keyPressEventSchema>;
 export type ScrollEvent = z.infer<typeof scrollEventSchema>;
 export type RecordingEvent = z.infer<typeof recordingEventSchema>;
 
-const knownEventTypes = new Set<string>([
+const knownEventTypes = new Set<unknown>([
   "navigation",
   "cursor-move",
   "click",
@@ -122,7 +128,8 @@ const recordingEventsSchema = z
       (event) =>
         typeof event === "object" &&
         event !== null &&
-        knownEventTypes.has((event as { type?: unknown }).type as string),
+        "type" in event &&
+        knownEventTypes.has(event.type),
     ),
   )
   .pipe(z.array(recordingEventSchema));

@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { explorationActionSchema, type ExplorationAction } from "@noice-tech/demo-recorder-core";
+import { outlineOf } from "../driver/aria.js";
 import { selectDriver } from "../driver/index.js";
 import { act, PolicyError } from "../session/act.js";
 import { observe, type Observation } from "../session/observe.js";
@@ -32,6 +33,7 @@ export const exploreOptions: OptionDefinitions = {
   headed: { type: "boolean" },
   viewport: { type: "string" },
   policy: { type: "string" },
+  "allow-origin": { type: "string" },
   "storage-state": { type: "string" },
   attached: { type: "boolean" },
   target: { type: "string" },
@@ -40,6 +42,7 @@ export const exploreOptions: OptionDefinitions = {
   "max-duration": { type: "string" },
   "max-actions": { type: "string" },
   input: { type: "string" },
+  full: { type: "boolean" },
 };
 
 function projectOf(args: ParsedArguments): string {
@@ -58,6 +61,25 @@ function policyOf(args: ParsedArguments): "read-only" | "reversible" {
   return value;
 }
 
+function extraOriginsOf(args: ParsedArguments): string[] {
+  const values = (stringOption(args, "allow-origin") ?? "").split(",").filter(Boolean);
+  return values.map((value) => {
+    try {
+      return new URL(value.trim()).origin;
+    } catch {
+      throw new Error(`--allow-origin takes URLs such as https://shop.example.com, not ${value}`);
+    }
+  });
+}
+
+function originsOf(urls: readonly (string | undefined)[]): string[] {
+  const origins = urls.flatMap((url) => {
+    const origin = URL.parse(url ?? "")?.origin;
+    return origin && origin !== "null" ? [origin] : [];
+  });
+  return [...new Set(origins)];
+}
+
 function summarizeSession(file: SessionFile) {
   return {
     id: file.id,
@@ -65,6 +87,7 @@ function summarizeSession(file: SessionFile) {
     mode: file.browser.mode,
     owned: file.browser.owned,
     policy: file.policy,
+    allowedOrigins: file.allowedOrigins,
     viewport: file.viewport,
     limits: file.limits,
     actions: file.actions,
@@ -72,26 +95,23 @@ function summarizeSession(file: SessionFile) {
   };
 }
 
-function summarizeObservation(observation: Observation) {
+/**
+ * What the agent reads. The outline keeps every control with its ref; the page's
+ * text is in `snapshotFile`, or inline with `--full`.
+ */
+function summarizeObservation(observation: Observation, args: ParsedArguments) {
   return {
     id: observation.id,
     url: observation.url,
     title: observation.title,
     viewport: observation.viewport,
     scroll: observation.scroll,
-    headings: observation.headings,
-    elements: observation.elements.map((element) => ({
-      ref: element.ref,
-      role: element.role,
-      name: element.name,
-      enabled: element.enabled,
-      visible: element.visible,
-      bounds: element.bounds,
-      risk: element.risk,
-      target: element.target,
-    })),
+    ...(booleanOption(args, "full")
+      ? { snapshot: observation.snapshot }
+      : { outline: outlineOf(observation.snapshot) }),
+    snapshotFile: observation.artifacts.snapshot,
     errors: observation.errors,
-    artifacts: observation.artifacts,
+    screenshot: observation.artifacts.screenshot,
   };
 }
 
@@ -108,6 +128,7 @@ export async function exploreStart(args: ParsedArguments): Promise<unknown> {
   const policy = policyOf(args);
   const storageStatePath = stringOption(args, "storage-state");
   const url = stringOption(args, "url");
+  const extraOrigins = extraOriginsOf(args);
   const limits = {
     idleTimeoutMs: nonNegativeNumberOption(args, "idle-timeout") ?? DEFAULT_LIMITS.idleTimeoutMs,
     maxDurationMs: Math.min(
@@ -121,7 +142,9 @@ export async function exploreStart(args: ParsedArguments): Promise<unknown> {
     const live = await loadSessionFile(project)
       .then((file) => connectSession(project, file))
       .catch(() => undefined);
-    if (live) throw new Error("A live explore session already exists for this project");
+    if (live) {
+      throw new Error("A live explore session already exists for this project");
+    }
     await clearSessionFile(project);
   }
 
@@ -143,6 +166,7 @@ export async function exploreStart(args: ParsedArguments): Promise<unknown> {
         touchFile: sessionPath(project),
         idleTimeoutMs: limits.idleTimeoutMs,
         maxDurationMs: limits.maxDurationMs,
+        allowedOrigins: originsOf([url, ...extraOrigins]),
         ...(storageStatePath ? { storageStatePath } : {}),
       });
 
@@ -150,18 +174,24 @@ export async function exploreStart(args: ParsedArguments): Promise<unknown> {
   if (attached) {
     const pages = await session.listPages();
     if (!page) {
-      if (pages.length === 0) throw new Error("The attached browser has no open tabs");
+      if (pages.length === 0) {
+        throw new Error("The attached browser has no open tabs");
+      }
       if (pages.length > 1) {
         throw new Error(
           `The attached browser has ${pages.length} tabs; select one with --page (see \`explore pages\`)`,
         );
       }
       page = pages[0]?.id;
-      if (page) await session.selectPage(page);
+      if (page) {
+        await session.selectPage(page);
+      }
     }
   }
 
-  if (url) await session.goto(url);
+  if (url) {
+    await session.goto(url);
+  }
   const observation = await observe({ project, session, viewport, id: "obs-0001" });
   const file: SessionFile = {
     version: 1,
@@ -175,6 +205,7 @@ export async function exploreStart(args: ParsedArguments): Promise<unknown> {
       ...(session.pid === undefined ? {} : { pid: session.pid }),
     },
     policy,
+    allowedOrigins: originsOf([url, observation.url, ...extraOrigins]),
     viewport,
     ...(page === undefined ? {} : { page }),
     limits,
@@ -182,7 +213,7 @@ export async function exploreStart(args: ParsedArguments): Promise<unknown> {
     actions: 0,
   };
   await saveSessionFile(project, file);
-  return { session: summarizeSession(file), observation: summarizeObservation(observation) };
+  return { session: summarizeSession(file), observation: summarizeObservation(observation, args) };
 }
 
 export async function explorePages(args: ParsedArguments): Promise<unknown> {
@@ -208,7 +239,10 @@ export async function exploreObserve(args: ParsedArguments): Promise<unknown> {
   const observation = await observe({ project, session, viewport: file.viewport, id });
   const updated = { ...file, lastObservationId: observation.id };
   await saveSessionFile(project, updated);
-  return { session: summarizeSession(updated), observation: summarizeObservation(observation) };
+  return {
+    session: summarizeSession(updated),
+    observation: summarizeObservation(observation, args),
+  };
 }
 
 export async function exploreAct(args: ParsedArguments): Promise<unknown> {
@@ -216,7 +250,9 @@ export async function exploreAct(args: ParsedArguments): Promise<unknown> {
   const inputPath = requireStringOption(args, "input");
   const action: ExplorationAction = explorationActionSchema.parse(await readJson(inputPath));
   const { file, session } = await connectExisting(project);
-  if (!file.lastObservationId) throw new Error("The session has no observation to act on");
+  if (!file.lastObservationId) {
+    throw new Error("The session has no observation to act on");
+  }
   const id = nextObservationId(file.lastObservationId);
 
   try {
@@ -224,6 +260,7 @@ export async function exploreAct(args: ParsedArguments): Promise<unknown> {
       project,
       session,
       policy: file.policy,
+      allowedOrigins: file.allowedOrigins,
       lastObservationId: file.lastObservationId,
       nextObservationId: id,
       action,
@@ -236,8 +273,9 @@ export async function exploreAct(args: ParsedArguments): Promise<unknown> {
       target: result.target,
       risk: result.risk,
       reason: result.reason,
+      ...(result.blocked.length > 0 ? { blocked: result.blocked } : {}),
       session: summarizeSession(updated),
-      observation: summarizeObservation(result.observation),
+      observation: summarizeObservation(result.observation, args),
     };
   } catch (error) {
     if (error instanceof PolicyError) {
@@ -250,7 +288,9 @@ export async function exploreAct(args: ParsedArguments): Promise<unknown> {
 export async function exploreFinish(args: ParsedArguments): Promise<unknown> {
   const project = projectOf(args);
   const file = await loadSessionFile(project).catch(() => undefined);
-  if (!file) return { closed: false, message: "No live session to finish" };
+  if (!file) {
+    return { closed: false, message: "No live session to finish" };
+  }
 
   const closed = file.browser.owned;
   const connected = await connectSession(project, file).catch(() => undefined);

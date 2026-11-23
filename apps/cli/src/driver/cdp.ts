@@ -29,9 +29,13 @@ export const cdpDriver: Driver = {
     }
     const browser = await chromium.connectOverCDP(options.target, { timeout: 30_000 });
     const context = browser.contexts()[0];
-    if (!context) throw new Error("The attached browser has no context to drive");
+    if (!context) {
+      throw new Error("The attached browser has no context to drive");
+    }
     const pages = context.pages();
-    if (pages.length === 0) throw new Error("The attached browser has no open tabs");
+    if (pages.length === 0) {
+      throw new Error("The attached browser has no open tabs");
+    }
     if (!options.pageId && pages.length > 1) {
       throw new Error(
         "Select a tab with --page; list ids with `explore pages --driver cdp --target <cdp-url>`",
@@ -46,7 +50,6 @@ export const cdpDriver: Driver = {
       viewport: options.viewport,
       ownsLifecycle: false,
       capture: false,
-      guarded: false,
     });
   },
 };

@@ -26,7 +26,9 @@ const reversiblePattern =
   /\b(save|create|add|new|edit|update|apply|confirm|continue|next|submit|send|post|upload|import|duplicate|toggle|check|uncheck)\b/i;
 
 function originOf(value: string | null | undefined): string | undefined {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   try {
     return new URL(value).origin;
   } catch {
@@ -35,27 +37,49 @@ function originOf(value: string | null | undefined): string | undefined {
 }
 
 /** Static read of what an element likely does. It is a heuristic, never a guarantee. */
-export function classifyRisk(facts: ElementFacts, currentOrigin?: string): Risk {
-  if (facts.download) return "destructive";
-  if (facts.tag === "button" && facts.inputType === "submit") return "destructive";
-  if (facts.tag === "input" && facts.inputType === "submit") return "destructive";
-  if (facts.inForm && (facts.tag === "button" || facts.inputType === "submit"))
+export function classifyRisk(facts: ElementFacts, allowedOrigins: readonly string[]): Risk {
+  if (facts.download) {
     return "destructive";
+  }
+  if (facts.tag === "button" && facts.inputType === "submit") {
+    return "destructive";
+  }
+  if (facts.tag === "input" && facts.inputType === "submit") {
+    return "destructive";
+  }
+  if (facts.inForm && (facts.tag === "button" || facts.inputType === "submit")) {
+    return "destructive";
+  }
 
   const hrefOrigin = originOf(facts.href);
-  if (facts.href && currentOrigin && hrefOrigin && hrefOrigin !== currentOrigin) {
+  if (hrefOrigin && hrefOrigin !== "null" && !allowedOrigins.includes(hrefOrigin)) {
     return "external-side-effect";
   }
-  if (facts.target === "_blank") return "external-side-effect";
+  if (facts.target === "_blank") {
+    return "external-side-effect";
+  }
 
-  if (facts.name && destructivePattern.test(facts.name)) return "destructive";
-  if (facts.tag === "a") return "read-only";
-  if (facts.role === "link") return "read-only";
-  if (facts.role === "textbox" || facts.role === "searchbox") return "reversible";
-  if (facts.role === "checkbox" || facts.role === "radio" || facts.role === "combobox")
+  if (facts.name && destructivePattern.test(facts.name)) {
+    return "destructive";
+  }
+  if (facts.tag === "a") {
+    return "read-only";
+  }
+  if (facts.role === "link") {
+    return "read-only";
+  }
+  if (facts.role === "textbox" || facts.role === "searchbox") {
     return "reversible";
-  if (facts.name && reversiblePattern.test(facts.name)) return "reversible";
-  if (!facts.name) return "unknown";
+  }
+  if (facts.role === "checkbox" || facts.role === "radio" || facts.role === "combobox") {
+    return "reversible";
+  }
+  if (facts.name && reversiblePattern.test(facts.name)) {
+    return "reversible";
+  }
+  if (!facts.name) {
+    return "unknown";
+  }
   return "read-only";
 }
 
@@ -67,14 +91,19 @@ export function evaluatePolicy(input: {
   action: Action;
   risk: Risk;
   policy: Policy;
-  sameOrigin?: boolean;
+  allowedOrigin?: boolean;
 }): Decision {
   const { action, risk, policy } = input;
   if (risk === "unknown") {
     return { allowed: false, risk, reason: "The target risk is unknown" };
   }
-  if (input.sameOrigin === false) {
-    return { allowed: false, risk, reason: "Off-origin navigation is blocked" };
+  if (input.allowedOrigin === false) {
+    return {
+      allowed: false,
+      risk,
+      reason:
+        "Navigation outside the allowed origins is blocked; add one with `explore start --allow-origin`",
+    };
   }
   if (action.type === "navigate" && risk !== "read-only" && risk !== "reversible") {
     return { allowed: false, risk, reason: `Navigation classified as ${risk} is blocked` };
@@ -83,7 +112,12 @@ export function evaluatePolicy(input: {
     return { allowed: false, risk, reason: "Destructive controls are blocked" };
   }
   if (risk === "external-side-effect") {
-    return { allowed: false, risk, reason: "Effects outside the page are blocked" };
+    return {
+      allowed: false,
+      risk,
+      reason:
+        "Effects outside the page are blocked: new tabs, and links outside the allowed origins (add one with `explore start --allow-origin`)",
+    };
   }
   if (policy === "read-only" && risk !== "read-only") {
     return { allowed: false, risk, reason: `Policy read-only blocks ${risk} controls` };

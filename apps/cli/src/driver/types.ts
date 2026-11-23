@@ -1,4 +1,5 @@
 import type { Action, Expect, Target } from "@noice-tech/demo-recorder-core";
+import type { ElementFacts } from "../policy.js";
 
 export type Capability =
   | "launch"
@@ -27,30 +28,34 @@ export type ConnectOptions = {
   maxDurationMs?: number;
   pageId?: string;
   storageStatePath?: string;
+  /** Turns on the runtime effect boundary, allowing top-level navigation to these origins. */
+  allowedOrigins?: readonly string[];
 };
 
 export type Risk = "read-only" | "reversible" | "destructive" | "external-side-effect" | "unknown";
 
-export type ObservedElement = {
-  ref: string;
-  role: string;
-  name: string;
-  enabled: boolean;
-  visible: boolean;
-  bounds: { x: number; y: number; width: number; height: number };
-  risk: Risk;
-  target: Target;
-  /** Internal, uniquely identifies the element for one observation. Never exported to plans. */
-  selector: string;
-};
+/**
+ * A node of Playwright's AI snapshot that carries a ref. Ref numbers are only
+ * meaningful to the connection that took the snapshot, so `path` (child indices
+ * from the root) is what finds the same node again from a later command.
+ */
+export type SnapshotElement = { ref: string; role: string; name?: string; path: number[] };
 
 export type PageInspection = {
   url: string;
   title: string;
   scroll: { x: number; y: number };
-  headings: string[];
-  elements: ObservedElement[];
+  /** Playwright's AI-mode ARIA snapshot (YAML with `[ref=eN]` markers). */
+  snapshot: string;
+  elements: SnapshotElement[];
   errors: string[];
+};
+
+/** A ref resolved against the live page, with what policy and target derivation need. */
+export type ResolvedRef = SnapshotElement & {
+  /** Named ancestors, nearest first, that can narrow a duplicated target. */
+  scopes: Array<{ role: string; name: string }>;
+  facts: Omit<ElementFacts, "role" | "name">;
 };
 
 export interface Recorder {
@@ -69,6 +74,8 @@ export interface Session {
   selectPage(id: string): Promise<void>;
   goto(url: string): Promise<void>;
   perform(action: Action): Promise<void>;
+  /** What the boundary blocked since the last interaction. */
+  blocked(): readonly string[];
   waitFor(expect: Expect): Promise<void>;
   /** Number of live elements a target resolves to. Must be exactly one to be recordable. */
   countMatches(target: Target): Promise<number>;
@@ -76,8 +83,12 @@ export interface Session {
     target: Target,
   ): Promise<{ x: number; y: number; width: number; height: number } | undefined>;
   mouseMove(x: number, y: number): Promise<void>;
+  /** Current document scroll offset, and the largest vertical offset the document allows. */
+  scrollPosition(): Promise<{ x: number; y: number; maxY: number }>;
   url(): Promise<string>;
   inspect(): Promise<PageInspection>;
+  /** Finds the node at `path` in a fresh AI snapshot; its `ref` is live for this connection. */
+  resolveElement(path: number[]): Promise<ResolvedRef | undefined>;
   snapshot(): Promise<string>;
   screenshot(path: string): Promise<void>;
   saveStorageState(path: string): Promise<void>;

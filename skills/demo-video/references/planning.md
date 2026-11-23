@@ -13,7 +13,7 @@ Put both files in the project folder (`--project DIR`): `DIR/plan.json` and `DIR
   "goal": "Introduce the site and show its examples and pricing",
   "target": { "baseUrl": "https://example.com" },
   "viewport": { "width": 1440, "height": 900 },
-  "constraints": { "submitForms": false, "modifyData": false, "sameOriginOnly": true },
+  "constraints": { "submitForms": false, "modifyData": false },
   "steps": [
     { "type": "navigate", "url": "https://example.com/", "purpose": "establish the product" },
     { "type": "hold", "durationMs": 1200 },
@@ -32,21 +32,27 @@ Put both files in the project folder (`--project DIR`): `DIR/plan.json` and `DIR
 }
 ```
 
-`target` at the plan root is the app entry point (`baseUrl`). `target` inside a step is the durable element recipe. They are different fields with the same name; read them by position.
+`target` at the plan root is the app entry point (`baseUrl`), plus `allowedOrigins` when the story navigates to other origins, such as `["https://shop.example.com"]`; rehearsal and recording block top-level navigation anywhere else. `target` inside a step is the durable element recipe. They are different fields with the same name; read them by position.
 
-A step target uses `role`, `name`, and/or `selector`. Prefer `role` plus accessible `name`. To be recordable a target must resolve to exactly one visible element; the tool refuses to pick the first of several matches.
+A step target uses `role`, `name`, and/or `selector`, optionally narrowed by `within`. Prefer `role` plus accessible `name`, copied from exploration: names match exactly, so `"Create"` does not match a button named `"Create project"`. When the same control appears more than once, exploration narrows it to its nearest named container:
+
+```json
+{ "role": "button", "name": "Choose plan", "within": { "role": "region", "name": "Pro plan" } }
+```
+
+To be recordable a target must resolve to exactly one element, in the page or any of its iframes; the tool refuses to pick the first of several matches. A target that is not there yet is waited for up to 5 seconds, so a late cookie banner needs no long hold; one that never appears fails and names the closest matches. Target a custom radio or checkbox by its role and name, such as `{ "role": "radio", "name": "Night Sky" }`, even when its label covers it: the click goes through the label as a person's would. Use `selector` only when no role and name fit; it counts only visible elements.
 
 Step types are `navigate`, `click`, `fill`, `press`, `select`, `scroll`, and `hold`:
 
-| type       | fields                      |
-| ---------- | --------------------------- |
-| `navigate` | `url`                       |
-| `click`    | `target`                    |
-| `fill`     | `target`, `value`           |
-| `press`    | `key`, optional `target`    |
-| `select`   | `target`, `value`           |
-| `scroll`   | `deltaY`, optional `deltaX` |
-| `hold`     | `durationMs`                |
+| type       | fields                                             |
+| ---------- | -------------------------------------------------- |
+| `navigate` | `url`                                              |
+| `click`    | `target`                                           |
+| `fill`     | `target`, `value`                                  |
+| `press`    | `key`, optional `target`                           |
+| `select`   | `target`, `value`                                  |
+| `scroll`   | `to` (a target), or `deltaY` and optional `deltaX` |
+| `hold`     | `durationMs`                                       |
 
 Every step may add `purpose` (a note for reviewers) and `expect`. Keep holds purposeful and usually between 800–2000ms. A simple directed demo usually needs roughly 8–18 steps. The plan is a directed story, not an exploration transcript.
 
@@ -62,7 +68,7 @@ Treat the recording as if a practiced human presenter is operating the browser:
 - Do not convert a difficult or ambiguous link into `navigate`. Scroll or dismiss overlays to expose it, derive a unique durable target from evidence, and rehearse the click. If it cannot be made reliable, simplify the story instead of hiding the transition.
 - Let a page settle before the first interaction. Use varied, purposeful pauses: roughly 600–1200ms before an ordinary decision, 800–1600ms after a meaningful state change, and 1800–3000ms for a final result or price reveal.
 - Click steps already use curved minimum-jerk cursor motion. `move` is not a step type; long holds provide the visible moment of consideration.
-- Scroll in deliberate, readable sections. Pause after a long scroll and avoid reversing direction without a narrative reason.
+- Scroll to what the story shows next with `{ "type": "scroll", "to": { "role": "heading", "name": "Reviews" } }` instead of tuning pixel distances. It scrolls in readable segments, measures again as lazy content loads, and stops with the target near the top. Use `deltaY` only for a scroll with no landmark. Pause after a long scroll and avoid reversing direction without a narrative reason.
 - On inspection, reject captures with blank route flashes, cursorless route changes, abrupt jumps, rushed reveals, or mechanical equal-tempo actions.
 
 ### Local and authenticated targets
@@ -85,7 +91,7 @@ Styling is a separate file so it can change without re-recording. Effects anchor
 
 `canvas` controls final framing without changing the immutable recording. `aspectRatio` accepts `16:9`, `1:1`, `9:16`, `source`, or another positive `WIDTH:HEIGHT` ratio; alternatively use explicit `width` and `height`. `padding` is the pixel distance between the canvas edge and the browser frame. `paddingMode` is `minimum` by default; use `exact` only with a capture viewport matched to the available content rectangle. `background` is a preset name (`midnight`, `ocean`, `aurora`, `prism`, `daybreak`, `tahoe`, `mist`), a `#RRGGBB` color, or `{ "type": "preset", "name": "mist" }`. Omit `browserFrame` to disable the frame.
 
-A step zoom uses `step`; a range uses `fromStep` and `toStep`. `leadMs` starts the effect before the anchor and `holdMs` keeps it after. `trim` uses `from` and `to` anchors (`{ "step": n, "offsetMs": ms }` or `{ "anchor": "start" | "end" }`). Zooms must not overlap. Because everything is anchored to steps, a re-record still frames the right actions. An anchor that cannot be resolved from the recording fails the render instead of silently shifting.
+A step zoom uses `step`; a range uses `fromStep` and `toStep`. `leadMs` starts the effect before the anchor and `holdMs` keeps it after. `trim` uses `from` and `to` anchors (`{ "step": n, "offsetMs": ms }` or `{ "anchor": "start" | "end" }`). Zooms must not overlap. Because everything is anchored to steps, a re-record still frames the right actions. Anchor steps that act: a `hold` records no events, so it cannot anchor a zoom or trim, and `plan rehearse` and `record` reject such anchors before a browser starts. An anchor that cannot be resolved from the recording fails the render instead of silently shifting.
 
 Canvas-only changes can be rerendered without recapturing:
 
@@ -99,6 +105,6 @@ node "$DR_CLI" render --project DIR --overwrite --aspect-ratio 1:1 --padding 72
 node "$DR_CLI" plan rehearse --project DIR --json
 ```
 
-`plan rehearse` validates the plan, runs it in a fresh browser, and checks every `expect`. On failure it writes `DIR/rehearsal-report.json` and `DIR/evidence/step-N.png|yml`. Repair only the failing area and rerun. Require `ok: true` and `captureReady: true` before capture. Approval is bound to the parsed plan contents: edits require a new rehearsal, while unchanged reruns reuse approval. Styling-only edits do not invalidate it.
+`plan rehearse` validates the plan and `presentation.json` anchors, runs the plan in a fresh browser, and checks every `expect`. On failure it writes `DIR/rehearsal-report.json` and, when the page can still be read, `DIR/evidence/step-N.png|yml`. The error names the cause: what covers or disables a control, or, for a failed `expect`, whether a navigation started, was answered, finished, or was blocked by the recording boundary. Repair only the failing area and rerun; after two failures of the same step for the same reason, stop and report instead. Require `ok: true` and `captureReady: true` before capture. Rehearsal caps each hold at 250 ms, so it takes seconds, not the video's length; `record` plays holds in full and checks every `expect` again. Approval is bound to the parsed plan contents: edits require a new rehearsal, while unchanged reruns reuse approval. Changing only hold durations or styling keeps approval, so tune pacing without rehearsing again. A `record` that fails at a step writes `DIR/record-report.json` and the same evidence files.
 
 Choose the plan `viewport` before exploration when the user requests a particular browser size or responsive layout. The default is 1440×900. Pass the same value to exploration with `--viewport WIDTHxHEIGHT`. Changing the viewport after gathering targets requires exploring again because responsive controls may change.

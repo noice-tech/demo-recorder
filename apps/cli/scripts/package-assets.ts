@@ -17,7 +17,9 @@ const rendererAssets = [
 
 async function requireFile(path: string): Promise<void> {
   const value = await stat(path).catch(() => undefined);
-  if (!value?.isFile()) throw new Error(`FFmpeg renderer asset is missing: ${path}`);
+  if (!value?.isFile()) {
+    throw new Error(`FFmpeg renderer asset is missing: ${path}`);
+  }
 }
 
 await Promise.all(rendererAssets.map((name) => requireFile(join(rendererSource, name))));

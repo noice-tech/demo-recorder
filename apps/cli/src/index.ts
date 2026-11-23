@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { backgroundPresetNames, type BackgroundOptions } from "@noice-tech/demo-recorder-core";
-import { realpathSync } from "node:fs";
+import { appendFileSync, realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -38,15 +38,22 @@ import {
   type OptionDefinitions,
   type ParsedArguments,
 } from "./support/args.js";
+import {
+  appendRunLog,
+  RUN_COMMANDS,
+  runIdFor,
+  runLogPath,
+  type RunLogEntry,
+} from "./support/run-log.js";
 import { cliVersion } from "./version.js";
 
 function usage(): string {
   return [
     "Usage:",
-    "  demo-recorder explore start --url URL [--project DIR] [--driver NAME] [--headed] [--viewport WxH] [--policy read-only|reversible]",
+    "  demo-recorder explore start --url URL [--project DIR] [--driver NAME] [--headed] [--viewport WxH] [--policy read-only|reversible] [--allow-origin URL[,URL]] [--full]",
     "  demo-recorder explore pages [--project DIR | --driver cdp --target URL]",
-    "  demo-recorder explore observe [--project DIR]",
-    "  demo-recorder explore act --input FILE [--project DIR]",
+    "  demo-recorder explore observe [--project DIR] [--full]",
+    "  demo-recorder explore act --input FILE [--project DIR] [--full]",
     "  demo-recorder explore finish [--project DIR]",
     "  demo-recorder plan rehearse [plan.json] [--project DIR] [--headed] [--storage-state FILE]",
     "  demo-recorder record [plan.json] [--project DIR] [--allow-unguarded] [--skip-rehearsal] [--headed] [--storage-state FILE] [--output FILE]",
@@ -80,10 +87,16 @@ const serverOptions: OptionDefinitions = {
 };
 
 function backgroundOption(value: string | undefined): BackgroundOptions | undefined {
-  if (!value) return undefined;
-  if (/^#[0-9a-fA-F]{6}$/.test(value)) return { type: "color", color: value };
+  if (!value) {
+    return undefined;
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+    return { type: "color", color: value };
+  }
   const preset = backgroundPresetNames.find((name) => value === `preset:${name}`);
-  if (preset) return { type: "preset", name: preset };
+  if (preset) {
+    return { type: "preset", name: preset };
+  }
   throw new Error(`--background must be #RRGGBB or preset:${backgroundPresetNames.join("|")}`);
 }
 
@@ -91,10 +104,12 @@ async function runRender(rest: string[]): Promise<unknown> {
   const parsed = parseArguments(rest, renderOptions);
   const size = dimensionsOption(parsed, "size");
   const aspectRatio = stringOption(parsed, "aspect-ratio");
-  if (size && aspectRatio) throw new Error("Use either --aspect-ratio or --size, not both");
+  if (size && aspectRatio) {
+    throw new Error("Use either --aspect-ratio or --size, not both");
+  }
   const padding = nonNegativeNumberOption(parsed, "padding");
   const paddingMode = stringOption(parsed, "padding-mode");
-  if (paddingMode && !["minimum", "exact"].includes(paddingMode)) {
+  if (paddingMode !== undefined && paddingMode !== "minimum" && paddingMode !== "exact") {
     throw new Error("--padding-mode must be minimum or exact");
   }
   const background = backgroundOption(stringOption(parsed, "background"));
@@ -107,7 +122,7 @@ async function runRender(rest: string[]): Promise<unknown> {
     ...size,
     ...(aspectRatio ? { aspectRatio } : {}),
     ...(padding !== undefined ? { padding } : {}),
-    ...(paddingMode ? { paddingMode: paddingMode as "minimum" | "exact" } : {}),
+    ...(paddingMode ? { paddingMode } : {}),
     ...(background ? { background } : {}),
   });
 }
@@ -188,15 +203,116 @@ async function runBrowserServerCommand(rest: string[]): Promise<unknown> {
   return undefined;
 }
 
-function formatError(error: unknown): string {
-  if (!(error instanceof Error)) return String(error);
+/** An error and its causes, skipping a cause whose message the previous one includes. */
+function errorMessages(error: unknown): string[] {
+  if (!(error instanceof Error)) {
+    return [String(error)];
+  }
   const messages: string[] = [];
   let current: unknown = error;
   while (current instanceof Error) {
-    messages.push(current.message);
+    const message = current.message.trim();
+    if (!messages.at(-1)?.includes(message)) {
+      messages.push(message);
+    }
     current = current.cause;
   }
-  return messages.join("\n  caused by: ");
+  return messages;
+}
+
+function reportError(error: unknown, json: boolean): void {
+  const [message = "", ...causes] = errorMessages(error);
+  if (json) {
+    // Agents parse stdout, so failures go there too.
+    const report = { ok: false, error: message, ...(causes.length > 0 ? { causes } : {}) };
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else {
+    console.error(`[demo-recorder] ${[message, ...causes].join("\n  caused by: ")}`);
+  }
+}
+
+async function dispatch(command: string | undefined, rest: string[]): Promise<unknown> {
+  switch (command) {
+    case "render":
+      return runRender(rest);
+    case "explore":
+      return runExplore(rest);
+    case "plan":
+      return runPlan(rest);
+    case "record":
+      return runRecord(parseArguments(rest, recordOptions));
+    case "inspect":
+      return runInspect(parseArguments(rest, inspectOptions));
+    case "doctor":
+      return runDoctor();
+    case "setup":
+      return runSetup(parseArguments(rest, setupOptions));
+    case "auth":
+      return runAuth(rest);
+    case "__browser-server":
+      return runBrowserServerCommand(rest);
+    default:
+      throw new Error(`${command ? `Unknown command: ${command}` : "Missing command"}\n${usage()}`);
+  }
+}
+
+/** The value of `--project`, which every run command accepts (default `.`). */
+function projectArgument(rest: string[]): string {
+  const index = rest.indexOf("--project");
+  const value = index === -1 ? undefined : rest[index + 1];
+  if (value) {
+    return value;
+  }
+  const inline = rest.find((argument) => argument.startsWith("--project="));
+  return inline ? inline.slice("--project=".length) : ".";
+}
+
+/**
+ * Runs a command; run commands also append their timing to the project's run
+ * log. Logging never fails the command.
+ */
+async function runLogged(command: string | undefined, rest: string[]): Promise<unknown> {
+  const label = ["explore", "plan", "auth"].includes(command ?? "")
+    ? `${command} ${rest[0] ?? ""}`
+    : (command ?? "");
+  if (!RUN_COMMANDS.has(label)) {
+    return dispatch(command, rest);
+  }
+
+  const project = resolve(projectArgument(rest));
+  const startedAt = new Date();
+  const runId = await runIdFor(project, label, startedAt);
+  const entry = (ok: boolean): RunLogEntry => ({
+    runId,
+    command: label,
+    startedAt: startedAt.toISOString(),
+    durationMs: Date.now() - startedAt.getTime(),
+    ok,
+  });
+  // A signal (Ctrl-C, or a harness timeout) ends the process before `finally` runs.
+  const onSignal = (signal: NodeJS.Signals): void => {
+    try {
+      appendFileSync(
+        runLogPath(project),
+        `${JSON.stringify({ ...entry(false), interrupted: true })}\n`,
+      );
+    } catch {
+      // Logging never fails the command.
+    }
+    process.exit(signal === "SIGINT" ? 130 : 143);
+  };
+  process.once("SIGINT", onSignal);
+  process.once("SIGTERM", onSignal);
+  let ok = false;
+  try {
+    const result = await dispatch(command, rest);
+    ok = true;
+    return result;
+  } finally {
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
+    await appendRunLog(project, entry(ok)).catch(() => undefined);
+  }
 }
 
 export async function runCli(arguments_: string[]): Promise<void> {
@@ -211,7 +327,7 @@ export async function runCli(arguments_: string[]): Promise<void> {
     console.error("[demo-recorder] `explore --url` is deprecated; use `explore start --url`");
     rest = ["start", ...rest];
   }
-  if (["--help", "-h", "help"].includes(command ?? "")) {
+  if (["--help", "-h", "help"].includes(command ?? "") || rest.includes("--help")) {
     console.log(usage());
     return;
   }
@@ -220,44 +336,16 @@ export async function runCli(arguments_: string[]): Promise<void> {
     return;
   }
 
-  let result: unknown;
-  switch (command) {
-    case "render":
-      result = await runRender(rest);
-      break;
-    case "explore":
-      result = await runExplore(rest);
-      break;
-    case "plan":
-      result = await runPlan(rest);
-      break;
-    case "record":
-      result = await runRecord(parseArguments(rest, recordOptions));
-      break;
-    case "inspect":
-      result = await runInspect(parseArguments(rest, inspectOptions));
-      break;
-    case "doctor":
-      result = await runDoctor();
-      break;
-    case "setup":
-      result = await runSetup(parseArguments(rest, setupOptions));
-      break;
-    case "auth":
-      result = await runAuth(rest);
-      break;
-    case "__browser-server":
-      result = await runBrowserServerCommand(rest);
-      break;
-    default:
-      throw new Error(`${command ? `Unknown command: ${command}` : "Missing command"}\n${usage()}`);
+  const result = await runLogged(command, rest);
+  if (result !== undefined) {
+    console.log(JSON.stringify(result, null, 2));
   }
-
-  if (result !== undefined) console.log(JSON.stringify(result, null, 2));
 }
 
 function isMainModule(): boolean {
-  if (!process.argv[1]) return false;
+  if (!process.argv[1]) {
+    return false;
+  }
   try {
     return realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url));
   } catch {
@@ -273,7 +361,7 @@ if (isMainModule()) {
       setTimeout(() => process.exit(0), 1_000);
     })
     .catch((error: unknown) => {
-      console.error(`[demo-recorder] ${formatError(error)}`);
-      process.exit(1);
+      reportError(error, process.argv.includes("--json"));
+      process.stdout.write("", () => process.exit(1));
     });
 }

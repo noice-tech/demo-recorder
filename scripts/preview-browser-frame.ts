@@ -14,8 +14,9 @@ import {
 } from "../packages/renderer/src/overlays.js";
 import type { ProductDemoRenderInput } from "../packages/renderer/src/ffmpeg.js";
 
-if (!process.argv[2])
+if (!process.argv[2]) {
   throw new Error("Usage: preview-browser-frame.ts SOURCE.png [OUTPUT_DIRECTORY]");
+}
 const sourcePath = resolve(process.argv[2]);
 const directory = resolve(process.argv[3] ?? "output/browser-frame-preview");
 const assets = fileURLToPath(new URL("../packages/renderer/assets/", import.meta.url));

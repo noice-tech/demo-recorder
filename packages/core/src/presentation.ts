@@ -145,13 +145,18 @@ function even(value: number): number {
 }
 
 function ratioFromText(value: string, source: Pick<Viewport, "width" | "height">): number {
-  if (value === "source") return source.width / source.height;
+  if (value === "source") {
+    return source.width / source.height;
+  }
   const match = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(value);
-  if (!match)
+  if (!match) {
     throw new Error(`Canvas aspect ratio must be "source" or WIDTH:HEIGHT, received ${value}`);
+  }
   const width = Number(match[1]);
   const height = Number(match[2]);
-  if (!(width > 0) || !(height > 0)) throw new Error("Canvas aspect ratio values must be positive");
+  if (!(width > 0) || !(height > 0)) {
+    throw new Error("Canvas aspect ratio values must be positive");
+  }
   return width / height;
 }
 
@@ -173,15 +178,22 @@ export function resolveCanvas(
   source: Pick<Viewport, "width" | "height">,
 ): ResolvedCanvas {
   if (options?.width !== undefined || options?.height !== undefined) {
-    if (options.width === undefined || options.height === undefined)
+    if (options.width === undefined || options.height === undefined) {
       throw new Error("Canvas width and height must be specified together");
+    }
     return resolved(options.width, options.height, options);
   }
 
   const aspectRatio = options?.aspectRatio ?? "16:9";
-  if (aspectRatio === "16:9") return resolved(1920, 1080, options);
-  if (aspectRatio === "1:1") return resolved(1080, 1080, options);
-  if (aspectRatio === "9:16") return resolved(1080, 1920, options);
+  if (aspectRatio === "16:9") {
+    return resolved(1920, 1080, options);
+  }
+  if (aspectRatio === "1:1") {
+    return resolved(1080, 1080, options);
+  }
+  if (aspectRatio === "9:16") {
+    return resolved(1080, 1920, options);
+  }
 
   const ratio = ratioFromText(aspectRatio, source);
   const [width, height] = ratio >= 1 ? [1920, 1920 / ratio] : [1920 * ratio, 1920];
@@ -267,17 +279,22 @@ export function parsePresentation(input: unknown): Presentation {
 export function canvasBackgroundToOptions(
   background: PresentationCanvas["background"],
 ): BackgroundOptions | undefined {
-  if (background === undefined) return undefined;
+  if (background === undefined) {
+    return undefined;
+  }
   if (typeof background === "string") {
     return background.startsWith("#")
       ? { type: "color", color: background }
-      : { type: "preset", name: background as BackgroundPreset };
+      : // SAFETY: canvasBackgroundSchema admits only #RRGGBB colors and preset names.
+        { type: "preset", name: background as BackgroundPreset };
   }
   return { type: "preset", name: background.name };
 }
 
 export function canvasToOptions(canvas: PresentationCanvas | undefined): CanvasOptions | undefined {
-  if (!canvas) return undefined;
+  if (!canvas) {
+    return undefined;
+  }
   return {
     ...canvas,
     background: canvasBackgroundToOptions(canvas.background),

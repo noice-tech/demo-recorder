@@ -33,8 +33,9 @@ export function productDemoGeometry(
   if (
     output.padding * 2 >= output.width ||
     output.padding * 2 + BROWSER_TITLE_BAR_HEIGHT >= output.height
-  )
+  ) {
     throw new Error("Canvas padding leaves no room for the browser frame");
+  }
   const available = {
     x: output.padding,
     y: output.padding + BROWSER_TITLE_BAR_HEIGHT,
@@ -84,8 +85,12 @@ function parseHex(color: string): Rgb {
 
 function colorAt(stops: RgbStop[], position: number): Rgb {
   const endIndex = stops.findIndex((stop) => position <= stop.position);
-  if (endIndex < 0) return stops.at(-1)!.color;
-  if (endIndex === 0) return stops[0]!.color;
+  if (endIndex < 0) {
+    return stops.at(-1)!.color;
+  }
+  if (endIndex === 0) {
+    return stops[0]!.color;
+  }
 
   const start = stops[endIndex - 1]!;
   const end = stops[endIndex]!;
@@ -304,9 +309,13 @@ export function computeBrowserFrameLayout(browser: Rect): BrowserFrameLayout {
 export function formatBrowserAddress(value: string, includePath: boolean): string {
   try {
     const url = new URL(value);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return "Product demo";
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return "Product demo";
+    }
     const hostname = url.hostname.replace(/^www\./i, "") || "Product demo";
-    if (!includePath || url.pathname === "/") return hostname;
+    if (!includePath || url.pathname === "/") {
+      return hostname;
+    }
     let pathname = url.pathname;
     try {
       pathname = decodeURIComponent(pathname);
@@ -423,7 +432,9 @@ function roundStrokePath(points: readonly IconPoint[], width = 1.2): string {
     const [ax, ay] = points[index - 1]!;
     const [bx, by] = points[index]!;
     const length = Math.hypot(bx - ax, by - ay);
-    if (length === 0) continue;
+    if (length === 0) {
+      continue;
+    }
     const nx = ((by - ay) / length) * radius;
     const ny = ((ax - bx) / length) * radius;
     contours.push(

@@ -24,7 +24,7 @@ Project and legal information: https://ffmpeg.org/legal.html
 
 ## Playwright
 
-Demo Recorder uses Playwright 1.62.1 and playwright-core under the
+Demo Recorder uses Playwright 1.65.1 and playwright-core under the
 Apache License 2.0.
 
 Project: https://playwright.dev/
@@ -275,3 +275,9 @@ separately. Those downloads contain software under Chromium's BSD-style
 license and additional third-party licenses. Their applicable notices are
 provided with the downloaded browser distribution and by the Chromium
 project: https://chromium.googlesource.com/chromium/src/+/HEAD/LICENSE
+
+## anti-slop Oxlint rules
+
+`scripts/oxlint-anti-slop.ts` is a development-only lint plugin adapted from
+the anti-slop Oxlint plugin, copyright 2026 Dillon Mulroy, under the MIT
+License. It is not included in the published CLI package.

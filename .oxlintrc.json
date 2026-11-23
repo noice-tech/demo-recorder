@@ -1,5 +1,50 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "categories": { "correctness": "error", "suspicious": "warn" },
-  "ignorePatterns": ["**/dist/**", "recordings/**", "output/**"]
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "plugins": ["import", "unicorn", "typescript", "oxc"],
+  "jsPlugins": [
+    {
+      "name": "anti-slop",
+      "specifier": "./scripts/oxlint-anti-slop.ts"
+    }
+  ],
+  "ignorePatterns": ["**/dist/**", "recordings/**", "output/**"],
+  "rules": {
+    "anti-slop/no-chained-type-assertions": "error",
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
+    "anti-slop/no-module-mocking": "error",
+    "curly": ["error", "all"],
+    "complexity": [
+      "warn",
+      {
+        "max": 15
+      }
+    ],
+    "max-depth": ["warn", 4],
+    "no-nested-ternary": "warn",
+    "no-unused-vars": [
+      "error",
+      {
+        "vars": "all",
+        "args": "all",
+        "varsIgnorePattern": "^_",
+        "argsIgnorePattern": "^_",
+        "caughtErrors": "all",
+        "caughtErrorsIgnorePattern": "^_",
+        "ignoreRestSiblings": true
+      }
+    ],
+    "unicorn/no-unreadable-iife": "error"
+  },
+  "overrides": [
+    {
+      "files": ["**/tests/**", "**/scripts/**"],
+      "rules": {
+        "anti-slop/require-safety-comment-for-type-assertion": "off"
+      }
+    }
+  ]
 }

@@ -66,12 +66,18 @@ export function cursorPositionAt(
 ): CursorPosition | undefined {
   const moves = events.filter((event): event is CursorMoveEvent => event.type === "cursor-move");
   const nextIndex = moves.findIndex((event) => event.timestampMs >= timestampMs);
-  if (nextIndex === 0) return moves[0];
-  if (nextIndex < 0) return moves.at(-1);
+  if (nextIndex === 0) {
+    return moves[0];
+  }
+  if (nextIndex < 0) {
+    return moves.at(-1);
+  }
 
   const before = moves[nextIndex - 1];
   const after = moves[nextIndex];
-  if (!before || !after) return before ?? after;
+  if (!before || !after) {
+    return before ?? after;
+  }
   const span = after.timestampMs - before.timestampMs;
   const progress = span === 0 ? 1 : (timestampMs - before.timestampMs) / span;
   return {
@@ -171,13 +177,17 @@ export function resolveZoomWindows(zooms: readonly Zoom[], recording: Recording)
   const segments = zooms.map((zoom) => {
     const firstStep = "step" in zoom ? zoom.step : zoom.fromStep;
     const lastStep = "step" in zoom ? zoom.step : zoom.toStep;
-    if (lastStep < firstStep) throw new Error("Zoom toStep must not precede fromStep");
+    if (lastStep < firstStep) {
+      throw new Error("Zoom toStep must not precede fromStep");
+    }
 
     const leadMs = zoom.leadMs ?? 0;
     const holdMs = zoom.holdMs ?? 0;
     const startMs = stepTimeMs(recording, firstStep) - leadMs;
     const endMs = stepTimeMs(recording, lastStep) + holdMs;
-    if (endMs <= startMs) throw new Error("Zoom window is empty after resolving its anchors");
+    if (endMs <= startMs) {
+      throw new Error("Zoom window is empty after resolving its anchors");
+    }
 
     const point = stepInteractionPoint(recording, firstStep);
     return {
@@ -205,7 +215,9 @@ export function resolveTrim(
   trim: Trim | undefined,
   recording: Recording,
 ): { startMs: number; endMs: number } {
-  if (!trim) return { startMs: 0, endMs: recording.durationMs };
+  if (!trim) {
+    return { startMs: 0, endMs: recording.durationMs };
+  }
   const startMs = resolveAnchorMs(trim.from, recording);
   const endMs = resolveAnchorMs(trim.to, recording);
   if (startMs < 0 || endMs > recording.durationMs || endMs <= startMs) {

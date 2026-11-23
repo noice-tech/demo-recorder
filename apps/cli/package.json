@@ -50,7 +50,7 @@
     "render": "tsx src/index.ts render"
   },
   "dependencies": {
-    "playwright": "1.62.1"
+    "playwright": "1.65.1"
   },
   "devDependencies": {
     "@noice-tech/demo-recorder-core": "workspace:*",

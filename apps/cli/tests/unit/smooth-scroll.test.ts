@@ -44,7 +44,7 @@ describe("smoothScroll", () => {
   it("uses absolute scheduling and leaves a frame for the final wheel event", async () => {
     let clockMs = 0;
     const calls: Array<{ deltaX: number; deltaY: number; atMs: number }> = [];
-    const sink = {
+    const sink: WheelSink = {
       wheel: (deltaX: number, deltaY: number) => {
         calls.push({ deltaX, deltaY, atMs: clockMs });
         return Promise.resolve();
@@ -53,7 +53,7 @@ describe("smoothScroll", () => {
         clockMs += durationMs;
         return Promise.resolve();
       },
-    } as unknown as WheelSink;
+    };
 
     await smoothScroll(sink, 600, 60, { durationMs: 400, now: () => clockMs });
 

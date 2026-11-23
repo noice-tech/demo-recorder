@@ -29,9 +29,12 @@ export type CdpRecorder = {
 };
 
 export function targetFrameCount(elapsedMs: number, fps = recordingFps): number {
-  if (!Number.isFinite(elapsedMs) || elapsedMs < 0)
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0) {
     throw new Error("Elapsed time must be non-negative");
-  if (!Number.isInteger(fps) || fps <= 0) throw new Error("Recording FPS must be positive");
+  }
+  if (!Number.isInteger(fps) || fps <= 0) {
+    throw new Error("Recording FPS must be positive");
+  }
   const elapsedFrames = (elapsedMs * fps) / 1_000;
   return Math.max(1, Math.ceil(elapsedFrames - 1e-9));
 }
@@ -97,7 +100,9 @@ export async function startCdpRecorder(options: {
   let encoderError: Error | undefined;
   child.stderr.on("data", (chunk: Buffer) => {
     stderr += chunk.toString();
-    if (stderr.length > 100_000) stderr = stderr.slice(-100_000);
+    if (stderr.length > 100_000) {
+      stderr = stderr.slice(-100_000);
+    }
   });
   child.stdin.on("error", (error) => {
     encoderError = error;
@@ -108,9 +113,11 @@ export async function startCdpRecorder(options: {
       processError = error;
     });
     child.once("close", (code, signal) => {
-      if (processError) reject(processError);
-      else if (code === 0) resolve();
-      else {
+      if (processError) {
+        reject(processError);
+      } else if (code === 0) {
+        resolve();
+      } else {
         const reason = signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`;
         reject(new Error(`${ffmpegPath} failed with ${reason}: ${stderr.slice(-4_000).trim()}`));
       }
@@ -152,11 +159,15 @@ export async function startCdpRecorder(options: {
   });
 
   const emitUntil = (count: number): void => {
-    if (!latestFrame) return;
+    if (!latestFrame) {
+      return;
+    }
     while (emittedFrames < count) {
-      if (latestFrame.sequence === lastEmittedSequence) duplicatedFrames += 1;
-      else if (lastEmittedSequence > 0 && latestFrame.sequence > lastEmittedSequence + 1)
+      if (latestFrame.sequence === lastEmittedSequence) {
+        duplicatedFrames += 1;
+      } else if (lastEmittedSequence > 0 && latestFrame.sequence > lastEmittedSequence + 1) {
         droppedFrames += latestFrame.sequence - lastEmittedSequence - 1;
+      }
       child.stdin.write(latestFrame.buffer);
       emittedFrames += 1;
       lastEmittedSequence = latestFrame.sequence;
@@ -171,7 +182,9 @@ export async function startCdpRecorder(options: {
   };
 
   const scheduleFrames = (): void => {
-    if (!active || startedAtNs === undefined || encoderError) return;
+    if (!active || startedAtNs === undefined || encoderError) {
+      return;
+    }
     const elapsedMs = Number(process.hrtime.bigint() - startedAtNs) / 1_000_000;
     emitUntil(targetFrameCount(elapsedMs));
     timer = setTimeout(scheduleFrames, Math.max(1, frameIntervalMs / 2));
@@ -196,7 +209,9 @@ export async function startCdpRecorder(options: {
       scheduleFrames();
     }
     void cdp.send("Page.screencastFrameAck", { sessionId: frame.sessionId }).catch((error) => {
-      if (active) encoderError = new Error(`Unable to acknowledge CDP frame: ${message(error)}`);
+      if (active) {
+        encoderError = new Error(`Unable to acknowledge CDP frame: ${message(error)}`);
+      }
     });
   };
 
@@ -217,7 +232,9 @@ export async function startCdpRecorder(options: {
     ]);
   } catch (error) {
     active = false;
-    if (timer) clearTimeout(timer);
+    if (timer) {
+      clearTimeout(timer);
+    }
     cdp.off("Page.screencastFrame", onFrame);
     await cdp.send("Page.stopScreencast").catch(() => undefined);
     await cdp.detach().catch(() => undefined);
@@ -227,12 +244,16 @@ export async function startCdpRecorder(options: {
     throw new Error("Unable to start CDP recording", { cause: error });
   }
 
-  if (startedAtNs === undefined) throw new Error("CDP recording did not establish a video clock");
+  if (startedAtNs === undefined) {
+    throw new Error("CDP recording did not establish a video clock");
+  }
   const recordingStartedAtNs = startedAtNs;
   let finalized = false;
   const cleanupCdp = async (): Promise<void> => {
     active = false;
-    if (timer) clearTimeout(timer);
+    if (timer) {
+      clearTimeout(timer);
+    }
     await cdp.send("Page.stopScreencast").catch(() => undefined);
     cdp.off("Page.screencastFrame", onFrame);
     await cdp.detach().catch(() => undefined);
@@ -241,7 +262,9 @@ export async function startCdpRecorder(options: {
   return {
     startedAtNs: recordingStartedAtNs,
     async stop() {
-      if (finalized) throw new Error("CDP recorder has already been finalized");
+      if (finalized) {
+        throw new Error("CDP recorder has already been finalized");
+      }
       finalized = true;
       const stoppedAtNs = process.hrtime.bigint();
       await cleanupCdp();
@@ -271,7 +294,9 @@ export async function startCdpRecorder(options: {
       };
     },
     async abort() {
-      if (finalized) return;
+      if (finalized) {
+        return;
+      }
       finalized = true;
       await cleanupCdp();
       child.kill("SIGKILL");

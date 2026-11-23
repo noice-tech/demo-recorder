@@ -48,7 +48,9 @@ export async function authStart(args: ParsedArguments): Promise<unknown> {
     idleTimeoutMs: 900_000,
     maxDurationMs: 3_600_000,
   });
-  if (url) await session.goto(url);
+  if (url) {
+    await session.goto(url);
+  }
 
   const file: AuthSession = {
     version: 1,
@@ -111,7 +113,9 @@ export async function authStop(args: ParsedArguments): Promise<unknown> {
     (value) => authSessionSchema.parse(value),
     () => undefined,
   );
-  if (!file) return { stopped: false, message: "No auth browser is running" };
+  if (!file) {
+    return { stopped: false, message: "No auth browser is running" };
+  }
   if (file.browser.pid !== undefined) {
     try {
       process.kill(file.browser.pid, "SIGTERM");

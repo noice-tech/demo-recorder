@@ -6,7 +6,9 @@ const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 
 async function cleanGeneratedDirectory(path: string): Promise<void> {
   const entries = await readdir(path).catch((error: NodeJS.ErrnoException) => {
-    if (error.code === "ENOENT") return [];
+    if (error.code === "ENOENT") {
+      return [];
+    }
     throw error;
   });
   await Promise.all(

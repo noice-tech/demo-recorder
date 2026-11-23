@@ -28,7 +28,7 @@ export function createEventLog(startedAtNs: bigint): EventLog {
         ...event,
         timestampMs: now(),
         ...(step === undefined ? {} : { step }),
-      } as RecordingEvent);
+      });
     },
     events() {
       return captured.map((event) => ({ ...event }));

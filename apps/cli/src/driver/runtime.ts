@@ -46,7 +46,9 @@ export async function runBrowserServer(options: BrowserServerOptions): Promise<v
   let sawTouchFile = false;
 
   const shutdown = async (): Promise<void> => {
-    if (closing) return;
+    if (closing) {
+      return;
+    }
     closing = true;
     clearInterval(timer);
     await context?.close().catch(() => undefined);
@@ -56,7 +58,9 @@ export async function runBrowserServer(options: BrowserServerOptions): Promise<v
   const timer = setInterval(() => {
     void (async () => {
       const touch = await touchState(options.touchFile);
-      if (touch.exists) sawTouchFile = true;
+      if (touch.exists) {
+        sawTouchFile = true;
+      }
       const ended = sawTouchFile && !touch.exists;
       const idleMs = Date.now() - touch.mtimeMs;
       if (
@@ -83,7 +87,9 @@ export async function runBrowserServer(options: BrowserServerOptions): Promise<v
     const [port] = (await readFile(join(userDataDirectory, "DevToolsActivePort"), "utf8")).split(
       "\n",
     );
-    if (!port) throw new Error("Chromium did not publish a DevTools port");
+    if (!port) {
+      throw new Error("Chromium did not publish a DevTools port");
+    }
     await context.addInitScript({ content: HIDE_CURSOR_SCRIPT });
     await writeJsonAtomic(options.readyFile, {
       endpoint: `http://127.0.0.1:${port}`,

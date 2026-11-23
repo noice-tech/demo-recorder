@@ -5,8 +5,10 @@ import {
   canvasToOptions,
   parsePresentation,
   parseRecording,
+  presentationAnchorProblems,
   resolveRenderConfig,
   type CanvasOptions,
+  type Plan,
   type Presentation,
   type ProductDemoInput,
   type Recording,
@@ -33,8 +35,9 @@ async function firstExisting(paths: string[], message: string): Promise<string> 
         (value) => value.isFile(),
         () => false,
       )
-    )
+    ) {
       return path;
+    }
   }
   throw new Error(message);
 }
@@ -44,18 +47,35 @@ async function loadPresentation(paths: string[]): Promise<Presentation | undefin
     try {
       return parsePresentation(JSON.parse(await readFile(path, "utf8")) as unknown);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        continue;
+      }
       throw new Error(`Invalid presentation at ${path}`, { cause: error });
     }
   }
   return undefined;
 }
 
+/** Fails before a browser starts when presentation.json anchors steps that record nothing. */
+export async function requirePresentationFits(project: string, plan: Plan): Promise<void> {
+  const path = join(project, "presentation.json");
+  const presentation = await loadPresentation([path]);
+  if (!presentation) {
+    return;
+  }
+  const problems = presentationAnchorProblems(presentation, plan.steps);
+  if (problems.length > 0) {
+    throw new Error(`${path} does not fit the plan:\n  - ${problems.join("\n  - ")}`);
+  }
+}
+
 function mergeCanvas(
   base: CanvasOptions | undefined,
   override: CanvasOptions | undefined,
 ): CanvasOptions | undefined {
-  if (!override) return base;
+  if (!override) {
+    return base;
+  }
   return {
     ...base,
     ...override,

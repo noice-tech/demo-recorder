@@ -11,23 +11,23 @@ const link = (overrides: Partial<ElementFacts> = {}): ElementFacts => ({
 });
 
 describe("classifyRisk", () => {
-  it("treats same-origin links as read-only", () => {
-    expect(classifyRisk(link({ href: "https://app.test/docs" }), "https://app.test")).toBe(
-      "read-only",
-    );
+  it("treats links to allowed origins as read-only", () => {
+    const allowed = ["https://app.test", "https://shop.app.test"];
+    expect(classifyRisk(link({ href: "https://app.test/docs" }), allowed)).toBe("read-only");
+    expect(classifyRisk(link({ href: "https://shop.app.test/cart" }), allowed)).toBe("read-only");
   });
 
   it("treats off-origin and new-tab links as external side effects", () => {
-    expect(classifyRisk(link({ href: "https://other.test/" }), "https://app.test")).toBe(
+    expect(classifyRisk(link({ href: "https://other.test/" }), ["https://app.test"])).toBe(
       "external-side-effect",
     );
-    expect(classifyRisk(link({ target: "_blank" }), "https://app.test")).toBe(
+    expect(classifyRisk(link({ target: "_blank" }), ["https://app.test"])).toBe(
       "external-side-effect",
     );
   });
 
   it("treats downloads and form submits as destructive", () => {
-    expect(classifyRisk(link({ download: true }), "https://app.test")).toBe("destructive");
+    expect(classifyRisk(link({ download: true }), ["https://app.test"])).toBe("destructive");
     expect(
       classifyRisk(
         {
@@ -38,7 +38,7 @@ describe("classifyRisk", () => {
           inForm: true,
           download: false,
         },
-        "https://app.test",
+        ["https://app.test"],
       ),
     ).toBe("destructive");
   });
@@ -47,29 +47,28 @@ describe("classifyRisk", () => {
     expect(
       classifyRisk(
         { role: "textbox", name: "Email", tag: "input", inForm: true, download: false },
-        "https://app.test",
+        ["https://app.test"],
       ),
     ).toBe("reversible");
     expect(
       classifyRisk(
         { role: "button", name: "Delete account", tag: "button", inForm: false, download: false },
-        "https://app.test",
+        ["https://app.test"],
       ),
     ).toBe("destructive");
     expect(
       classifyRisk(
         { role: "button", name: "Save changes", tag: "button", inForm: false, download: false },
-        "https://app.test",
+        ["https://app.test"],
       ),
     ).toBe("reversible");
   });
 
   it("flags unnamed controls as unknown risk", () => {
     expect(
-      classifyRisk(
-        { role: "button", name: "", tag: "button", inForm: false, download: false },
+      classifyRisk({ role: "button", name: "", tag: "button", inForm: false, download: false }, [
         "https://app.test",
-      ),
+      ]),
     ).toBe("unknown");
   });
 });
@@ -98,14 +97,14 @@ describe("evaluatePolicy", () => {
     }
   });
 
-  it("blocks off-origin navigation with a reason", () => {
+  it("blocks navigation outside the allowed origins and says how to allow it", () => {
     const decision = evaluatePolicy({
       action: { type: "navigate", url: "https://other.test/" },
       risk: "read-only",
       policy: "reversible",
-      sameOrigin: false,
+      allowedOrigin: false,
     });
     expect(decision.allowed).toBe(false);
-    expect(decision.reason).toContain("Off-origin");
+    expect(decision.reason).toContain("--allow-origin");
   });
 });

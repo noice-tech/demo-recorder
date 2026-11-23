@@ -7,7 +7,7 @@ const valid = {
   goal: "Show a new user signing up",
   target: { baseUrl: "https://app.example.com/" },
   viewport: { width: 1440, height: 900 },
-  constraints: { submitForms: false, modifyData: false, sameOriginOnly: true },
+  constraints: { submitForms: false, modifyData: false },
   steps: [
     {
       type: "click" as const,

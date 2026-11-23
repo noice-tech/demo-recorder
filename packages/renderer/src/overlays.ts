@@ -54,7 +54,9 @@ function dialogue(
 function latestClickAt(clicks: readonly ClickEvent[], timestampMs: number): ClickEvent | undefined {
   for (let index = clicks.length - 1; index >= 0; index -= 1) {
     const click = clicks[index];
-    if (click && click.timestampMs <= timestampMs) return click;
+    if (click && click.timestampMs <= timestampMs) {
+      return click;
+    }
   }
   return undefined;
 }
@@ -154,12 +156,16 @@ export function generateTimedOverlayScript(input: {
   let titleStartMs = trimStartMs;
   const titleEvents: Array<{ startMs: number; endMs: number; text: string }> = [];
   for (const event of recording.events) {
-    if (event.type !== "navigation") continue;
+    if (event.type !== "navigation") {
+      continue;
+    }
     if (event.timestampMs <= trimStartMs) {
       title = event.url;
       continue;
     }
-    if (event.timestampMs >= trimEndMs) break;
+    if (event.timestampMs >= trimEndMs) {
+      break;
+    }
     titleEvents.push({ startMs: titleStartMs, endMs: event.timestampMs, text: title });
     title = event.url;
     titleStartMs = event.timestampMs;
@@ -171,7 +177,9 @@ export function generateTimedOverlayScript(input: {
   for (const interval of titleEvents) {
     const start = Math.max(0, (interval.startMs - trimStartMs) / 1000);
     const end = Math.min(durationSeconds, (interval.endMs - trimStartMs) / 1000);
-    if (end <= start) continue;
+    if (end <= start) {
+      continue;
+    }
     const displayAddress = formatBrowserAddress(interval.text, false);
     events.push(
       dialogue(
@@ -185,7 +193,11 @@ export function generateTimedOverlayScript(input: {
   }
 
   const clicks: ClickEvent[] = [];
-  for (const event of recording.events) if (event.type === "click") clicks.push(event);
+  for (const event of recording.events) {
+    if (event.type === "click") {
+      clicks.push(event);
+    }
+  }
   for (let frame = 0; frame < input.frameCount; frame += 1) {
     const start = frame / fps;
     const end = (frame + 1) / fps;
@@ -278,7 +290,11 @@ export function generateKeyboardOverlayScript(input: {
   const trimEndMs = timeline.trimEndMs ?? recording.durationMs;
   const durationSeconds = input.frameCount / config.fps;
   const keyEvents: KeyPressEvent[] = [];
-  for (const event of recording.events) if (event.type === "key-press") keyEvents.push(event);
+  for (const event of recording.events) {
+    if (event.type === "key-press") {
+      keyEvents.push(event);
+    }
+  }
   const events: string[] = [];
 
   for (const interval of keyOverlayIntervals(keyEvents, trimStartMs, trimEndMs)) {

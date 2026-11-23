@@ -22,7 +22,9 @@ async function startServer(options: ConnectOptions): Promise<{ endpoint: string;
   const runtimeDirectory = await mkdtemp(join(tmpdir(), "demo-recorder-session-"));
   const readyFile = join(runtimeDirectory, "ready.json");
   const entry = process.argv[1];
-  if (!entry) throw new Error("Unable to determine the CLI entry point");
+  if (!entry) {
+    throw new Error("Unable to determine the CLI entry point");
+  }
   const idleTimeoutMs = options.idleTimeoutMs ?? 300_000;
   const maxDurationMs = options.maxDurationMs ?? 1_200_000;
   const child = spawn(
@@ -51,10 +53,13 @@ async function startServer(options: ConnectOptions): Promise<{ endpoint: string;
   const deadline = Date.now() + 60_000;
   while (Date.now() <= deadline) {
     const ready = await readFile(readyFile, "utf8").then(
+      // SAFETY: the browser server we just spawned writes this file (see runtime.ts).
       (text) => JSON.parse(text) as { endpoint?: string; pid?: number; error?: string },
       () => undefined,
     );
-    if (ready?.error) throw new Error(`Browser server failed to start: ${ready.error}`);
+    if (ready?.error) {
+      throw new Error(`Browser server failed to start: ${ready.error}`);
+    }
     if (ready?.endpoint) {
       return ready.pid === undefined
         ? { endpoint: ready.endpoint }
@@ -102,7 +107,9 @@ export const playwrightDriver: Driver = {
         acceptDownloads: false,
         ...(options.storageStatePath ? { storageState: options.storageStatePath } : {}),
       }));
-    if (!existing) await context.addInitScript({ content: HIDE_CURSOR_SCRIPT });
+    if (!existing) {
+      await context.addInitScript({ content: HIDE_CURSOR_SCRIPT });
+    }
     const page = await selectPage(context, options.pageId);
 
     return createBrowserSession({
@@ -113,7 +120,7 @@ export const playwrightDriver: Driver = {
       viewport: options.viewport,
       ownsLifecycle: true,
       capture: true,
-      guarded: !existing,
+      ...(options.allowedOrigins ? { allowedOrigins: options.allowedOrigins } : {}),
       ...(connectionPid === undefined ? {} : { pid: connectionPid }),
     });
   },

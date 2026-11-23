@@ -58,7 +58,9 @@ describe("recordingSchema", () => {
       events: [click, { type: "future-event", timestampMs: 600 }],
     });
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data.events).toHaveLength(1);
+    if (result.success) {
+      expect(result.data.events).toHaveLength(1);
+    }
   });
 
   it("rejects malformed or non-canonical keyboard chords", () => {

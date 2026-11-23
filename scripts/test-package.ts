@@ -18,7 +18,9 @@ async function runNpm(arguments_: string[], cwd: string): Promise<string> {
     cwd,
     maxBuffer: 20 * 1024 * 1024,
   });
-  if (stderr.trim()) process.stderr.write(stderr);
+  if (stderr.trim()) {
+    process.stderr.write(stderr);
+  }
   return stdout;
 }
 
@@ -36,7 +38,9 @@ const packs = JSON.parse(packOutput) as Array<{
   files: Array<{ path: string }>;
 }>;
 const packed = packs[0];
-if (!packed) throw new Error("npm pack did not return a package");
+if (!packed) {
+  throw new Error("npm pack did not return a package");
+}
 
 const included = new Set(packed.files.map((file) => file.path));
 for (const required of [
@@ -50,7 +54,9 @@ for (const required of [
   "README.md",
   "THIRD_PARTY_NOTICES.md",
 ]) {
-  if (!included.has(required)) throw new Error(`Packed package is missing ${required}`);
+  if (!included.has(required)) {
+    throw new Error(`Packed package is missing ${required}`);
+  }
 }
 
 const forbiddenPrefixes = [
@@ -64,7 +70,9 @@ const forbiddenPrefixes = [
 const forbidden = [...included].find((path) =>
   forbiddenPrefixes.some((prefix) => path.startsWith(prefix)),
 );
-if (forbidden) throw new Error(`Packed package contains forbidden path ${forbidden}`);
+if (forbidden) {
+  throw new Error(`Packed package contains forbidden path ${forbidden}`);
+}
 
 const tarball = resolve(cliRoot, packed.filename);
 const workspace = await mkdtemp(join(tmpdir(), "demo-recorder-package-test-"));
