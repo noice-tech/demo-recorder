@@ -13,6 +13,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:package": "pnpm package:cli && tsx scripts/test-package.ts",
     "test:renderer": "vitest run --config vitest.integration.config.ts packages/renderer/tests/render.integration.test.ts",
+    "eval:demo": "tsx scripts/evals/index.ts",
     "check": "pnpm lint && pnpm format:check && pnpm typecheck && pnpm test",
     "clean": "tsx scripts/clean.ts",
     "package:cli": "turbo run package --filter=@noice-tech/demo-recorder",

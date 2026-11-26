@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "cases": {
+    "reviews": {
+      "page": "long.html",
+      "brief": "Make a demo under 20 seconds showing where to find Owners' reviews. Scroll there naturally and leave the heading readable.",
+      "expected": "video",
+      "maxSeconds": 20,
+      "budgetSeconds": 900
+    },
+    "covered-control": {
+      "page": "obstacles.html",
+      "brief": "Show Start trial if you can click it normally. Leave the banner in place. If the banner blocks the click, stop and explain why instead of delivering a demo.",
+      "expected": "stop",
+      "budgetSeconds": 600
+    }
+  }
+}

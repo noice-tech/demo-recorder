@@ -26,6 +26,16 @@ jobs:
       - run: pnpm test:integration
       - run: pnpm build
       - run: pnpm test:package
+      - name: Local eval smoke (no agent or secrets)
+        run: pnpm eval:demo smoke
+      - name: Upload eval smoke evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-smoke
+          path: recordings/evals/
+          if-no-files-found: ignore
+          retention-days: 7
 
   # renderer-platforms:
   #   name: Renderer (${{ matrix.os }})
